@@ -255,6 +255,62 @@ def run_merge_eval(repeats: int = 20) -> dict:
     }
 
 
+def run_spaced_review_eval(
+    n_memories: int = 30,
+    weeks: int = 4,
+    review_limit: int = 10,
+) -> dict:
+    """End-to-end spaced-repetition loop: review_due + review() feedback.
+
+    Every week the 10 most-forgotten memories are reviewed (marked success);
+    without review, decay wins. We measure how many memories stay above a
+    0.5 retrievability threshold after ``weeks``.
+    """
+    user = SourceRecord(origin=SourceType.USER)
+    engine = MemoryEngine()
+    for i in range(n_memories):
+        engine.remember(
+            f"fact-{i} value-{i}",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=[f"fact-{i}"],
+            importance=0.5,
+        )
+    now = utcnow()
+    for _ in range(weeks):
+        for item in engine.review_due(limit=review_limit, now=now):
+            engine.review(item.id, success=True, now=now)
+        now = now + timedelta(days=7)
+    kept = sum(
+        1
+        for item in engine.backend.list()
+        if engine.curve.retrievability(item, now) > 0.5
+    )
+    engine.close()
+
+    engine2 = MemoryEngine()
+    for i in range(n_memories):
+        engine2.remember(
+            f"fact-{i} value-{i}",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=[f"fact-{i}"],
+            importance=0.5,
+        )
+    kept_no_review = sum(
+        1
+        for item in engine2.backend.list()
+        if engine2.curve.retrievability(item, now) > 0.5
+    )
+    engine2.close()
+    return {
+        "reviewed_kept": kept,
+        "unreviewed_kept": kept_no_review,
+        "total": n_memories,
+        "review_advantage": kept - kept_no_review,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--days", type=int, default=30)
@@ -275,6 +331,7 @@ def main() -> int:
     concurrency = run_concurrency_check()
     learning = run_learning_curve()
     merge = run_merge_eval()
+    spaced = run_spaced_review_eval()
     print("== decay ==")
     print(f"  retention after {args.days} days:")
     print(f"    reviewed weekly : {decay['reviewed_retention']:.3f}")
@@ -310,6 +367,10 @@ def main() -> int:
     print(f"  merged during sleep     : {merge['merged']}")
     print(f"  after sleep             : {merge['after']} memories")
     print(f"  storage saved           : {merge['storage_saved_pct']}%")
+    print("== spaced-review loop (4 weeks, 30 memories) ==")
+    print(f"  reviewed : {spaced['reviewed_kept']}/{spaced['total']} still retrievable")
+    print(f"  never    : {spaced['unreviewed_kept']}/{spaced['total']} still retrievable")
+    print(f"  advantage: +{spaced['review_advantage']} memories kept")
 
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as handle:
@@ -321,6 +382,7 @@ def main() -> int:
                 "concurrency": concurrency,
                 "learning_curve": learning,
                 "merge": merge,
+                "spaced_review": spaced,
             },
             handle,
             ensure_ascii=False,

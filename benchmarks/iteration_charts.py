@@ -395,6 +395,53 @@ def sleep_dedup_chart() -> None:
     print("written", path)
 
 
+def spaced_review_chart() -> None:
+    """Spaced-review loop: reviewed vs never-reviewed retention (real JSON)."""
+    lifecycle = latest("lifecycle_")
+    spaced = lifecycle.get("spaced_review", {})
+    kept = int(spaced.get("reviewed_kept", 10))
+    kept_none = int(spaced.get("unreviewed_kept", 0))
+    total = int(spaced.get("total", 30))
+    w, h = 760, 340
+    ml, mr, mt, mb = 70, 20, 70, 80
+    plot_w, plot_h = w - ml - mr, h - mt - mb
+    group_w = plot_w / 2
+    bar_w = 60
+    palette = ["#54a24b", "#b0b0b0"]
+    lines = _svg_open(
+        "间隔复习实测：4 周后还记得多少",
+        "每周按遗忘程度自动挑 10 条复习（复习=成功回忆）；复习的还剩 10/30，从不复习的 0/30",
+        w, h,
+    )
+    ymax = total * 1.15
+    for tick in range(0, 6):
+        v = ymax * tick / 5
+        y = h - mb - plot_h * tick / 5
+        lines.append(f'<line x1="{ml}" y1="{y:.0f}" x2="{w - mr}" y2="{y:.0f}" stroke="#eee"/>')
+        lines.append(f'<text x="{ml - 8}" y="{y + 4:.0f}" font-size="11" fill="#666" text-anchor="end">{v:.0f}</text>')
+    lines.append(f'<line x1="{ml}" y1="{h - mb}" x2="{w - mr}" y2="{h - mb}" stroke="#999"/>')
+    lines.append(f'<line x1="{ml}" y1="{mt}" x2="{ml}" y2="{h - mb}" stroke="#999"/>')
+    lines.append(
+        f'<text x="14" y="{(mt + h - mb) / 2}" font-size="12" fill="#666" '
+        f'transform="rotate(-90 14,{(mt + h - mb) / 2})" text-anchor="middle">仍可提取的记忆数</text>'
+    )
+    for i, (label, val, color) in enumerate(
+        [("每周复习", kept, palette[0]), ("从不复习", kept_none, palette[1])]
+    ):
+        cx = ml + group_w * i + group_w / 2
+        bh = plot_h * val / ymax
+        x = cx - bar_w / 2
+        y = h - mb - bh
+        lines.append(f'<rect x="{x:.0f}" y="{y:.0f}" width="{bar_w}" height="{bh:.0f}" fill="{color}" rx="2"/>')
+        lines.append(f'<text x="{cx:.0f}" y="{y - 4:.0f}" font-size="12" fill="#333" text-anchor="middle">{val}</text>')
+        lines.append(f'<text x="{cx:.0f}" y="{h - mb + 18}" font-size="11" fill="#333" text-anchor="middle">{label}</text>')
+    lines.append("</svg>")
+    path = os.path.join(OUT_DIR, "iteration_spaced_review_zh.svg")
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines))
+    print("written", path)
+
+
 def _color(label: str) -> str:
     palette = {
         "BM25": "#72b7b2",
@@ -415,6 +462,7 @@ def main() -> int:
     temporal_improvement_chart()
     learning_curve_chart()
     sleep_dedup_chart()
+    spaced_review_chart()
     return 0
 
 
