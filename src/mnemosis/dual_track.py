@@ -13,6 +13,7 @@ from .backend import Backend
 from .forgetting import ForgettingCurve
 from .importance import ImportanceScorer
 from .embedding import Embedder
+from .schema import EventChainIndex
 from .types import (
     MemoryItem,
     MemoryKind,
@@ -36,6 +37,7 @@ class DualTrackStore:
         self.scorer = scorer
         self._term_cache: dict[tuple, frozenset[str]] = {}
         self._embed_cache: dict[str, list[float]] = {}
+        self._inverted: dict[str, dict[str, set[str]]] = {}
 
     def remember(
         self,
@@ -75,6 +77,7 @@ class DualTrackStore:
             self.backend.add(item)
             stored = item
         self.backend.add_cues(stored.id, stored.cues)
+        self.invalidate_term_index()
         return stored
 
     def recall(
@@ -93,10 +96,21 @@ class DualTrackStore:
         expansion_discount: float = 0.95,
         max_expansion_roots: int = 5,
         max_expansion_neighbors: int = 50,
+        event_chain: EventChainIndex | None = None,
+        temporal_boost: float = 0.8,
     ) -> list[RecallResult]:
         now = now or utcnow()
         candidates = self.backend.list(kind=kind)
         query_terms = set(tokenize(query))
+        if query_terms:
+            term_index = self._term_index(kind)
+            hit_ids: set[str] = set()
+            for term in query_terms:
+                hit_ids |= term_index.get(term, set())
+            if hit_ids:
+                candidates = [
+                    item for item in candidates if item.id in hit_ids
+                ]
         query_vector = embedder.embed(query) if embedder is not None else None
         scored: list[tuple[float, float, MemoryItem, list[str], bool]] = []
         for item in candidates:
@@ -152,6 +166,10 @@ class DualTrackStore:
             max_expansion_roots,
             max_expansion_neighbors,
         )
+        if event_chain is not None:
+            self._follow_event_chain(
+                scored, event_chain, temporal_boost
+            )
         results = [
             RecallResult(item=item, score=score, reasons=reasons)
             for score, _, item, reasons, _ in scored[:top_k]
@@ -193,6 +211,92 @@ class DualTrackStore:
                     query_terms,
                 )
         return results
+
+    def _term_index(self, kind: MemoryKind | None) -> dict[str, set[str]]:
+        """Lazily built inverted index: term -> memory ids.
+
+        Built once per (kind) and cached; remember() invalidates it via
+        `invalidate_term_index()`. This is the same lexical matching used for
+        overlap scoring, so pruning by it never changes the ranking — it only
+        avoids scanning memories that share no terms with the query (the
+        dominant cost at 10k+ memories).
+        """
+        key = kind.value if kind is not None else "all"
+        cached = self._inverted.get(key)
+        if cached is not None:
+            return cached
+        index: dict[str, set[str]] = {}
+        for item in self.backend.list(kind=kind):
+            for term in self._terms(item):
+                index.setdefault(term, set()).add(item.id)
+        self._inverted[key] = index
+        return index
+
+    def invalidate_term_index(self) -> None:
+        self._inverted = {}
+
+    def _follow_event_chain(
+        self,
+        scored: list[tuple[float, float, MemoryItem, list[str], bool]],
+        chain: EventChainIndex,
+        boost_scale: float,
+    ) -> None:
+        """Boost the chronological successor of a matched episode.
+
+        Event schemas (Gilboa & Marlatte, 2017): once the anchor of a
+        sequence is recognized ("after visiting X..."), the *next* event is
+        cued by the script itself, not by shared words. The successor gets a
+        discounted boost so it can surface for temporal questions even when
+        it shares no tokens with the query.
+        """
+        by_id: dict[str, int] = {
+            item.id: index for index, (_, _, item, _, _) in enumerate(scored)
+        }
+        boosts: dict[str, float] = {}
+        for score, _, item, _, matched in scored[:5]:
+            if not matched or item.kind is not MemoryKind.EPISODIC:
+                continue
+            successor_id = chain.next_event_id(item.id)
+            if successor_id is None:
+                continue
+            boost = score * boost_scale
+            if boost > boosts.get(successor_id, 0.0):
+                boosts[successor_id] = boost
+        for successor_id, boost in boosts.items():
+            index = by_id.get(successor_id)
+            if index is not None:
+                old_score, overlap, item, reasons, matched = scored[index]
+                if boost > old_score:
+                    scored[index] = (
+                        boost,
+                        overlap,
+                        item,
+                        reasons + ["\u65f6\u5e8f\u540e\u7ee7(\u4e8b\u4ef6\u94fe)"],
+                        matched,
+                    )
+                elif not any(
+                    "\u65f6\u5e8f\u540e\u7ee7" in reason for reason in reasons
+                ):
+                    scored[index] = (
+                        old_score,
+                        overlap,
+                        item,
+                        reasons + ["\u65f6\u5e8f\u540e\u7ee7(\u4e8b\u4ef6\u94fe)"],
+                        matched,
+                    )
+            else:
+                successor = self.backend.get(successor_id)
+                if successor is not None:
+                    scored.append(
+                        (
+                            boost,
+                            0.0,
+                            successor,
+                            ["\u65f6\u5e8f\u540e\u7ee7(\u4e8b\u4ef6\u94fe)"],
+                            False,
+                        )
+                    )
+        scored.sort(key=lambda entry: entry[0], reverse=True)
 
     def _record_misses(
         self,

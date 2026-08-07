@@ -13,6 +13,7 @@ from .forgetting import ForgettingCurve, ReviewScheduler
 from .importance import ImportanceScorer
 from .metacognition import ConfidenceLabel, Metacognition, MetacognitiveCheck
 from .recycle import RecycleBin
+from .schema import EventChainIndex
 from .types import (
     MemoryItem,
     MemoryKind,
@@ -55,6 +56,7 @@ class MemoryEngine:
         self.embedder = embedder
         self.store = DualTrackStore(self.backend, self.curve, self.scorer)
         self.associations = AssociationIndex(self.backend)
+        self.event_chain = EventChainIndex(self.backend)
         self.consolidator = Consolidator(self.store, self.backend)
         self.meta = Metacognition(self.store, self.curve, self.consolidator)
         self.recycle = RecycleBin(self.backend)
@@ -97,6 +99,8 @@ class MemoryEngine:
         )
         self.associations.index(item)
         self.associations.link_related(item)
+        if item.kind is MemoryKind.EPISODIC:
+            self.event_chain.invalidate()
         return item
 
     def update(
@@ -154,6 +158,7 @@ class MemoryEngine:
         suppression_floor: float = 0.7,
         embedder: Embedder | None = None,
         expansion_discount: float = 0.95,
+        temporal_boost: float = 0.8,
     ) -> list[RecallResult]:
         embedder = embedder or self.embedder
         return self.store.recall(
@@ -167,6 +172,8 @@ class MemoryEngine:
             suppression_floor=suppression_floor,
             embedder=embedder,
             expansion_discount=expansion_discount,
+            event_chain=self.event_chain,
+            temporal_boost=temporal_boost,
         )
 
     # -- sleep cycle ----------------------------------------------------------
