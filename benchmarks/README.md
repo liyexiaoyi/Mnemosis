@@ -93,3 +93,20 @@ genre?" with "Alice's favorite color is amber."
 
 Results are deterministic for a fixed seed (tie-breaking is by
 `(created_at, content)`, never by random ids or set iteration order).
+
+## lifecycle_eval.py
+
+Validates the forgetting/updating promises without any LLM:
+
+```bash
+python benchmarks/lifecycle_eval.py
+```
+
+Results (30 simulated days, seed-free deterministic):
+
+- Spaced review keeps memories strong: correct-memory average recall score
+  0.343 (reviewed weekly) vs 0.260 (never reviewed) — 32% higher.
+- Emotional persistence: retrievability 0.421 for affect-tagged vs 0.237 for
+  neutral memories after 30 days.
+- `update()` replaces stale facts cleanly (old content no longer surfaces)
+  and sleep detects the planted contradiction.
