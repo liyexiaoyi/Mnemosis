@@ -286,6 +286,15 @@ def tokenize(text: str) -> list[str]:
             lambda m: " " * len(m.group(0)),
             lowered,
         )
+    # Chinese numeral + money/measure unit: "三百元" also emits "300元",
+    # "三本" also emits "3本" (numeric normalization for zh content).
+    for zh_num, unit in re.findall(
+        r"([一二三四五六七八九十零]+)(元|块|本|个|台|条|张|件|杯|瓶)",
+        lowered,
+    ):
+        value = _zh_numeral(zh_num)
+        if value:
+            tokens.append(f"{value}{unit}")
     rest = re.sub(compound_pattern, " ", lowered)
     for word in re.findall(r"[a-z0-9]+", rest):
         if len(word) > 1 and word not in STOPWORDS:

@@ -115,6 +115,30 @@ class ChineseOptimizationTest(unittest.TestCase):
             results2[0].item.content, "小波在2026-06-03买了书。"
         )
 
+    def test_chinese_money_and_measure_units_normalize(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        engine.remember(
+            "阿丽花了三百元买了笔记本。",
+            kind=MemoryKind.EPISODIC,
+            source=user,
+            cues=["阿丽"],
+        )
+        engine.remember(
+            "小王买了三本书。",
+            kind=MemoryKind.EPISODIC,
+            source=user,
+            cues=["小王"],
+        )
+        results = engine.recall("阿丽 300元", top_k=3)
+        self.assertTrue(results)
+        self.assertEqual(
+            results[0].item.content, "阿丽花了三百元买了笔记本。"
+        )
+        results2 = engine.recall("小王 3本", top_k=3)
+        self.assertTrue(results2)
+        self.assertEqual(results2[0].item.content, "小王买了三本书。")
+
 
 if __name__ == "__main__":
     unittest.main()
