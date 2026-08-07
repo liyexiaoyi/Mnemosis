@@ -32,7 +32,8 @@ from tencentdb_agent_memory import MemoryClient  # noqa: E402
 
 from locomo_bench import generate_dataset  # noqa: E402
 from compare_with_models import score_answer  # noqa: E402
-from model_x_project import _generate, select_questions  # noqa: E402
+from cloud_qwen_matrix import cloud_generate  # noqa: E402
+from model_x_project import select_questions  # noqa: E402
 
 
 ENDPOINT = "http://127.0.0.1:8420"
@@ -123,7 +124,7 @@ def main() -> int:
         )
         start = time.perf_counter()
         try:
-            answer = _generate("qwen2.5:3b", prompt)
+            answer = cloud_generate(prompt)
         except Exception as exc:  # noqa: BLE001
             answer = f"<error: {exc}>"
         took = time.perf_counter() - start
