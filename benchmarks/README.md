@@ -69,10 +69,10 @@ knowledge gaps rather than confabulated).
 
 LLM answer accuracy on a 12-question subset:
 
-| Approach | gemma3:12b | qwen2.5-vl |
-|---|---|---|
-| llm_alone | 0.250 | 0.250 |
-| llm_with_mnemosis | 0.92–1.00 | 0.83–0.92 |
+| Approach | gemma3:12b | qwen2.5-vl | qwen2.5:3b |
+|---|---|---|---|
+| llm_alone | 0.250 | 0.250 | 0.250 |
+| llm_with_mnemosis | 0.92–1.00 | 0.83–0.92 | 0.750 |
 
 Observed range across repeated runs: with perfect retrieval context, the
 residual misses are model-side temporal reasoning (the correct event is
