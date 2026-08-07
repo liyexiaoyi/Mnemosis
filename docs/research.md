@@ -25,6 +25,13 @@ the codebase and a test.
 | OS-inspired memory hierarchy | Packer et al. (2023), MemGPT | Working set + long-term tiers; interrupts for control flow (roadmap) | `engine.py`, roadmap |
 | Distributional similarity | Harris (1954), *Word* | Character n-gram hashing embeddings for synonym-tolerant recall | `embedding.py` |
 | Long-conversation evaluation | Maharana et al. (2024), LoCoMo, ACL | Evaluation methodology for episodic memory over time (roadmap) | roadmap |
+| Spacing effect | Cepeda et al. (2006), *Psychological Bulletin* 132(3):354 | Longer gaps before a successful retrieval yield larger durable gains; `reinforce_review()` saturates past ~7 days | `forgetting.py` |
+| Adaptive scheduling | Smolen, Zhang & Byrne (2016), *Nature Reviews Neuroscience* | `review_streak` (consecutive successes) drives the next interval; failures reset it so struggling traces re-appear sooner | `forgetting.py`, `engine.review()` |
+| Retrieval effort / desirable difficulty | Bjork & Kroll (2015), *Journal of Applied Research in Memory and Cognition*; Kornell & Vaughn (2016) | Harder-but-successful retrievals reinforce more (effort-scaled delta) | `forgetting.py` |
+| Event schema / script memory | Gilboa & Marlatte (2017), *Annual Review of Neuroscience* 40:577; Bartlett (1932) | Episodes sharing person+session are chained by date; recall follows the chain for "what happened next?" | `schema.py` |
+| Sleep replay of recent traces | Gais et al. (2002), *Nature Neuroscience* 5:1024 | Bounded replay pass strengthens recently encoded salient episodes during sleep | `consolidation.py` |
+| Sleep dedup / evidence accumulation | McClelland et al. (1995) complementary learning systems | Near-identical repeated episodes collapse into one trace; evidence count accumulates | `consolidation.py` |
+| Pattern completion (partial cues) | McClelland et al. (1995); Hopfield (1982) | Partial-cue recall is benchmarked as a separate track (documented as noisy at scale, reverted) | benchmarks |
 
 ## Why these papers
 
