@@ -15,6 +15,16 @@ def utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+STOPWORDS = {
+    "the", "and", "for", "with", "from", "that", "this", "you", "your",
+    "they", "them", "what", "when", "where", "how", "was", "were", "are",
+    "have", "has", "had", "will", "would", "can", "could", "should", "about",
+    "into", "over", "after", "before", "during", "because", "been", "being",
+    "not", "but", "his", "her", "its", "our", "their", "there", "here",
+    "then", "than", "also", "very", "just", "only", "some", "such",
+}
+
+
 def hash_content(content: str) -> str:
     """Stable content hash used for semantic deduplication."""
     normalized = re.sub(r"\s+", " ", content).strip().lower()
@@ -103,6 +113,9 @@ class MemoryItem:
     context: str | None = None
     affect: str | None = None
     evidence_count: int = 1
+    storage_strength: float = 1.0
+    updated_at: datetime | None = None
+    revision_count: int = 0
 
     def __post_init__(self) -> None:
         self.content_hash = self.content_hash or hash_content(self.content)
@@ -117,6 +130,8 @@ class MemoryItem:
         self.evidence_count = max(1, int(self.evidence_count))
         if self.context is not None:
             self.context = self.context.strip() or None
+        self.storage_strength = max(0.1, min(2.0, self.storage_strength))
+        self.revision_count = max(0, int(self.revision_count))
 
     def touch(self, now: datetime | None = None) -> None:
         """Mark as accessed; used by the forgetting curve reinforcement."""
@@ -141,6 +156,9 @@ class MemoryItem:
             "context": self.context,
             "affect": self.affect,
             "evidence_count": self.evidence_count,
+            "storage_strength": self.storage_strength,
+            "updated_at": _iso(self.updated_at),
+            "revision_count": self.revision_count,
         }
 
     @classmethod
@@ -162,6 +180,9 @@ class MemoryItem:
             context=data.get("context"),
             affect=data.get("affect"),
             evidence_count=data.get("evidence_count", 1),
+            storage_strength=data.get("storage_strength", 1.0),
+            updated_at=_from_iso(data.get("updated_at")),
+            revision_count=data.get("revision_count", 0),
         )
 
 
@@ -200,6 +221,27 @@ def tokenize(text: str) -> list[str]:
     return tokens
 
 
+def extract_cues(content: str, limit: int = 6) -> list[str]:
+    """Derive retrieval cues from content (encoding specificity).
+
+    Latin words (>= 4 chars) and CJK bigrams become additional retrieval
+    routes, so a memory can be reached from more than one angle even when the
+    caller supplied no explicit cues.
+    """
+    seen: set[str] = set()
+    cues: list[str] = []
+    for token in tokenize(content):
+        if token in STOPWORDS or token in seen or len(token) < 2:
+            continue
+        if re.fullmatch(r"[a-z0-9]+", token) and len(token) < 4:
+            continue
+        seen.add(token)
+        cues.append(token)
+        if len(cues) >= limit:
+            break
+    return cues
+
+
 def _clamp01(value: float) -> float:
     return max(0.0, min(1.0, value))
 
@@ -211,6 +253,7 @@ __all__ = [
     "RecallResult",
     "SourceRecord",
     "SourceType",
+    "extract_cues",
     "hash_content",
     "normalize_cues",
     "tokenize",

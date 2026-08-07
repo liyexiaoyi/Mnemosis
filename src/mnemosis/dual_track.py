@@ -48,6 +48,7 @@ class DualTrackStore:
         context: str | None = None,
         affect: str | None = None,
         evidence_count: int = 1,
+        storage_strength: float = 1.0,
     ) -> MemoryItem:
         if importance is None:
             importance = self.scorer.score(content, source=source)
@@ -63,6 +64,7 @@ class DualTrackStore:
             context=context,
             affect=affect,
             evidence_count=evidence_count,
+            storage_strength=storage_strength,
         )
         if kind is MemoryKind.SEMANTIC:
             stored = self.backend.upsert(item)
@@ -115,7 +117,11 @@ class DualTrackStore:
         results = scored[:top_k]
         if reinforce:
             for r in results:
-                self.curve.reinforce(r.item, now=now)
+                # Testing effect (Roediger & Karpicke, 2006): reinforcement
+                # scales with how well the memory matched the retrieval.
+                overlap = _overlap(query_terms, r.item)
+                delta = 0.05 + 0.15 * overlap
+                self.curve.reinforce(r.item, delta=delta, now=now)
                 self.backend.update(r.item)
             if suppression_factor > 0:
                 self._suppress_linked_rivals(results, suppression_factor)

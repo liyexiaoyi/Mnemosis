@@ -34,8 +34,13 @@ def main() -> None:
         "  blocked (cues matched, not recalled): "
         f"{[b.content for b in check.blocked] or 'none'}"
     )
+
     for item, label, value in check.items:
         print(f"  {label.value:6s} ({value}) {item.content}")
+
+    print("\n== working set ==")
+    for item in engine.working_set(limit=3):
+        print(f"  {item.content}")
 
     print("\n== sleep ==")
     print("  ", engine.sleep().summary())

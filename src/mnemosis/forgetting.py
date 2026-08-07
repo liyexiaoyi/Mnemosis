@@ -41,9 +41,17 @@ class ForgettingCurve:
         return max(0.0, (now - anchor).total_seconds() / 3600.0)
 
     def retrievability(self, item: MemoryItem, now: datetime | None = None) -> float:
-        """Current retrievability in [0, 1] after exponential decay."""
+        """Current retrievability after exponential decay.
+
+        Bjork & Bjork (1992): retrieval strength decays fast, but higher
+        storage strength slows the loss of access.
+        """
         hours = self.hours_since_last_access(item, now)
-        return item.strength * math.exp(-self.effective_decay_rate(item) * hours)
+        return (
+            item.strength
+            * item.storage_strength
+            * math.exp(-self.effective_decay_rate(item) * hours)
+        )
 
     def reinforce(
         self,
@@ -51,8 +59,13 @@ class ForgettingCurve:
         delta: float = 0.1,
         now: datetime | None = None,
     ) -> float:
-        """Strengthen a memory after access and record the access."""
+        """Strengthen a memory after access and record the access.
+
+        Retrieval strength recovers fast; storage strength accrues slowly but
+        durably (Bjork & Bjork, 1992).
+        """
         item.strength = min(1.0, item.strength + delta)
+        item.storage_strength = min(2.0, item.storage_strength + delta * 0.3)
         item.touch(now or utcnow())
         return item.strength
 

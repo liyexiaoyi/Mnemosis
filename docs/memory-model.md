@@ -19,6 +19,12 @@ the core.
 | 11 | Complementary learning systems | McClelland et al. (1995): hippocampus stores fast, neocortex integrates slowly | Episodic store is fast; semantic facts accumulate `evidence_count` and confidence during sleep | `consolidation.py` |
 | 12 | Retrieval-induced forgetting | Anderson, Bjork & Bjork (1994): retrieval itself causes forgetting of related items | Recalling a memory slightly suppresses linked, unrecalled rivals | `dual_track.py` |
 | 13 | Blocking / feeling-of-knowing | Schacter (1999): cues present but recall fails | `check()` reports `blocked` memories — cues matched, not recalled — as an alternative-route signal | `metacognition.py` |
+| 14 | Encoding specificity / levels of processing | Craik & Lockhart (1972); Tulving & Thomson (1973): richer encoding means more retrieval routes | Automatic cue extraction from content at encoding time | `types.py`, `engine.py` |
+| 15 | Storage vs retrieval strength | Bjork & Bjork (1992): durable storage strength vs volatile retrieval strength | `storage_strength` accrues slowly, `strength` decays fast; both drive retrievability | `forgetting.py` |
+| 16 | Testing effect | Roediger & Karpicke (2006): retrieval practice beats re-exposure | Reinforcement delta scales with retrieval match quality | `dual_track.py` |
+| 17 | Reconsolidation | Nader et al. (2000): retrieved memories become labile and can be revised | `update()` destabilizes, records `revision_count`/`updated_at`, re-stabilizes on access | `engine.py` |
+| 18 | Sleep prioritizes salient memories | Rasch & Born (2013): sleep optimizes consolidation of what matters | Emotionally tagged episodes promote with lower access/age thresholds | `consolidation.py` |
+| 19 | Working memory | Atkinson & Shiffrin (1968); Baddeley (2000); CoALA working memory | `working_set()` returns recently used memories for prompt injection | `engine.py` |
 
 ## Wake / sleep lifecycle
 

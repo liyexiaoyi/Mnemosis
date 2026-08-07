@@ -31,6 +31,14 @@ reconciling — the way human memory actually works.
   learning systems; McClelland et al., 1995).
 - **Blocking detection** — when cues match but recall fails, Mnemosis reports
   the "blocked" memories so the agent can try another route (Schacter, 1999).
+- **Storage vs retrieval strength** — retrieval strength decays fast, while
+  storage strength accrues slowly and durably (Bjork & Bjork, 1992).
+- **Automatic cue extraction** — content is indexed with multiple retrieval
+  routes at encoding time (encoding specificity; Tulving & Thomson, 1973).
+- **Memory updating** — `update()` revises facts, tracks revisions, and
+  destabilizes the trace before it re-stabilizes (Nader et al., 2000).
+- **Working set** — recently used memories are exposed for prompt injection
+  (Atkinson & Shiffrin, 1968; CoALA).
 - **Local-first, zero runtime dependencies** — pure Python `stdlib`, SQLite
   persistence, no server, no mandatory cloud embeddings (optional embedder
   hooks).

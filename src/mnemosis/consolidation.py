@@ -80,10 +80,16 @@ class Consolidator:
     def _promote_episodic(self, now: datetime) -> list[MemoryItem]:
         promoted: list[MemoryItem] = []
         for item in self.store.all_active(MemoryKind.EPISODIC):
+            # Rasch & Born (2013): sleep preferentially consolidates salient
+            # (here: emotionally tagged) experiences.
+            access_needed = max(
+                1, self.promotion_accesses - (1 if item.affect else 0)
+            )
+            age_needed = self.promotion_age_hours * (0.5 if item.affect else 1.0)
             age_hours = (now - item.created_at).total_seconds() / 3600.0
-            if item.access_count < self.promotion_accesses:
+            if item.access_count < access_needed:
                 continue
-            if age_hours < self.promotion_age_hours:
+            if age_hours < age_needed:
                 continue
             if item.importance < self.promotion_importance and item.access_count < 3:
                 continue
@@ -104,6 +110,7 @@ class Consolidator:
                 context=item.context,
                 affect=item.affect,
                 evidence_count=evidence,
+                storage_strength=item.storage_strength,
             )
             self.backend.add_link(item.id, semantic.id)
             self.backend.add_link(semantic.id, item.id)

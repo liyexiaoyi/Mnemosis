@@ -254,6 +254,9 @@ class SQLiteBackend(Backend):
             "context": "context TEXT",
             "affect": "affect TEXT",
             "evidence_count": "evidence_count INTEGER NOT NULL DEFAULT 1",
+            "storage_strength": "storage_strength REAL NOT NULL DEFAULT 1.0",
+            "updated_at": "updated_at TEXT",
+            "revision_count": "revision_count INTEGER NOT NULL DEFAULT 0",
         }
         with self._conn:
             for name, ddl in additions.items():
@@ -269,8 +272,9 @@ class SQLiteBackend(Backend):
                 INSERT INTO memories (
                     id, kind, content, content_hash, source_json, cues_json,
                     created_at, last_access_at, access_count, importance,
-                    strength, confidence, status, context, affect, evidence_count
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    strength, confidence, status, context, affect, evidence_count,
+                    storage_strength, updated_at, revision_count
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 _item_row(item),
             )
@@ -308,7 +312,8 @@ class SQLiteBackend(Backend):
                     content = ?, content_hash = ?, source_json = ?, cues_json = ?,
                     created_at = ?, last_access_at = ?, access_count = ?,
                     importance = ?, strength = ?, confidence = ?, status = ?,
-                    context = ?, affect = ?, evidence_count = ?
+                    context = ?, affect = ?, evidence_count = ?,
+                    storage_strength = ?, updated_at = ?, revision_count = ?
                 WHERE id = ?
                 """,
                 (
@@ -326,6 +331,9 @@ class SQLiteBackend(Backend):
                     item.context,
                     item.affect,
                     item.evidence_count,
+                    item.storage_strength,
+                    item.updated_at.isoformat() if item.updated_at else None,
+                    item.revision_count,
                     item.id,
                 ),
             )
@@ -446,6 +454,14 @@ def _merge_stats(target: MemoryItem, incoming: MemoryItem) -> None:
     target.access_count += incoming.access_count
     target.cues = normalize_cues(target.cues + incoming.cues)
     target.evidence_count = max(target.evidence_count, incoming.evidence_count)
+    target.storage_strength = max(
+        target.storage_strength, incoming.storage_strength
+    )
+    target.revision_count = max(target.revision_count, incoming.revision_count)
+    if incoming.updated_at and (
+        target.updated_at is None or incoming.updated_at > target.updated_at
+    ):
+        target.updated_at = incoming.updated_at
     if incoming.source.trust > target.source.trust:
         target.source = incoming.source
     if incoming.last_access_at and (
@@ -472,6 +488,9 @@ def _item_row(item: MemoryItem) -> tuple:
         item.context,
         item.affect,
         item.evidence_count,
+        item.storage_strength,
+        item.updated_at.isoformat() if item.updated_at else None,
+        item.revision_count,
     )
 
 
@@ -495,6 +514,9 @@ def _row_to_item(row: sqlite3.Row | None) -> MemoryItem | None:
         "context": row["context"],
         "affect": row["affect"],
         "evidence_count": row["evidence_count"],
+        "storage_strength": row["storage_strength"],
+        "updated_at": row["updated_at"],
+        "revision_count": row["revision_count"],
     }
     return MemoryItem.from_dict(data)
 
