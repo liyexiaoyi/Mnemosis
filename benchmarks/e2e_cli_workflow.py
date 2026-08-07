@@ -14,6 +14,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import json
 
 _BENCH = os.path.dirname(os.path.abspath(__file__))
 _SRC = os.path.normpath(os.path.join(_BENCH, "..", "src"))
@@ -87,6 +88,39 @@ def main() -> int:
 
         out, _ = run_cli(db, "working-set", "--limit", "5")
         step("工作集", bool(out.strip()), out)
+
+        # MCP (in-process, real MCPServer over the same engine)
+        from mnemosis import MemoryEngine
+        from mnemosis.mcp_server import MCPServer
+
+        mcp = MCPServer(MemoryEngine())
+
+        def mcp_call(name: str, arguments: dict) -> dict:
+            response = mcp.handle_line(
+                json.dumps(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 7,
+                        "method": "tools/call",
+                        "params": {"name": name, "arguments": arguments},
+                    }
+                )
+            )
+            parsed = json.loads(response)
+            return json.loads(parsed["result"]["content"][0]["text"])
+
+        out = mcp_call(
+            "remember",
+            {"content": "小波最喜欢的食物是饺子。", "kind": "semantic",
+             "cues": ["小波", "食物"]},
+        )
+        step("MCP 记住中文事实", "saved" in str(out) or "小波" in str(out), str(out))
+
+        out = mcp_call("recall", {"query": "小波最喜欢的食物是什么？", "top_k": 1})
+        step("MCP 中文回忆", "饺子" in str(out), str(out))
+
+        out = mcp_call("check", {"query": "小波最喜欢的运动是什么？"})
+        step("MCP 没聊过不乱说", "gaps" in str(out) and "运动" in str(out), str(out))
     finally:
         import shutil
         shutil.rmtree(tmpdir, ignore_errors=True)
