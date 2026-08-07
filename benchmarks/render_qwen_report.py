@@ -179,6 +179,8 @@ def main() -> int:
     if not llm_rows:
         print("no LLM rows found; using fallback values")
         llm_rows = [
+            {"model": "qwen3-vl:8b", "approach": "llm_alone", "accuracy": 0.25},
+            {"model": "qwen3-vl:8b", "approach": "llm_with_mnemosis", "accuracy": 0.917},
             {"model": "qwen2.5:3b", "approach": "llm_alone", "accuracy": 0.25},
             {"model": "qwen2.5:3b", "approach": "llm_with_mnemosis", "accuracy": 0.75},
             {"model": "qwen2.5-vl", "approach": "llm_alone", "accuracy": 0.25},
