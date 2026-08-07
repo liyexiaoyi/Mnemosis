@@ -107,6 +107,15 @@ engine.recall("the user's preference")           # matches "prefers" too
 External embeddings (e.g. an OpenAI-compatible API) work through
 `CallableEmbedder(fn)`; the core keeps working without one.
 
+## Benchmark highlights
+
+LoCoMo-style evaluation (24 sessions, 120 events, 88 questions; deterministic
+seed 42) — ngram mode reaches **1.000 hit@1 on fact, event and temporal
+ordering retrieval**, with 16/16 distractor questions correctly reported as
+knowledge gaps. Grounded with Mnemosis, local LLMs answer 0.83–1.00 of
+questions vs 0.25 without memory. See [benchmarks/README.md](benchmarks/README.md)
+and [docs/comparison.md](docs/comparison.md).
+
 ## CLI
 
 The same engine is available from the command line (pass `--db` to persist):
@@ -118,6 +127,9 @@ mnemosis --db memory.db check "sqlite debug"
 mnemosis --db memory.db sleep
 mnemosis --db memory.db stats
 ```
+
+If the `mnemosis` command is not on your PATH after `pip install`, add the
+Python `Scripts` directory to PATH or use `python -m mnemosis ...` instead.
 
 ## MCP server
 
