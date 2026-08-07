@@ -552,7 +552,8 @@ def main() -> int:
                 }
             )
         llm_engine.close()
-    print_report(reports["keyword"], llm_rows)
+    summary_report = reports.get("keyword") or reports.get("ngram") or {}
+    print_report(summary_report, llm_rows)
 
     bm25 = None
     embedding = None

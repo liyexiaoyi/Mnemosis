@@ -89,7 +89,7 @@ def grouped_bar_chart(
                 f'<rect x="{x:.1f}" y="{y:.1f}" width="{bar_w:.1f}" height="{bar_h:.1f}" '
                 f'fill="{PALETTE[s_index % len(PALETTE)]}" rx="2"/>'
             )
-            if value > 0:
+            if value > 0 and value < 0.9 * ymax:
                 lines.append(
                     f'<text x="{x + bar_w / 2:.1f}" y="{y - 4:.1f}" font-size="10" '
                     f'fill="#444" text-anchor="middle">{fmt.format(value)}</text>'
@@ -251,6 +251,22 @@ def main() -> int:
         [
             ("Mem0-style", [100, 66.7, 8.3, 0]),
             ("Mnemosis", [100, 100, 100, 100]),
+        ],
+        ymax=110,
+    )
+
+    grouped_bar_chart(
+        os.path.join(args.out_dir, "unified_compare.svg"),
+        "真实测评总榜：6 系统 × 4 项（同一 88 题）",
+        "命中率 (%)",
+        ["fact@5", "event@5", "temporal@5", "distractor 拒答"],
+        [
+            ("BM25", [100, 100, 12.5, 0]),
+            ("嵌入 kNN", [100, 91.7, 8.3, 0]),
+            ("Mem0-style", [100, 66.7, 8.3, 0]),
+            ("HippoRAG-style", [33.3, 16.7, 37.5, 0]),
+            ("Mnemosis 词法", [100, 100, 100, 100]),
+            ("Mnemosis ngram", [100, 100, 100, 100]),
         ],
         ymax=110,
     )
