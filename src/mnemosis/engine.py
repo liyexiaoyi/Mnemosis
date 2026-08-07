@@ -216,6 +216,7 @@ class MemoryEngine:
         *,
         success: bool,
         now: datetime | None = None,
+        confidence_aware: bool = True,
     ) -> MemoryItem | None:
         """Record a spaced-repetition outcome for a memory.
 
@@ -224,6 +225,12 @@ class MemoryEngine:
         next interval; a failed review resets the streak so the trace is
         re-presented sooner. Call this from the agent loop whenever the agent
         can judge whether the recalled content was actually correct.
+
+        With ``confidence_aware`` (default on), a successful review of a
+        memory the system is *not confident* about keeps the next interval
+        shorter (more practice), mirroring the desirable-difficulty benefit:
+        low-confidence-but-correct retrievals deserve more rehearsal
+        (Bjork & Kroll, 2015; Koriat & Goldsmith, 1996).
         """
         item = self.backend.get(memory_id)
         if item is None:
@@ -232,6 +239,11 @@ class MemoryEngine:
         self.scheduler.record_outcome(item, success=success, now=now)
         if success:
             self.curve.reinforce_review(item, delta=0.1, now=now)
+            if confidence_aware:
+                label, _ = self.calibrated_confidence(item, now)
+                if label is not ConfidenceLabel.HIGH:
+                    # practice sooner: cut the streak gain in half
+                    item.review_streak = max(0.0, item.review_streak - 0.5)
         else:
             # failure slightly weakens retrieval strength: the trace was not
             # retrievable, so the forgetting curve reflects it.

@@ -86,6 +86,42 @@ class CalibrationTest(unittest.TestCase):
             n += 1
         self.assertLess(ece_sum / n, raw_stats["ece"])
 
+    def test_confidence_aware_review_practices_uncertain_memories_sooner(
+        self,
+    ) -> None:
+        user = SourceRecord(origin=SourceType.USER)
+
+        def build() -> MemoryEngine:
+            engine = MemoryEngine()
+            item = engine.remember(
+                "The server is in Frankfurt.",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["server"],
+            )
+            item.retrieval_successes = 1
+            item.retrieval_failures = 9  # low calibrated confidence
+            engine.backend.update(item)
+            return engine
+
+        aware_engine = build()
+        aware_item = aware_engine.review(
+            aware_engine.backend.list()[0].id,
+            success=True,
+            confidence_aware=True,
+        )
+        naive_engine = build()
+        naive_item = naive_engine.review(
+            naive_engine.backend.list()[0].id,
+            success=True,
+            confidence_aware=False,
+        )
+        self.assertLess(aware_item.review_streak, naive_item.review_streak)
+        self.assertLess(
+            aware_engine.scheduler.next_interval_hours(aware_item.review_streak),
+            naive_engine.scheduler.next_interval_hours(naive_item.review_streak),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -110,10 +110,15 @@ class ReviewScheduler:
         self.curve = curve
         self.base_interval_hours = base_interval_hours
 
-    def next_interval_hours(self, access_count: int) -> float:
-        """interval = base * 2 ** min(access_count - 1, 8)."""
+    def next_interval_hours(self, access_count: float) -> float:
+        """interval = base * 2 ** min(access_count - 1, 8).
+
+        Fractional streaks (e.g. 0.5 from confidence-aware review) produce a
+        shorter-than-base interval so uncertain memories are practised
+        sooner; a failed review (streak 0) also returns sooner than base.
+        """
         if access_count < 1:
-            return self.base_interval_hours
+            return self.base_interval_hours * (2 ** max(-2.0, access_count - 1))
         return self.base_interval_hours * (2 ** min(access_count - 1, 8))
 
     def next_review_at(

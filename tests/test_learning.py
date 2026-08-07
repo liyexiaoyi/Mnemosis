@@ -165,7 +165,9 @@ class LearningTest(unittest.TestCase):
         interval_after_failure = (
             self.engine.scheduler.next_review_at(failed, now) - now
         ).total_seconds() / 3600.0
-        self.assertAlmostEqual(interval_after_failure, 24.0)
+        # a failed review resets the streak, and a zero streak now returns
+        # sooner than the base interval (re-present before it is forgotten).
+        self.assertAlmostEqual(interval_after_failure, 12.0)
 
     def test_sleep_merges_near_duplicate_episodes(self):
         """Complementary learning systems: repeated identical experiences
