@@ -427,11 +427,21 @@ def print_report(retrieval: dict, llm_rows: list[dict]) -> None:
     )
     if llm_rows:
         print("\n== LLM answer accuracy ==")
-        print(f"{'approach':20s} {'model':16s} {'n':>4s} {'acc':>7s} {'avg s':>7s}")
+        print(
+            f"{'approach':20s} {'model':16s} {'n':>4s} "
+            f"{'mean(min-max)':>18s} {'avg s':>7s}"
+        )
         for row in llm_rows:
+            if "min" in row:
+                acc_text = (
+                    f"{row['accuracy']:.3f} "
+                    f"({row['min']:.3f}-{row['max']:.3f})"
+                )
+            else:
+                acc_text = f"{row['accuracy']:.3f}"
             print(
                 f"{row['approach']:20s} {row['model']:16s} {row['n']:>4d} "
-                f"{row['accuracy']:>7.3f} {row['avg_seconds']:>7.2f}"
+                f"{acc_text:>18s} {row['avg_seconds']:>7.2f}"
             )
 
 
@@ -462,6 +472,12 @@ def main() -> int:
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--llm-questions", type=int, default=12)
     parser.add_argument("--llm-context-k", type=int, default=3)
+    parser.add_argument(
+        "--llm-rounds",
+        type=int,
+        default=1,
+        help="repeat the LLM eval N times and report mean/min/max accuracy",
+    )
     parser.add_argument(
         "--llm-embedder",
         choices=["keyword", "ngram"],
@@ -505,15 +521,36 @@ def main() -> int:
             NGramEmbedder() if args.llm_embedder == "ngram" else None
         )
         llm_engine = build_engine(dataset, embedder=llm_embedder)
-        llm_rows = eval_with_llm(
-            llm_engine,
-            dataset["questions"],
-            args.models,
-            args.url,
-            args.timeout,
-            args.llm_questions,
-            args.llm_context_k,
-        )
+        rounds_results: dict[tuple[str, str], list[dict]] = {}
+        for _ in range(max(1, args.llm_rounds)):
+            for row in eval_with_llm(
+                llm_engine,
+                dataset["questions"],
+                args.models,
+                args.url,
+                args.timeout,
+                args.llm_questions,
+                args.llm_context_k,
+            ):
+                rounds_results.setdefault(
+                    (row["approach"], row["model"]), []
+                ).append(row)
+        for key, rows in rounds_results.items():
+            accuracies = [row["accuracy"] for row in rows]
+            llm_rows.append(
+                {
+                    "approach": key[0],
+                    "model": key[1],
+                    "n": rows[0]["n"],
+                    "accuracy": round(sum(accuracies) / len(accuracies), 3),
+                    "min": round(min(accuracies), 3),
+                    "max": round(max(accuracies), 3),
+                    "avg_seconds": round(
+                        sum(row["avg_seconds"] for row in rows) / len(rows), 2
+                    ),
+                    "rounds": len(rows),
+                }
+            )
         llm_engine.close()
     print_report(reports["keyword"], llm_rows)
 
