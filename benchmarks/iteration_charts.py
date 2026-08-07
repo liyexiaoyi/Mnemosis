@@ -588,62 +588,64 @@ def llm_grounding_chart() -> None:
 def real_github_compare_chart() -> None:
     """Real capability comparison vs GitHub projects (same 88 questions).
 
-    - cognitive-memory: official PyPI package (0.5.1), hash embedder, run
-      as-is on the same dataset.
+    - mem0: official PyPI package mem0ai 2.0.17, real embeddings + Chroma.
+    - cognitive-memory: official PyPI package 0.5.1 (hash embedder).
+    - graphiti-core / letta: installed, but need external services (Neo4j /
+      database server) that are not available on this host.
     - Mem0-style / HippoRAG-style / BM25 / embedding kNN: faithful local
-      replications of the projects' core retrieval pipelines (official
-      packages not installable on this host), scored by the same rule.
+      replications of the projects' core pipelines.
     """
     unified_path = os.path.join(RESULTS_DIR, "unified_compare.json")
-    if not os.path.exists(unified_path):
-        print("unified_compare.json missing, skipping")
-        return
-    unified = json.load(open(unified_path, encoding="utf-8"))["table"]
-    official_path = os.path.normpath(
-        os.path.join(os.path.dirname(__file__), "..", "..", "work", "official_cm_unified.json")
-    )
+    unified = {}
+    if os.path.exists(unified_path):
+        unified = json.load(open(unified_path, encoding="utf-8"))["table"]
+
+    official_path = os.path.join(RESULTS_DIR, "official_packages_compare.json")
     official = {}
     if os.path.exists(official_path):
-        official = json.load(open(official_path, encoding="utf-8"))["official_cm_unified_rule"]
+        official = json.load(open(official_path, encoding="utf-8"))
 
-    mem0_path = os.path.join(RESULTS_DIR, "official_mem0.json")
-    mem0_official = {}
-    if os.path.exists(mem0_path):
-        m0 = json.load(open(mem0_path, encoding="utf-8"))
-        mem0_official = {
-            "fact@5": m0.get("fact@5", 0.0),
-            "event@5": m0.get("event@5", 0.0),
-            "temporal@5": m0.get("temporal@5", 0.0),
-            "distractor_pass": m0.get("distractor_pass", 0),
-            "total@5": m0.get("total_hit5", 0.0),
-        }
+    def pick(key, fallback):
+        if key in official:
+            d = official[key]
+            return {
+                "fact@5": d.get("fact@5", 0.0),
+                "event@5": d.get("event@5", 0.0),
+                "temporal@5": d.get("temporal@5", 0.0),
+                "distractor_pass": d.get("distractor_pass", 0),
+                "total@5": d.get("total_hit5", 0.0),
+            }
+        return fallback
+
+    mem0_official = pick("mem0_official", {})
+    cognitive_official = pick("cognitive_memory_official", {})
 
     systems = [
-        ("mem0 官方包", mem0_official),
-        ("cognitive-memory\n(官方包)", official),
-        ("BM25", unified["BM25"]),
-        ("嵌入 kNN", unified["嵌入 kNN"]),
-        ("Mem0-style", unified["Mem0-style"]),
-        ("HippoRAG-style", unified["HippoRAG-style"]),
-        ("Mnemosis 词法", unified["Mnemosis 词法"]),
-        ("Mnemosis ngram", unified["Mnemosis ngram"]),
+        ("mem0 ???", mem0_official),
+        ("cognitive-memory\n(???)", cognitive_official),
+        ("BM25", unified.get("BM25", {})),
+        ("?? kNN", unified.get("?? kNN", {})),
+        ("Mem0-style", unified.get("Mem0-style", {})),
+        ("HippoRAG-style", unified.get("HippoRAG-style", {})),
+        ("Mnemosis ??", unified.get("Mnemosis ??", {})),
+        ("Mnemosis ngram", unified.get("Mnemosis ngram", {})),
     ]
     cats = [
-        ("fact@5", "事实回忆"),
-        ("event@5", "事件回忆"),
-        ("temporal@5", "时序·下一事件"),
-        ("distractor_pass", "没聊过不乱说"),
+        ("fact@5", "????"),
+        ("event@5", "????"),
+        ("temporal@5", "???????"),
+        ("distractor_pass", "??????"),
     ]
-    w, h = 900, 460
-    ml, mr, mt, mb = 80, 20, 70, 80
+    w, h = 1100, 560
+    ml, mr, mt, mb = 90, 20, 90, 100
     plot_w, plot_h = w - ml - mr, h - mt - mb
     group_w = plot_w / len(cats)
     n = len(systems)
-    bar_w = min(26.0, group_w / (n + 1) * 0.9)
+    bar_w = min(42.0, group_w / (n + 1) * 0.85)
     palette = ["#c58fce", "#8fa0c8", "#b0b0b0", "#4c78a8", "#e45756", "#f2cf5b", "#54a24b", "#f58518"]
     lines = _svg_open(
-        "真实能力对比：GitHub 上的记忆项目 vs Mnemosis（同一 88 题）",
-        "cognitive-memory 为官方 PyPI 包 0.5.1 直接运行；其余为忠实复刻核心管线（官方包无法在本机安装）。Mnemosis 是唯一四关全过的",
+        "???????GitHub ??? vs Mnemosis??? 88 ??",
+        "mem0/cognitive-memory ??????????BM25/kNN/Mem0-style/HippoRAG-style ???????????????????graphiti/letta ????????",
         w, h,
     )
     x = ml
@@ -662,7 +664,7 @@ def real_github_compare_chart() -> None:
     lines.append(f'<line x1="{ml}" y1="{mt}" x2="{ml}" y2="{h - mb}" stroke="#999"/>')
     lines.append(
         f'<text x="16" y="{(mt + h - mb) / 2}" font-size="12" fill="#666" '
-        f'transform="rotate(-90 16,{(mt + h - mb) / 2})" text-anchor="middle">命中率</text>'
+        f'transform="rotate(-90 16,{(mt + h - mb) / 2})" text-anchor="middle">???</text>'
     )
     for c_idx, (key, label) in enumerate(cats):
         cx = ml + group_w * c_idx + group_w / 2
@@ -675,7 +677,7 @@ def real_github_compare_chart() -> None:
             y0 = h - mb - bh
             lines.append(f'<rect x="{x0:.1f}" y="{y0:.1f}" width="{bar_w - 2:.1f}" height="{max(0.5, bh):.1f}" fill="{palette[s_idx]}" rx="1"/>')
             if val > 0:
-                lines.append(f'<text x="{x0 + (bar_w - 2) / 2:.1f}" y="{y0 - 2:.1f}" font-size="8" fill="#444" text-anchor="middle">{val:.2f}</text>')
+                lines.append(f'<text x="{x0 + (bar_w - 2) / 2:.1f}" y="{y0 - 4:.1f}" font-size="11" fill="#222" text-anchor="middle">{val:.2f}</text>')
         lines.append(f'<text x="{cx:.1f}" y="{h - mb + 18}" font-size="11" fill="#333" text-anchor="middle">{label}</text>')
     lines.append("</svg>")
     path = os.path.join(OUT_DIR, "iteration_real_github_compare_zh.svg")
