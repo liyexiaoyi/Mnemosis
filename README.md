@@ -25,6 +25,16 @@ reconciling — the way human memory actually works.
 - **Pattern completion** - a partial cue re-activates a whole well-integrated
   pattern: weakly retrievable memories that are strongly linked to a partial
   match get a bounded completion boost (Rolls, 2013; Theves et al., 2024).
+- **Confidence calibration** - stated confidence is blended with each
+  memory's real retrieval hit rate, so "I'm sure" tracks "I'm actually
+  right" (Lichtenstein et al., 1977).
+- **Confidence-aware review** - a successful review of a memory the system
+  is unsure about keeps the next interval shorter (more practice), the
+  scheduling face of desirable difficulty (Bjork & Kroll, 2015).
+- **Chinese-optimized retrieval** - CJK stopword filtering, zh date
+  normalization ("2026年3月1日" / "2026年五月二日" <-> "2026-03-02") and
+  precise date+person event anchoring; verified at 10k-memory zh scale
+  (total hit@5 50.3% -> 98.8%).
 - **Context-dependent recall** — memories keep the context they were formed
   in, and recall boosts context matches (Godden & Baddeley, 1975).
 - **Emotional persistence** — affect-tagged memories decay more slowly
