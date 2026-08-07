@@ -7,6 +7,7 @@ deduplicated and kept stable. Recall paths are separate per track.
 from __future__ import annotations
 
 import math
+import re
 from datetime import datetime
 
 from .backend import Backend
@@ -188,9 +189,13 @@ class DualTrackStore:
                 if semantic_cued and item.kind is MemoryKind.SEMANTIC:
                     score += kind_pref
                     reasons.append("\u8981\u70b9\uff08gist\uff09\u504f\u597d")
-                if event_cued and item.kind is MemoryKind.EPISODIC:
+                if (
+                    event_cued
+                    and item.kind is MemoryKind.EPISODIC
+                    and self._precise_event_match(query, item)
+                ):
                     score += kind_pref
-                    reasons.append("\u9010\u5b57\uff08verbatim\uff09\u504f\u597d")
+                    reasons.append("\u7cbe\u51c6\u4e8b\u4ef6\u504f\u597d(\u4eba\u7269+\u65e5\u671f)")
             if semantic > 0.5:
                 reasons.append(f"semantic similarity {semantic:.2f}")
             if retrievability < 0.5:
@@ -277,6 +282,25 @@ class DualTrackStore:
                     query_terms,
                 )
         return results
+
+    @staticmethod
+    def _precise_event_match(query: str, item: MemoryItem) -> bool:
+        """Precise event preference: query must carry a date AND the item must
+        be the one for that date sharing at least one other cue with the
+        query (e.g. the person's name). Uniform episodic boosting regressed
+        at scale (round-8 negative result), so only fully anchored events
+        get the bump."""
+        date_tokens = set(re.findall(r"\d{4}-\d{2}-\d{2}", query))
+        if not date_tokens:
+            return False
+        cue_set = set(item.cues)
+        if not any(dt in cue_set or dt in item.content for dt in date_tokens):
+            return False
+        query_terms = set(tokenize(query))
+        non_date_cues = {
+            c for c in cue_set if not re.match(r"\d{4}-\d{2}-\d{2}$", c)
+        }
+        return bool(query_terms & non_date_cues)
 
     def _separate_near_duplicates(
         self,

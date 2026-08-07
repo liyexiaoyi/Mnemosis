@@ -67,8 +67,34 @@ class FuzzyTraceTest(unittest.TestCase):
             "Alice bought coffee on 2026-03-01.",
         )
         self.assertTrue(
-            any("\u9010\u5b57" in reason for reason in results[0].reasons)
+            any("\u4e8b\u4ef6\u504f\u597d" in reason for reason in results[0].reasons)
         )
+
+    def test_event_preference_requires_date_anchor(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        engine.remember(
+            "Alice bought coffee.",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["alice", "coffee"],
+        )
+        # episodic without a date in cues/content must NOT get the boost
+        engine.remember(
+            "Alice bought coffee.",
+            kind=MemoryKind.EPISODIC,
+            source=user,
+            cues=["alice", "coffee"],
+        )
+        results = engine.recall(
+            "What did Alice buy on 2026-03-01?",
+            top_k=2,
+            kind_preference=True,
+        )
+        for r in results:
+            self.assertFalse(
+                any("\u4e8b\u4ef6\u504f\u597d" in reason for reason in r.reasons)
+            )
 
 
 if __name__ == "__main__":

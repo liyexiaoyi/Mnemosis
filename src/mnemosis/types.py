@@ -24,6 +24,14 @@ STOPWORDS = {
     "then", "than", "also", "very", "just", "only", "some", "such",
 }
 
+# High-frequency Chinese function words / particles filtered out of keyword
+# tokens (Fuzzy-trace style noise reduction for zh retrieval): they carry no
+# discriminative signal, so dropping them reduces false matches.
+CJK_STOPWORDS = frozenset(
+    "的了是在与和或我你他她它也都有没不就都把被对从到请问说吗呢吧啊呀这那"
+    "很真最更又再却曾已什怎么"
+)
+
 
 def hash_content(content: str) -> str:
     """Stable content hash used for semantic deduplication."""
@@ -230,7 +238,9 @@ def tokenize(text: str) -> list[str]:
     """Tokenize for keyword recall.
 
     Dates and hyphenated compounds stay atomic ("2026-02-01" is one token),
-    then latin words (stopword-filtered) + CJK chars and bigrams.
+    then latin words (stopword-filtered) + CJK content chars and bigrams.
+    Chinese function words/particles are filtered so "请问阿丽最喜欢的颜色
+    是什么？" and "阿丽喜欢颜色" match the same memory (zh noise reduction).
     """
     lowered = text.lower()
     tokens: list[str] = []
@@ -244,9 +254,15 @@ def tokenize(text: str) -> list[str]:
             tokens.append(word)
     cjk = "".join(re.findall(r"[\u4e00-\u9fff]", lowered))
     for ch in cjk:
-        tokens.append(ch)
+        if ch not in CJK_STOPWORDS:
+            tokens.append(ch)
     for i in range(len(cjk) - 1):
-        tokens.append(cjk[i : i + 2])
+        bigram = cjk[i : i + 2]
+        if (
+            bigram[0] not in CJK_STOPWORDS
+            and bigram[1] not in CJK_STOPWORDS
+        ):
+            tokens.append(bigram)
     return tokens
 
 
