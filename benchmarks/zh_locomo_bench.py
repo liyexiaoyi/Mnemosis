@@ -32,7 +32,7 @@ ITEMS = ["笔记本", "相机", "咖啡豆"]
 UNUSED = ["甜点", "运动", "季节"]
 
 
-def generate() -> dict:
+def generate(sessions: int = 4) -> dict:
     facts, events, questions = [], [], []
     start = date(2026, 3, 1)
     for p, name in enumerate(NAMES):
@@ -54,16 +54,16 @@ def generate() -> dict:
                     "expected": [f"{name}最喜欢的{key}是{value}。"],
                 }
             )
-        for i in range(4):
-            day = start + timedelta(days=p * 4 + i)
+        for i in range(sessions):
+            day = start + timedelta(days=p * sessions + i)
             day_cn = f"{day.year}年{day.month}月{day.day}日"
             if i % 2 == 0:
-                obj = PLACES[(p + i) % 3]
+                obj = f"{PLACES[(p + i) % 3]}{i // 3 or ''}"
                 action = "去了"
                 content = f"{name}在{day_cn}去了{obj}。"
                 answer = obj
             else:
-                obj = ITEMS[(p + i) % 3]
+                obj = f"{ITEMS[(p + i) % 3]}{i // 3 or ''}"
                 action = "买了"
                 content = f"{name}在{day_cn}买了{obj}。"
                 answer = obj
@@ -83,21 +83,23 @@ def generate() -> dict:
                     "expected": [content],
                 }
             )
-        # temporal: day0 -> day1 (first two events of the persona)
-        e0 = events[p * 4]
-        e1 = events[p * 4 + 1]
-        day0 = start + timedelta(days=p * 4)
-        day0_cn = f"{day0.year}年{day0.month}月{day0.day}日"
-        e0_obj = e0["content"].split(e0["action"])[1].rstrip("。")
-        questions.append(
-            {
-                "kind": "temporal",
-                "q": f"{name}在{day0_cn}{e0['action']}{e0_obj}之后，"
-                     f"接下来做了什么？",
-                "answer": e1["content"].split(e1["action"])[1].rstrip("。"),
-                "expected": [e0["content"], e1["content"]],
-            }
-        )
+        # temporal questions for every consecutive pair
+        base = p * sessions
+        for k in range(sessions - 1):
+            e0 = events[base + k]
+            e1 = events[base + k + 1]
+            day0 = start + timedelta(days=p * sessions + k)
+            day0_cn = f"{day0.year}年{day0.month}月{day0.day}日"
+            e0_obj = e0["content"].split(e0["action"])[1].rstrip("。")
+            questions.append(
+                {
+                    "kind": "temporal",
+                    "q": f"{name}在{day0_cn}{e0['action']}{e0_obj}之后，"
+                         f"接下来做了什么？",
+                    "answer": e1["content"].split(e1["action"])[1].rstrip("。"),
+                    "expected": [e0["content"], e1["content"]],
+                }
+            )
     for p, name in enumerate(NAMES):
         for topic in UNUSED:
             questions.append(
@@ -236,6 +238,8 @@ _ORIGINAL = types.CJK_STOPWORDS
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--sessions", type=int, default=4)
+    parser.add_argument("--with-llm", action="store_true")
     parser.add_argument(
         "--out",
         default=os.path.join(
@@ -243,13 +247,60 @@ def main() -> int:
         ),
     )
     args = parser.parse_args()
-    dataset = generate()
+    dataset = generate(args.sessions)
     on = evaluate(dataset, True)
     off = evaluate(dataset, False)
     cross_on = evaluate_cross(True)
     cross_off = evaluate_cross(False)
-    report = {"on": on, "off": off,
+    report = {"sessions": args.sessions, "on": on, "off": off,
               "cross_format": {"on": cross_on, "off": cross_off}}
+    if args.with_llm:
+        from compare_with_models import ollama_generate, score_answer
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        for m in dataset["facts"] + dataset["events"]:
+            engine.remember(
+                m["content"],
+                kind=MemoryKind(m["kind"]),
+                source=user,
+                cues=m["cues"],
+                importance=0.8 if m["kind"] == "semantic" else 0.5,
+            )
+        chosen = []
+        for kind in ("fact", "event", "temporal", "distractor"):
+            pool = [q for q in dataset["questions"] if q["kind"] == kind]
+            chosen.extend(pool[:3])
+        llm = {"bare": {"hits": 0, "n": len(chosen), "rows": []},
+               "with_mnemosis": {"hits": 0, "n": len(chosen), "rows": []}}
+        for q in chosen:
+            for cond, prompt in (
+                ("bare",
+                 f"请只回答答案本身；不知道就回答“unknown”。\n问题：{q['q']}"),
+                ("with_mnemosis",
+                 "请只根据下面的记忆上下文回答；上下文里没有就回答“unknown”。\n\n"
+                 "上下文：\n"
+                 + "\n".join(
+                     f"- {r.item.content}"
+                     for r in engine.recall(q["q"], top_k=5)
+                 )
+                 + f"\n\n问题：{q['q']}"),
+            ):
+                answer = ollama_generate("qwen2.5:3b", prompt)
+                score = score_answer(answer, q["answer"])
+                llm[cond]["hits"] += int(score >= 1.0)
+                llm[cond]["rows"].append(
+                    {"q": q["q"], "answer": answer,
+                     "expected": q["answer"], "score": round(score, 2)}
+                )
+        for cond in llm:
+            llm[cond]["accuracy"] = round(
+                llm[cond]["hits"] / llm[cond]["n"], 3
+            )
+        report["llm_zh"] = {
+            cond: {k: v for k, v in llm[cond].items() if k != "rows"}
+            for cond in llm
+        }
+        engine.close()
     print(json.dumps(report, ensure_ascii=False, indent=2))
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as handle:
