@@ -128,6 +128,7 @@ def run_update_eval() -> dict:
 def run_update_at_scale(count: int = 1000) -> dict:
     user = SourceRecord(origin=SourceType.USER)
     engine = MemoryEngine()
+    target_index = min(777, count - 1)
     target = None
     for i in range(count):
         item = engine.remember(
@@ -137,13 +138,13 @@ def run_update_at_scale(count: int = 1000) -> dict:
             cues=[f"setting-{i}"],
             importance=0.3,
         )
-        if i == 777:
+        if i == target_index:
             target = item
-    engine.update(target.id, content="Setting 777 is disabled.")
-    results = engine.recall("setting-777", top_k=5)
+    engine.update(target.id, content=f"Setting {target_index} is disabled.")
+    results = engine.recall(f"setting-{target_index}", top_k=5)
     top = results[0].item.content if results else ""
     stale = any(
-        r.item.content == "Setting 777 is enabled." for r in results
+        r.item.content == f"Setting {target_index} is enabled." for r in results
     )
     engine.close()
     return {"top_content": top, "stale_survives": stale}
