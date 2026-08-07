@@ -37,6 +37,7 @@ class ConsolidationReport:
     rem_resolved: int = 0
     emotion_boosted: int = 0
     emotion_links: int = 0
+    accommodated: int = 0
     total_before: int = 0
     total_after: int = 0
 
@@ -48,6 +49,7 @@ class ConsolidationReport:
             f"rem_resolved {self.rem_resolved}, "
             f"emotion_boosted {self.emotion_boosted}, "
             f"emotion_links {self.emotion_links}, "
+            f"accommodated {self.accommodated}, "
             f"conflicts {len(self.conflicts)} "
             f"({self.total_before} -> {self.total_after} active memories)"
         )
@@ -97,6 +99,7 @@ class Consolidator:
         conflicts = self.detect_conflicts()
         rem_links, rem_resolved = self._rem_phase(now)
         emotion_boosted, emotion_links = self._emotion_phase(now)
+        accommodated = self._accommodation_phase(now)
         reflected = self.reflect(summarizer or self.llm_summarizer, now)
         total_after = len(self.store.all_active())
         return ConsolidationReport(
@@ -110,9 +113,63 @@ class Consolidator:
             rem_resolved=rem_resolved,
             emotion_boosted=emotion_boosted,
             emotion_links=emotion_links,
+            accommodated=accommodated,
             total_before=total_before,
             total_after=total_after,
         )
+
+    def _accommodation_phase(self, now: datetime) -> int:
+        """Constructivist accommodation (Piaget via CAM; Li et al., 2025).
+
+        New information either *assimilates* into an existing schema or forces
+        the schema to *accommodate* (change). We emulate accommodation during
+        sleep: when two confident facts share a cue but one is backed by at
+        least 3x the evidence (and at least equal source trust), the weaker
+        one is retired instead of lingering as a contradiction. Balanced
+        disagreements are left to REM conflict-resolution instead.
+        """
+        semantic = [
+            item
+            for item in self.store.all_active(MemoryKind.SEMANTIC)
+            if item.confidence >= 0.5
+        ]
+        groups: dict[str, list[MemoryItem]] = {}
+        for item in semantic:
+            for cue in item.cues:
+                groups.setdefault(cue, []).append(item)
+        accommodated = 0
+        seen_pairs: set[frozenset[str]] = set()
+        for items in groups.values():
+            for i in range(len(items)):
+                for j in range(i + 1, len(items)):
+                    a, b = items[i], items[j]
+                    if a.content_hash == b.content_hash:
+                        continue
+                    pair = frozenset({a.id, b.id})
+                    if pair in seen_pairs:
+                        continue
+                    seen_pairs.add(pair)
+                    dominant, weaker = self._dominant(a, b)
+                    if dominant is None:
+                        continue
+                    weaker.status = MemoryStatus.RECYCLED
+                    weaker.updated_at = now
+                    self.backend.update(weaker)
+                    accommodated += 1
+        return accommodated
+
+    @staticmethod
+    def _dominant(
+        a: MemoryItem, b: MemoryItem
+    ) -> tuple[MemoryItem, MemoryItem] | tuple[None, None]:
+        """Return (dominant, weaker) when evidence is clearly lopsided."""
+        ea, eb = a.evidence_count, b.evidence_count
+        ta, tb = a.source.trust, b.source.trust
+        if ea >= 3 * eb and ta >= tb:
+            return a, b
+        if eb >= 3 * ea and tb >= ta:
+            return b, a
+        return None, None
 
     def _emotion_phase(self, now: datetime) -> tuple[int, int]:
         """Amygdala-modulated consolidation (McGaugh, 2004; Krenz et al., 2025).
