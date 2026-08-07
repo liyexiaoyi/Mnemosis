@@ -122,11 +122,60 @@ def chart_zh10k() -> str:
     return path
 
 
+def chart_numeral() -> str:
+    with open(os.path.join(_RESULTS, "zh_locomo_bench.json"), encoding="utf-8") as f:
+        d = json.load(f)
+    on = d["numeral_dates"]["on"]["hit5"]
+    off = d["numeral_dates"]["off"]["hit5"]
+    W, H = 1000, 580
+    img = Image.new("RGB", (W, H), "white")
+    draw = ImageDraw.Draw(img)
+    f_title = _font(28)
+    f_sub = _font(17)
+    f_label = _font(20)
+    f_val = _font(18)
+    f_note = _font(17)
+    draw.text((40, 26), "中文数字日期：“2026年五月二日”也能对上", fill="#111",
+              font=f_title)
+    draw.text((40, 72),
+              "10 条记忆里日期用中文数字写、问题用数字写（或反过来）。",
+              fill="#555", font=f_sub)
+    chart_h = 300
+    base_y = 400
+    bar_w = 170
+    for j, ((hits, n), label, color) in enumerate(
+        ((on, "开启归一", "#1a7f37"), (off, "关闭", "#b0b0b0"))
+    ):
+        val = hits / n
+        bh = val * chart_h
+        x = 120 + j * 360
+        y = base_y - bh
+        draw.rectangle([x, y, x + bar_w, base_y], fill=color)
+        draw.text((x + 42, y - 30), f"{hits}/{n}", fill="#222", font=f_val)
+        draw.text((x + 32, base_y + 12), label, fill="#333", font=f_label)
+    draw.line([(60, base_y), (W - 60, base_y)], fill="#999", width=2)
+    for frac, label in ((0.0, "0%"), (0.5, "50%"), (1.0, "100%")):
+        y = base_y - frac * chart_h
+        draw.line([(60, y), (W - 60, y)], fill="#e5e5e5", width=1)
+        draw.text((25, y - 10), label, fill="#666", font=f_val)
+    draw.text((40, 460),
+              f"开启：{on[0]}/{on[1]}；关闭：{off[0]}/{off[1]}。"
+              "“一~十二”月/日都会转成标准数字日期。",
+              fill="#111", font=f_note)
+    draw.text((40, 505),
+              "单元测试锁定双向匹配；英文 88/200 无回归；总测试 108/108。",
+              fill="#555", font=f_note)
+    path = os.path.join(_OUT, "round14_zh_numeral.png")
+    img.save(path)
+    return path
+
+
 def main() -> int:
     os.makedirs(_OUT, exist_ok=True)
     print("written:", chart_journey())
     if os.path.exists(os.path.join(_RESULTS, "zh_locomo_10k.json")):
         print("written:", chart_zh10k())
+    print("written:", chart_numeral())
     return 0
 
 

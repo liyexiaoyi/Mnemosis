@@ -255,6 +255,23 @@ def tokenize(text: str) -> list[str]:
     # Chinese dates "2026年3月1日" also emit the canonical ISO token so
     # "2026-03-01" queries match Chinese-dated memories and vice versa.
     if ZH_DATE_NORMALIZE:
+        # Chinese numeral dates: "2026年五月二日" -> "2026-05-02"
+        for zh_date in re.findall(
+            r"(\d{4})年([一二三四五六七八九十零]+)月"
+            r"([一二三四五六七八九十零]+)日",
+            lowered,
+        ):
+            year, zh_m, zh_d = zh_date
+            month = _zh_numeral(zh_m)
+            day = _zh_numeral(zh_d)
+            if 1 <= month <= 12 and 1 <= day <= 31:
+                tokens.append(f"{int(year):04d}-{month:02d}-{day:02d}")
+                lowered = re.sub(
+                    re.escape(zh_date[1] + "月" + zh_date[2] + "日"),
+                    " ",
+                    lowered,
+                    count=1,
+                )
         zh_dates = re.findall(
             r"(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日", lowered
         )
@@ -285,6 +302,20 @@ def tokenize(text: str) -> list[str]:
         ):
             tokens.append(bigram)
     return tokens
+
+
+def _zh_numeral(text: str) -> int:
+    """Convert simple Chinese numerals (1-99) to an int."""
+    digits = {
+        "零": 0, "一": 1, "二": 2, "三": 3, "四": 4,
+        "五": 5, "六": 6, "七": 7, "八": 8, "九": 9,
+    }
+    if "十" in text:
+        parts = text.split("十")
+        tens = digits.get(parts[0], 1) if parts[0] else 1
+        ones = digits.get(parts[1], 0) if len(parts) > 1 and parts[1] else 0
+        return tens * 10 + ones
+    return digits.get(text, 0)
 
 
 def extract_cues(content: str, limit: int = 6) -> list[str]:

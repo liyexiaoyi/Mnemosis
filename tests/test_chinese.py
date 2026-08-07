@@ -87,6 +87,34 @@ class ChineseOptimizationTest(unittest.TestCase):
             results2[0].item.content, "小波在2026-04-02买了相机。"
         )
 
+    def test_chinese_numeral_dates_normalize(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        engine.remember(
+            "阿丽在2026年五月二日买了花。",
+            kind=MemoryKind.EPISODIC,
+            source=user,
+            cues=["阿丽"],
+        )
+        results = engine.recall("阿丽 2026-05-02", top_k=3)
+        self.assertTrue(results)
+        self.assertEqual(
+            results[0].item.content, "阿丽在2026年五月二日买了花。"
+        )
+        # query side too
+        engine2 = MemoryEngine()
+        engine2.remember(
+            "小波在2026-06-03买了书。",
+            kind=MemoryKind.EPISODIC,
+            source=user,
+            cues=["小波"],
+        )
+        results2 = engine2.recall("小波在2026年六月三日", top_k=3)
+        self.assertTrue(results2)
+        self.assertEqual(
+            results2[0].item.content, "小波在2026-06-03买了书。"
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

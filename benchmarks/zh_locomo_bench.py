@@ -245,6 +245,77 @@ def evaluate_cross(normalize: bool) -> dict:
     return {"normalize": normalize, "hit5": (hits, len(questions))}
 
 
+ZH_NUM_MONTHS = ["一月", "二月", "三月", "四月", "五月", "六月",
+                 "七月", "八月", "九月", "十月", "十一月", "十二月"]
+ZH_NUM_DAYS = ["一日", "二日", "三日", "四日", "五日", "六日",
+               "七日", "八日", "九日", "十日", "十一日", "十二日"]
+
+
+def numeral_date_pairs() -> tuple[list[dict], list[dict]]:
+    memories: list[dict] = []
+    questions: list[dict] = []
+    for i in range(10):
+        person = NAMES[i % 3]
+        obj = ITEMS[i % 3]
+        zh_date = f"2026年{ZH_NUM_MONTHS[i]}{ZH_NUM_DAYS[i]}"
+        iso = f"2026-{i + 1:02d}-{i + 1:02d}"
+        if i % 2 == 0:
+            memories.append(
+                {
+                    "content": f"{person}在{zh_date}买了{obj}。",
+                    "kind": "episodic",
+                    "cues": [person],
+                }
+            )
+            questions.append(
+                {
+                    "kind": "event",
+                    "q": f"{person}在{iso}买了什么？",
+                    "answer": obj,
+                    "expected": [f"{person}在{zh_date}买了{obj}。"],
+                }
+            )
+        else:
+            memories.append(
+                {
+                    "content": f"{person}在{iso}买了{obj}。",
+                    "kind": "episodic",
+                    "cues": [person],
+                }
+            )
+            questions.append(
+                {
+                    "kind": "event",
+                    "q": f"{person}在{zh_date}买了什么？",
+                    "answer": obj,
+                    "expected": [f"{person}在{iso}买了{obj}。"],
+                }
+            )
+    return memories, questions
+
+
+def evaluate_numeral(normalize: bool) -> dict:
+    types.ZH_DATE_NORMALIZE = normalize
+    memories, questions = numeral_date_pairs()
+    engine = MemoryEngine()
+    user = SourceRecord(origin=SourceType.USER)
+    for m in memories:
+        engine.remember(
+            m["content"],
+            kind=MemoryKind(m["kind"]),
+            source=user,
+            cues=m["cues"],
+            importance=0.5,
+        )
+    hits = 0
+    for q in questions:
+        results = engine.recall(q["q"], top_k=5)
+        contents = [r.item.content for r in results]
+        hits += int(all(e in contents for e in q["expected"]))
+    engine.close()
+    return {"normalize": normalize, "hit5": (hits, len(questions))}
+
+
 _ORIGINAL = types.CJK_STOPWORDS
 
 
@@ -269,8 +340,11 @@ def main() -> int:
     off = evaluate(dataset, False)
     cross_on = evaluate_cross(True)
     cross_off = evaluate_cross(False)
+    numeral_on = evaluate_numeral(True)
+    numeral_off = evaluate_numeral(False)
     report = {"sessions": args.sessions, "on": on, "off": off,
-              "cross_format": {"on": cross_on, "off": cross_off}}
+              "cross_format": {"on": cross_on, "off": cross_off},
+              "numeral_dates": {"on": numeral_on, "off": numeral_off}}
     if args.with_llm:
         from compare_with_models import ollama_generate, score_answer
         engine = MemoryEngine()
