@@ -229,6 +229,32 @@ def run_learning_curve(rounds: int = 3, gap_days: int = 7) -> dict:
     }
 
 
+def run_merge_eval(repeats: int = 20) -> dict:
+    """Sleep deduplication: identical experiences collapse into one trace."""
+    user = SourceRecord(origin=SourceType.USER)
+    engine = MemoryEngine()
+    for _ in range(repeats):
+        engine.remember(
+            "Alice visited the harbor on 2026-02-01.",
+            kind=MemoryKind.EPISODIC,
+            source=user,
+            cues=["alice", "harbor"],
+            importance=0.5,
+        )
+    before = len(engine.store.all_active(MemoryKind.EPISODIC))
+    report = engine.sleep()
+    after = len(engine.store.all_active(MemoryKind.EPISODIC))
+    survivor = engine.store.all_active(MemoryKind.EPISODIC)[0]
+    engine.close()
+    return {
+        "before": before,
+        "merged": report.merged,
+        "after": after,
+        "storage_saved_pct": round(100.0 * report.merged / before, 1),
+        "survivor_evidence": survivor.evidence_count,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--days", type=int, default=30)
@@ -248,6 +274,7 @@ def main() -> int:
     scale = run_update_at_scale()
     concurrency = run_concurrency_check()
     learning = run_learning_curve()
+    merge = run_merge_eval()
     print("== decay ==")
     print(f"  retention after {args.days} days:")
     print(f"    reviewed weekly : {decay['reviewed_retention']:.3f}")
@@ -278,6 +305,11 @@ def main() -> int:
     print(
         f"  net testing effect      : {trained_vs_fresh['testing_effect_gain']:+.3f}"
     )
+    print("== sleep dedup (identical repeats) ==")
+    print(f"  before sleep            : {merge['before']} memories")
+    print(f"  merged during sleep     : {merge['merged']}")
+    print(f"  after sleep             : {merge['after']} memories")
+    print(f"  storage saved           : {merge['storage_saved_pct']}%")
 
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as handle:
@@ -288,6 +320,7 @@ def main() -> int:
                 "update_at_scale": scale,
                 "concurrency": concurrency,
                 "learning_curve": learning,
+                "merge": merge,
             },
             handle,
             ensure_ascii=False,

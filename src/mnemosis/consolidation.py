@@ -32,6 +32,7 @@ class ConsolidationReport:
     conflicts: list[Conflict] = field(default_factory=list)
     reflected: list[MemoryItem] = field(default_factory=list)
     replayed: int = 0
+    merged: int = 0
     total_before: int = 0
     total_after: int = 0
 
@@ -39,6 +40,7 @@ class ConsolidationReport:
         return (
             f"promoted {len(self.promoted)}, pruned {len(self.recycled)}, "
             f"reflected {len(self.reflected)}, replayed {self.replayed}, "
+            f"merged {self.merged}, "
             f"conflicts {len(self.conflicts)} "
             f"({self.total_before} -> {self.total_after} active memories)"
         )
@@ -82,6 +84,7 @@ class Consolidator:
         now = now or utcnow()
         total_before = len(self.store.all_active())
         replayed = self._replay_recent(now)
+        merged = self._merge_duplicates(now)
         promoted = self._promote_episodic(now)
         recycled = self._prune_noise(now)
         conflicts = self.detect_conflicts()
@@ -93,9 +96,42 @@ class Consolidator:
             conflicts=conflicts,
             reflected=reflected,
             replayed=replayed,
+            merged=merged,
             total_before=total_before,
             total_after=total_after,
         )
+
+    def _merge_duplicates(self, now: datetime) -> int:
+        """Merge near-duplicate episodic traces (complementary learning
+        systems; McClelland et al., 1995).
+
+        Repeated experiences that are lexically near-identical (e.g. the same
+        event logged twice from different sources) collapse into one trace
+        with an evidence count, instead of polluting recall with copies. Only
+        same-content-hash episodes are considered, so distinct events are
+        never fused.
+        """
+        episodes = self.store.all_active(MemoryKind.EPISODIC)
+        by_hash: dict[str, list[MemoryItem]] = {}
+        for item in episodes:
+            by_hash.setdefault(item.content_hash, []).append(item)
+        merged = 0
+        for _hash, items in by_hash.items():
+            if len(items) < 2:
+                continue
+            items.sort(key=lambda i: (i.seq, i.id))
+            keep = items[0]
+            keep.evidence_count = max(
+                keep.evidence_count, sum(i.evidence_count for i in items)
+            )
+            keep.importance = max(i.importance for i in items)
+            keep.confidence = min(1.0, keep.confidence + 0.05 * (len(items) - 1))
+            self.backend.update(keep)
+            for dup in items[1:]:
+                dup.status = MemoryStatus.RECYCLED
+                self.backend.update(dup)
+                merged += 1
+        return merged
 
     def _replay_recent(self, now: datetime) -> int:
         """Offline replay of recent salient traces (Gais et al., 2002;
@@ -189,7 +225,11 @@ class Consolidator:
             existing = self.backend.find_by_hash(
                 MemoryKind.SEMANTIC, hash_content(item.content)
             )
-            evidence = existing.evidence_count + 1 if existing else 1
+            evidence = (
+                existing.evidence_count + item.evidence_count
+                if existing
+                else item.evidence_count
+            )
             semantic = self.store.remember(
                 item.content,
                 MemoryKind.SEMANTIC,

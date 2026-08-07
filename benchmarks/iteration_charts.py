@@ -345,6 +345,56 @@ def learning_curve_chart() -> None:
     print("written", path)
 
 
+def sleep_dedup_chart() -> None:
+    """Sleep dedup: identical repeats collapse into one trace (real JSON)."""
+    lifecycle = latest("lifecycle_")
+    merge = lifecycle.get("merge", {})
+    before = int(merge.get("before", 20))
+    after = int(merge.get("after", 1))
+    saved = float(merge.get("storage_saved_pct", 95.0))
+    w, h = 760, 340
+    ml, mr, mt, mb = 70, 20, 70, 80
+    plot_w, plot_h = w - ml - mr, h - mt - mb
+    group_w = plot_w / 2
+    bar_w = 60
+    palette = ["#e45756", "#54a24b"]
+    lines = _svg_open(
+        "睡眠整理实测：20 条重复记忆 → 1 条",
+        "重复内容在“睡眠”阶段合并成一条（证据数累加），存储减少 95%，检索也不会被副本干扰",
+        w, h,
+    )
+    ymax = max(before, after, 5) * 1.15
+    for tick in range(0, 6):
+        v = ymax * tick / 5
+        y = h - mb - plot_h * tick / 5
+        lines.append(f'<line x1="{ml}" y1="{y:.0f}" x2="{w - mr}" y2="{y:.0f}" stroke="#eee"/>')
+        lines.append(f'<text x="{ml - 8}" y="{y + 4:.0f}" font-size="11" fill="#666" text-anchor="end">{v:.0f}</text>')
+    lines.append(f'<line x1="{ml}" y1="{h - mb}" x2="{w - mr}" y2="{h - mb}" stroke="#999"/>')
+    lines.append(f'<line x1="{ml}" y1="{mt}" x2="{ml}" y2="{h - mb}" stroke="#999"/>')
+    lines.append(
+        f'<text x="14" y="{(mt + h - mb) / 2}" font-size="12" fill="#666" '
+        f'transform="rotate(-90 14,{(mt + h - mb) / 2})" text-anchor="middle">记忆条数</text>'
+    )
+    for i, (label, val, color) in enumerate(
+        [("整理前", before, palette[0]), ("整理后", after, palette[1])]
+    ):
+        cx = ml + group_w * i + group_w / 2
+        bh = plot_h * val / ymax
+        x = cx - bar_w / 2
+        y = h - mb - bh
+        lines.append(f'<rect x="{x:.0f}" y="{y:.0f}" width="{bar_w}" height="{bh:.0f}" fill="{color}" rx="2"/>')
+        lines.append(f'<text x="{cx:.0f}" y="{y - 4:.0f}" font-size="12" fill="#333" text-anchor="middle">{val}</text>')
+        lines.append(f'<text x="{cx:.0f}" y="{h - mb + 18}" font-size="11" fill="#333" text-anchor="middle">{label}</text>')
+    lines.append(
+        f'<text x="{ml}" y="{h - 10}" font-size="12" fill="#555">节省存储：{saved:.0f}%</text>'
+    )
+    lines.append("</svg>")
+    path = os.path.join(OUT_DIR, "iteration_sleep_dedup_zh.svg")
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines))
+    print("written", path)
+
+
 def _color(label: str) -> str:
     palette = {
         "BM25": "#72b7b2",
@@ -364,6 +414,7 @@ def main() -> int:
     unified_leaderboard_chart()
     temporal_improvement_chart()
     learning_curve_chart()
+    sleep_dedup_chart()
     return 0
 
 

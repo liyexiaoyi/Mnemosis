@@ -76,7 +76,10 @@ class CognitionTest(unittest.TestCase):
         for _ in range(3):
             self.engine.recall("sqlite fix", top_k=5)
         report = self.engine.sleep(now=now)
-        self.assertEqual(len(report.promoted), 2)
+        # near-duplicate episodes are merged first (complementary learning
+        # systems), so the repeated evidence promotes as a single trace.
+        self.assertEqual(report.merged, 1)
+        self.assertEqual(len(report.promoted), 1)
         semantic = self.engine.store.all_active(MemoryKind.SEMANTIC)[0]
         self.assertEqual(semantic.evidence_count, 2)
         self.assertGreaterEqual(semantic.confidence, 0.7)

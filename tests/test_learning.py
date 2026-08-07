@@ -167,6 +167,18 @@ class LearningTest(unittest.TestCase):
         ).total_seconds() / 3600.0
         self.assertAlmostEqual(interval_after_failure, 24.0)
 
+    def test_sleep_merges_near_duplicate_episodes(self):
+        """Complementary learning systems: repeated identical experiences
+        collapse into one trace with higher evidence."""
+        content = "Alice visited the harbor on 2026-02-01."
+        self.remember(content, kind=MemoryKind.EPISODIC, cues=["alice", "harbor"])
+        self.remember(content, kind=MemoryKind.EPISODIC, cues=["alice", "harbor"])
+        report = self.engine.sleep()
+        self.assertEqual(report.merged, 1)
+        active = self.engine.store.all_active(MemoryKind.EPISODIC)
+        self.assertEqual(len(active), 1)
+        self.assertGreaterEqual(active[0].evidence_count, 2)
+
     def test_working_set_orders_by_recent_access(self):
         a = self.remember("Alpha.")
         b = self.remember("Beta.")
