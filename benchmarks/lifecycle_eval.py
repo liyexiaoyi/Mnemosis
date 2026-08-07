@@ -125,6 +125,59 @@ def run_update_eval() -> dict:
     }
 
 
+def run_update_at_scale(count: int = 1000) -> dict:
+    user = SourceRecord(origin=SourceType.USER)
+    engine = MemoryEngine()
+    target = None
+    for i in range(count):
+        item = engine.remember(
+            f"Setting {i} is enabled.",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=[f"setting-{i}"],
+            importance=0.3,
+        )
+        if i == 777:
+            target = item
+    engine.update(target.id, content="Setting 777 is disabled.")
+    results = engine.recall("setting-777", top_k=5)
+    top = results[0].item.content if results else ""
+    stale = any(
+        r.item.content == "Setting 777 is enabled." for r in results
+    )
+    engine.close()
+    return {"top_content": top, "stale_survives": stale}
+
+
+def run_concurrency_check() -> dict:
+    """Two connections on the same WAL database: write from one, read from other."""
+    import os
+    import tempfile
+
+    path = os.path.join(tempfile.gettempdir(), "mnemosis_concurrency.db")
+    for suffix in ("", "-wal", "-shm"):
+        candidate = path + suffix
+        if os.path.exists(candidate):
+            os.remove(candidate)
+    writer = MemoryEngine(path)
+    reader = MemoryEngine(path)
+    writer.remember(
+        "Shared memory works across connections.",
+        kind=MemoryKind.SEMANTIC,
+        source=SourceRecord(origin=SourceType.USER),
+        cues=["shared"],
+    )
+    results = reader.recall("shared memory works", top_k=3)
+    ok = bool(results)
+    writer.close()
+    reader.close()
+    for suffix in ("", "-wal", "-shm"):
+        candidate = path + suffix
+        if os.path.exists(candidate):
+            os.remove(candidate)
+    return {"reader_sees_writer_data": ok}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--days", type=int, default=30)
@@ -141,6 +194,8 @@ def main() -> int:
 
     decay = run_decay_eval(args.days, args.review_every)
     update = run_update_eval()
+    scale = run_update_at_scale()
+    concurrency = run_concurrency_check()
     print("== decay ==")
     print(f"  retention after {args.days} days:")
     print(f"    reviewed weekly : {decay['reviewed_retention']:.3f}")
@@ -156,10 +211,25 @@ def main() -> int:
     print(f"  top content after update: {update['updated_top_content']!r}")
     print(f"  stale content survives  : {update['stale_content_survives']}")
     print(f"  conflicts detected      : {update['conflicts_detected']}")
+    print("== update at scale (1000 memories) ==")
+    print(f"  top content             : {scale['top_content']!r}")
+    print(f"  stale fact survives     : {scale['stale_survives']}")
+    print("== concurrency (WAL, two connections) ==")
+    print(f"  reader sees writer data : {concurrency['reader_sees_writer_data']}")
 
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as handle:
-        json.dump({"decay": decay, "update": update}, handle, ensure_ascii=False, indent=2)
+        json.dump(
+            {
+                "decay": decay,
+                "update": update,
+                "update_at_scale": scale,
+                "concurrency": concurrency,
+            },
+            handle,
+            ensure_ascii=False,
+            indent=2,
+        )
     print(f"\nresults saved to {args.out}")
     return 0
 

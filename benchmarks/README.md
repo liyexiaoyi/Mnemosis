@@ -123,6 +123,8 @@ Results (30 simulated days, seed-free deterministic):
   neutral memories after 30 days.
 - `update()` replaces stale facts cleanly (old content no longer surfaces)
   and sleep detects the planted contradiction.
+- At 1,000 memories, updating one fact still fully replaces it (no stale copy
+  survives) and two WAL connections see each other's writes.
 
 `--sleep` mode on locomo_bench verifies consolidation does not hurt
 retrieval: after `engine.sleep()`, fact/event hit@1 stay 1.000 and temporal

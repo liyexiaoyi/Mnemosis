@@ -24,7 +24,15 @@ class LifecycleEvalTest(unittest.TestCase):
         self.assertFalse(result["stale_content_survives"])
         self.assertEqual(result["conflicts_detected"], 1)
 
+    def test_update_at_scale_and_concurrency(self):
+        from lifecycle_eval import run_concurrency_check, run_update_at_scale
+
+        scale = run_update_at_scale(count=100)
+        self.assertIn("disabled", scale["top_content"])
+        self.assertFalse(scale["stale_survives"])
+        concurrency = run_concurrency_check()
+        self.assertTrue(concurrency["reader_sees_writer_data"])
+
 
 if __name__ == "__main__":
     unittest.main()
-
