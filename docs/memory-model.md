@@ -14,6 +14,11 @@ the core.
 | 6 | Source monitoring | Humans track who told them what, and whether they were there | `SourceRecord` (origin, ref, timestamp, trust) + confidence on every item | `types.py` |
 | 7 | Active forgetting | Forgetting reduces noise; the brain does not store everything forever | Low-value memories fade; `RecycleBin` keeps deletions recoverable, never silent | `recycle.py` |
 | 8 | Metacognition | Humans doubt themselves, ask for confirmation, notice gaps | Confidence labels, contradiction reports, knowledge-gap detection, "should confirm" signals | `metacognition.py` |
+| 9 | Context-dependent memory | Godden & Baddeley (1975): recall is better when the environment matches encoding | Memories carry an optional `context`; recall boosts context matches | `types.py`, `dual_track.py` |
+| 10 | Emotional modulation of consolidation | Cahill & McGaugh (1998): arousal strengthens lasting memory | Affect tags slow decay and feed importance scoring | `forgetting.py`, `importance.py` |
+| 11 | Complementary learning systems | McClelland et al. (1995): hippocampus stores fast, neocortex integrates slowly | Episodic store is fast; semantic facts accumulate `evidence_count` and confidence during sleep | `consolidation.py` |
+| 12 | Retrieval-induced forgetting | Anderson, Bjork & Bjork (1994): retrieval itself causes forgetting of related items | Recalling a memory slightly suppresses linked, unrecalled rivals | `dual_track.py` |
+| 13 | Blocking / feeling-of-knowing | Schacter (1999): cues present but recall fails | `check()` reports `blocked` memories — cues matched, not recalled — as an alternative-route signal | `metacognition.py` |
 
 ## Wake / sleep lifecycle
 
@@ -33,3 +38,4 @@ the core.
 - Human-like emotion — we store an affect signal as one input to importance,
   not a simulation of feelings.
 
+Full paper-by-paper mapping: [research.md](research.md).

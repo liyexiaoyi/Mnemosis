@@ -32,6 +32,11 @@ class Backend(ABC):
         """Insert or merge by (kind, content_hash). Returns the stored item."""
 
     @abstractmethod
+    def find_by_hash(
+        self, kind: MemoryKind, content_hash: str
+    ) -> MemoryItem | None: ...
+
+    @abstractmethod
     def get(self, memory_id: str) -> MemoryItem | None: ...
 
     @abstractmethod
@@ -79,7 +84,7 @@ class DictBackend(Backend):
         self._items[item.id] = item
 
     def upsert(self, item: MemoryItem) -> MemoryItem:
-        existing = self._find_by_hash(item.kind, item.content_hash)
+        existing = self.find_by_hash(item.kind, item.content_hash)
         if existing is None:
             self.add(item)
             return item
@@ -87,7 +92,9 @@ class DictBackend(Backend):
         self.add_cues(existing.id, item.cues)
         return existing
 
-    def _find_by_hash(self, kind: MemoryKind, content_hash: str) -> MemoryItem | None:
+    def find_by_hash(
+        self, kind: MemoryKind, content_hash: str
+    ) -> MemoryItem | None:
         for item in self._items.values():
             if item.kind == kind and item.content_hash == content_hash:
                 return item
@@ -235,6 +242,25 @@ class SQLiteBackend(Backend):
                 )
                 """
             )
+        self._ensure_columns()
+
+    def _ensure_columns(self) -> None:
+        """Migrate older databases by adding missing columns."""
+        columns = [
+            row[1]
+            for row in self._conn.execute("PRAGMA table_info(memories)").fetchall()
+        ]
+        additions = {
+            "context": "context TEXT",
+            "affect": "affect TEXT",
+            "evidence_count": "evidence_count INTEGER NOT NULL DEFAULT 1",
+        }
+        with self._conn:
+            for name, ddl in additions.items():
+                if name not in columns:
+                    self._conn.execute(
+                        f"ALTER TABLE memories ADD COLUMN {ddl}"
+                    )
 
     def add(self, item: MemoryItem) -> None:
         with self._conn:
@@ -243,14 +269,14 @@ class SQLiteBackend(Backend):
                 INSERT INTO memories (
                     id, kind, content, content_hash, source_json, cues_json,
                     created_at, last_access_at, access_count, importance,
-                    strength, confidence, status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    strength, confidence, status, context, affect, evidence_count
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 _item_row(item),
             )
 
     def upsert(self, item: MemoryItem) -> MemoryItem:
-        existing = self._find_by_hash(item.kind, item.content_hash)
+        existing = self.find_by_hash(item.kind, item.content_hash)
         if existing is None:
             self.add(item)
             return item
@@ -259,7 +285,9 @@ class SQLiteBackend(Backend):
         self.add_cues(existing.id, item.cues)
         return existing
 
-    def _find_by_hash(self, kind: MemoryKind, content_hash: str) -> MemoryItem | None:
+    def find_by_hash(
+        self, kind: MemoryKind, content_hash: str
+    ) -> MemoryItem | None:
         row = self._conn.execute(
             "SELECT * FROM memories WHERE kind = ? AND content_hash = ? LIMIT 1",
             (kind.value, content_hash),
@@ -279,7 +307,8 @@ class SQLiteBackend(Backend):
                 UPDATE memories SET
                     content = ?, content_hash = ?, source_json = ?, cues_json = ?,
                     created_at = ?, last_access_at = ?, access_count = ?,
-                    importance = ?, strength = ?, confidence = ?, status = ?
+                    importance = ?, strength = ?, confidence = ?, status = ?,
+                    context = ?, affect = ?, evidence_count = ?
                 WHERE id = ?
                 """,
                 (
@@ -294,6 +323,9 @@ class SQLiteBackend(Backend):
                     item.strength,
                     item.confidence,
                     item.status.value,
+                    item.context,
+                    item.affect,
+                    item.evidence_count,
                     item.id,
                 ),
             )
@@ -413,6 +445,7 @@ def _merge_stats(target: MemoryItem, incoming: MemoryItem) -> None:
     target.strength = max(target.strength, incoming.strength)
     target.access_count += incoming.access_count
     target.cues = normalize_cues(target.cues + incoming.cues)
+    target.evidence_count = max(target.evidence_count, incoming.evidence_count)
     if incoming.source.trust > target.source.trust:
         target.source = incoming.source
     if incoming.last_access_at and (
@@ -436,6 +469,9 @@ def _item_row(item: MemoryItem) -> tuple:
         item.strength,
         item.confidence,
         item.status.value,
+        item.context,
+        item.affect,
+        item.evidence_count,
     )
 
 
@@ -456,6 +492,9 @@ def _row_to_item(row: sqlite3.Row | None) -> MemoryItem | None:
         "strength": row["strength"],
         "confidence": row["confidence"],
         "status": row["status"],
+        "context": row["context"],
+        "affect": row["affect"],
+        "evidence_count": row["evidence_count"],
     }
     return MemoryItem.from_dict(data)
 
@@ -467,4 +506,3 @@ def make_backend(memory_file: str | None = None) -> Backend:
 
 
 __all__ = ["Backend", "DictBackend", "SQLiteBackend", "make_backend"]
-

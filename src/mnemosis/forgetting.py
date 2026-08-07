@@ -12,6 +12,10 @@ from datetime import datetime, timedelta
 from .types import MemoryItem, utcnow
 
 
+EMOTIONAL_DECAY_FACTOR = 0.6
+"""Emotionally arousing memories decay slower (Cahill & McGaugh, 1998)."""
+
+
 class ForgettingCurve:
     """Exponential strength decay with access-based reinforcement."""
 
@@ -23,6 +27,12 @@ class ForgettingCurve:
         """
         self.decay_rate = decay_rate
 
+    def effective_decay_rate(self, item: MemoryItem) -> float:
+        """Slower decay for emotionally salient memories."""
+        if item.affect in ("positive", "negative", "arousing"):
+            return self.decay_rate * EMOTIONAL_DECAY_FACTOR
+        return self.decay_rate
+
     def hours_since_last_access(
         self, item: MemoryItem, now: datetime | None = None
     ) -> float:
@@ -33,7 +43,7 @@ class ForgettingCurve:
     def retrievability(self, item: MemoryItem, now: datetime | None = None) -> float:
         """Current retrievability in [0, 1] after exponential decay."""
         hours = self.hours_since_last_access(item, now)
-        return item.strength * math.exp(-self.decay_rate * hours)
+        return item.strength * math.exp(-self.effective_decay_rate(item) * hours)
 
     def reinforce(
         self,
@@ -100,4 +110,3 @@ class ReviewScheduler:
 
 
 __all__ = ["ForgettingCurve", "ReviewScheduler"]
-

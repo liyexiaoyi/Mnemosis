@@ -22,6 +22,15 @@ reconciling — the way human memory actually works.
   gaps before the agent answers.
 - **Associative recall** — memories are indexed by multiple cues (time, topic,
   people, keywords) and linked, so any angle can reach them.
+- **Context-dependent recall** — memories keep the context they were formed
+  in, and recall boosts context matches (Godden & Baddeley, 1975).
+- **Emotional persistence** — affect-tagged memories decay more slowly
+  (Cahill & McGaugh, 1998).
+- **Evidence accumulation** — repeated episodes consolidate into semantic
+  facts whose confidence grows with supporting evidence (complementary
+  learning systems; McClelland et al., 1995).
+- **Blocking detection** — when cues match but recall fails, Mnemosis reports
+  the "blocked" memories so the agent can try another route (Schacter, 1999).
 - **Local-first, zero runtime dependencies** — pure Python `stdlib`, SQLite
   persistence, no server, no mandatory cloud embeddings (optional embedder
   hooks).
@@ -93,7 +102,8 @@ flowchart LR
 ```
 
 See [docs/architecture.md](docs/architecture.md) and
-[docs/memory-model.md](docs/memory-model.md) for details.
+[docs/memory-model.md](docs/memory-model.md) for details, and
+[docs/research.md](docs/research.md) for the paper-by-paper grounding.
 
 ## Roadmap
 
@@ -104,4 +114,3 @@ and an evaluation harness.
 ## License
 
 MIT. See [LICENSE](LICENSE).
-

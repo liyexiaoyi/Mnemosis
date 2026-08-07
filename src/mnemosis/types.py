@@ -53,6 +53,9 @@ class MemoryStatus(str, Enum):
     RECYCLED = "recycled"
 
 
+AFFECT_TAGS = {"positive", "negative", "arousing", "mixed", "neutral"}
+
+
 @dataclass
 class SourceRecord:
     """Provenance for a memory (human principle #6: source monitoring)."""
@@ -97,6 +100,9 @@ class MemoryItem:
     confidence: float = 1.0
     status: MemoryStatus = MemoryStatus.ACTIVE
     content_hash: str = field(default="")
+    context: str | None = None
+    affect: str | None = None
+    evidence_count: int = 1
 
     def __post_init__(self) -> None:
         self.content_hash = self.content_hash or hash_content(self.content)
@@ -105,6 +111,12 @@ class MemoryItem:
         self.strength = _clamp01(self.strength)
         self.confidence = _clamp01(self.confidence)
         self.source.trust = _clamp01(self.source.trust)
+        if self.affect is not None:
+            affect = self.affect.strip().lower()
+            self.affect = affect if affect in AFFECT_TAGS else None
+        self.evidence_count = max(1, int(self.evidence_count))
+        if self.context is not None:
+            self.context = self.context.strip() or None
 
     def touch(self, now: datetime | None = None) -> None:
         """Mark as accessed; used by the forgetting curve reinforcement."""
@@ -126,6 +138,9 @@ class MemoryItem:
             "strength": self.strength,
             "confidence": self.confidence,
             "status": self.status.value,
+            "context": self.context,
+            "affect": self.affect,
+            "evidence_count": self.evidence_count,
         }
 
     @classmethod
@@ -144,6 +159,9 @@ class MemoryItem:
             confidence=float(data.get("confidence", 1.0)),
             status=MemoryStatus(data.get("status", MemoryStatus.ACTIVE.value)),
             content_hash=data.get("content_hash", ""),
+            context=data.get("context"),
+            affect=data.get("affect"),
+            evidence_count=data.get("evidence_count", 1),
         )
 
 
@@ -198,4 +216,3 @@ __all__ = [
     "tokenize",
     "utcnow",
 ]
-

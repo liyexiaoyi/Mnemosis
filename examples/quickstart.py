@@ -13,6 +13,7 @@ def main() -> None:
         source=SourceRecord(origin=SourceType.USER),
         cues=["user", "language", "preference"],
         importance=0.9,
+        context="work",
     )
     engine.remember(
         "Yesterday we debugged the SQLite locking issue together.",
@@ -29,6 +30,10 @@ def main() -> None:
     check = engine.check("what language does the user prefer?")
     print(f"  gaps: {check.gaps or 'none'}")
     print(f"  contradictions: {len(check.contradictions)}")
+    print(
+        "  blocked (cues matched, not recalled): "
+        f"{[b.content for b in check.blocked] or 'none'}"
+    )
     for item, label, value in check.items:
         print(f"  {label.value:6s} ({value}) {item.content}")
 
@@ -41,4 +46,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

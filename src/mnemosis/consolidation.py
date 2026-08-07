@@ -12,7 +12,7 @@ from datetime import datetime
 
 from .backend import Backend
 from .dual_track import DualTrackStore
-from .types import MemoryItem, MemoryKind, MemoryStatus, utcnow
+from .types import MemoryItem, MemoryKind, MemoryStatus, hash_content, utcnow
 
 
 @dataclass
@@ -87,14 +87,23 @@ class Consolidator:
                 continue
             if item.importance < self.promotion_importance and item.access_count < 3:
                 continue
+            # Complementary learning systems (McClelland et al., 1995):
+            # semantic knowledge accumulates evidence from repeated episodes.
+            existing = self.backend.find_by_hash(
+                MemoryKind.SEMANTIC, hash_content(item.content)
+            )
+            evidence = existing.evidence_count + 1 if existing else 1
             semantic = self.store.remember(
                 item.content,
                 MemoryKind.SEMANTIC,
                 source=item.source,
                 cues=list(item.cues) + ["consolidated"],
                 importance=max(item.importance, self.promotion_importance),
-                confidence=item.confidence,
+                confidence=min(1.0, 0.6 + 0.08 * evidence),
                 strength=item.strength,
+                context=item.context,
+                affect=item.affect,
+                evidence_count=evidence,
             )
             self.backend.add_link(item.id, semantic.id)
             self.backend.add_link(semantic.id, item.id)
@@ -150,4 +159,3 @@ class Consolidator:
 
 
 __all__ = ["Conflict", "ConsolidationReport", "Consolidator"]
-

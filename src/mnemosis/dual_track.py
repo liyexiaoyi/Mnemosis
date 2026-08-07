@@ -45,6 +45,9 @@ class DualTrackStore:
         confidence: float = 1.0,
         strength: float = 1.0,
         created_at: datetime | None = None,
+        context: str | None = None,
+        affect: str | None = None,
+        evidence_count: int = 1,
     ) -> MemoryItem:
         if importance is None:
             importance = self.scorer.score(content, source=source)
@@ -57,6 +60,9 @@ class DualTrackStore:
             importance=importance,
             confidence=confidence,
             strength=strength,
+            context=context,
+            affect=affect,
+            evidence_count=evidence_count,
         )
         if kind is MemoryKind.SEMANTIC:
             stored = self.backend.upsert(item)
@@ -74,6 +80,8 @@ class DualTrackStore:
         top_k: int = 5,
         now: datetime | None = None,
         reinforce: bool = True,
+        context: str | None = None,
+        suppression_factor: float = 0.02,
     ) -> list[RecallResult]:
         now = now or utcnow()
         candidates = self.backend.list(kind=kind)
@@ -82,7 +90,17 @@ class DualTrackStore:
         for item in candidates:
             overlap = _overlap(query_terms, item)
             retrievability = self.curve.retrievability(item, now)
-            score = 0.45 * overlap + 0.30 * retrievability + 0.25 * item.importance
+            context_match = (
+                context is not None
+                and item.context is not None
+                and item.context.lower() == context.strip().lower()
+            )
+            score = (
+                0.40 * overlap
+                + 0.25 * retrievability
+                + 0.20 * item.importance
+                + (0.15 if context_match else 0.0)
+            )
             reasons: list[str] = []
             if overlap > 0:
                 reasons.append(f"cue/keyword overlap {overlap:.2f}")
@@ -90,6 +108,8 @@ class DualTrackStore:
                 reasons.append("partially forgotten")
             if item.importance >= 0.7:
                 reasons.append("high importance")
+            if context_match:
+                reasons.append("context match")
             scored.append(RecallResult(item=item, score=score, reasons=reasons))
         scored.sort(key=lambda r: r.score, reverse=True)
         results = scored[:top_k]
@@ -97,7 +117,29 @@ class DualTrackStore:
             for r in results:
                 self.curve.reinforce(r.item, now=now)
                 self.backend.update(r.item)
+            if suppression_factor > 0:
+                self._suppress_linked_rivals(results, suppression_factor)
         return results
+
+    def _suppress_linked_rivals(
+        self,
+        results: list[RecallResult],
+        suppression_factor: float,
+    ) -> None:
+        """Retrieval-induced forgetting (Anderson, Bjork & Bjork, 1994).
+
+        Memories linked to what was just recalled — but not themselves
+        recalled — lose a little strength.
+        """
+        selected = {r.item.id for r in results}
+        suppressed: set[str] = set()
+        for r in results:
+            for linked in self.backend.related(r.item.id, depth=1, max_nodes=50):
+                if linked.id in selected or linked.id in suppressed:
+                    continue
+                linked.strength = max(0.0, linked.strength - suppression_factor)
+                self.backend.update(linked)
+                suppressed.add(linked.id)
 
     def recent(
         self, kind: MemoryKind | None = None, limit: int = 10
@@ -118,4 +160,3 @@ def _overlap(query_terms: set[str], item: MemoryItem) -> float:
 
 
 __all__ = ["DualTrackStore"]
-

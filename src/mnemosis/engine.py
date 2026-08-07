@@ -59,6 +59,9 @@ class MemoryEngine:
         confidence: float = 1.0,
         strength: float = 1.0,
         created_at: datetime | None = None,
+        context: str | None = None,
+        affect: str | None = None,
+        evidence_count: int = 1,
     ) -> MemoryItem:
         source = source or SourceRecord(origin=SourceType.USER)
         item = self.store.remember(
@@ -70,6 +73,9 @@ class MemoryEngine:
             confidence=confidence,
             strength=strength,
             created_at=created_at,
+            context=context,
+            affect=affect,
+            evidence_count=evidence_count,
         )
         self.associations.index(item)
         self.associations.link_related(item)
@@ -82,8 +88,17 @@ class MemoryEngine:
         kind: MemoryKind | None = None,
         top_k: int = 5,
         now: datetime | None = None,
+        context: str | None = None,
+        suppression_factor: float = 0.02,
     ) -> list[RecallResult]:
-        return self.store.recall(query, kind=kind, top_k=top_k, now=now)
+        return self.store.recall(
+            query,
+            kind=kind,
+            top_k=top_k,
+            now=now,
+            context=context,
+            suppression_factor=suppression_factor,
+        )
 
     # -- sleep cycle ----------------------------------------------------------
 
@@ -137,4 +152,3 @@ class MemoryEngine:
 
 
 __all__ = ["MemoryEngine"]
-

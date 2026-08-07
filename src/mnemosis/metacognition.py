@@ -30,6 +30,7 @@ class MetacognitiveCheck:
     items: list[tuple[MemoryItem, ConfidenceLabel, float]] = field(default_factory=list)
     contradictions: list[Conflict] = field(default_factory=list)
     gaps: list[str] = field(default_factory=list)
+    blocked: list[MemoryItem] = field(default_factory=list)
 
     def should_confirm_any(self) -> bool:
         return any(label is ConfidenceLabel.LOW for _, label, _ in self.items)
@@ -53,8 +54,9 @@ class Metacognition:
         retrievability = self.curve.retrievability(item, now)
         value = (
             item.confidence
-            * (0.5 + 0.5 * retrievability)
-            * (0.7 + 0.3 * min(item.access_count, 3) / 3.0)
+            * (0.45 + 0.55 * retrievability)
+            * (0.8 + 0.2 * min(item.access_count, 3) / 3.0)
+            * (0.95 + 0.05 * min(item.evidence_count, 5) / 5.0)
         )
         value = max(0.0, min(1.0, value))
         if value >= 0.7:
@@ -77,6 +79,24 @@ class Metacognition:
             known |= set(item.cues)
         return [term for term in sorted(query_terms) if term not in known][:top_k]
 
+    def blocked_retrievals(
+        self, query: str, top_k: int = 3, now: datetime | None = None
+    ) -> list[MemoryItem]:
+        """Schacter's "blocking" sin: cues match, but the memory was not recalled.
+
+        These are candidate memories that share cues with the query yet fell
+        outside the top-k results — a feeling-of-knowing signal that the agent
+        should try alternative retrieval routes instead of giving up.
+        """
+        query_terms = set(tokenize(query))
+        results = self.store.recall(query, top_k=top_k, now=now)
+        recalled = {r.item.id for r in results}
+        return [
+            item
+            for item in self.store.all_active()
+            if item.id not in recalled and set(item.cues) & query_terms
+        ]
+
     def should_confirm(self, item: MemoryItem, now: datetime | None = None) -> bool:
         """Signal that the agent should double-check before asserting."""
         label, _ = self.confidence(item, now)
@@ -95,8 +115,8 @@ class Metacognition:
             items=items,
             contradictions=self.contradictions(),
             gaps=self.knowledge_gaps(query),
+            blocked=self.blocked_retrievals(query, top_k, now),
         )
 
 
 __all__ = ["ConfidenceLabel", "Metacognition", "MetacognitiveCheck"]
-
