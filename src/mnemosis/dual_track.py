@@ -112,6 +112,8 @@ class DualTrackStore:
         sep_shared_cues_min: int = 2,
         sep_overlap_min: float = 0.35,
         sep_penalty: float = 0.08,
+        kind_preference: bool = False,
+        kind_pref: float = 0.03,
     ) -> list[RecallResult]:
         now = now or utcnow()
         candidates = self.backend.list(kind=kind)
@@ -124,6 +126,18 @@ class DualTrackStore:
         action_cued = any(
             word in lowered_query
             for word in ("after", "next", "then")
+        )
+        semantic_cued = any(
+            word in lowered_query
+            for word in (
+                "what is", "what's", "favorite", "prefers", "which is",
+                "who is", "when is",
+            )
+        )
+        event_cued = any(
+            word in lowered_query
+            for word in ("did ", "bought", "buy ", "visited", "had ",
+                         "went", "where did", "when did", "what did")
         )
         if query_terms:
             term_index = self._term_index(kind)
@@ -170,6 +184,13 @@ class DualTrackStore:
             if action_cued and item.kind is MemoryKind.EPISODIC:
                 score += 0.05
                 reasons.append("action-cued episodic preference")
+            if kind_preference:
+                if semantic_cued and item.kind is MemoryKind.SEMANTIC:
+                    score += kind_pref
+                    reasons.append("\u8981\u70b9\uff08gist\uff09\u504f\u597d")
+                if event_cued and item.kind is MemoryKind.EPISODIC:
+                    score += kind_pref
+                    reasons.append("\u9010\u5b57\uff08verbatim\uff09\u504f\u597d")
             if semantic > 0.5:
                 reasons.append(f"semantic similarity {semantic:.2f}")
             if retrievability < 0.5:

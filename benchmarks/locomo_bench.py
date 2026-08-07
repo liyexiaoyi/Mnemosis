@@ -223,6 +223,7 @@ def eval_retrieval(
     top_k: int = 5,
     now=None,
     pattern_completion: bool = True,
+    kind_preference: bool = False,
 ) -> dict:
     stats: dict[str, dict] = defaultdict(
         lambda: {"n": 0, "hit1": 0, "hit5": 0, "pass": 0, "anchor5": 0, "mrr": 0.0}
@@ -242,6 +243,7 @@ def eval_retrieval(
             top_k=top_k,
             now=now,
             pattern_completion=pattern_completion,
+            kind_preference=kind_preference,
         )
         contents = [r.item.content for r in results]
         expected = question["expected"]
@@ -495,6 +497,11 @@ def main() -> int:
         help="disable hippocampal pattern completion (A/B control)",
     )
     parser.add_argument(
+        "--kind-preference",
+        action="store_true",
+        help="enable gist/verbatim kind preference (A/B control, default off)",
+    )
+    parser.add_argument(
         "--llm-embedder",
         choices=["keyword", "ngram"],
         default="ngram",
@@ -530,6 +537,7 @@ def main() -> int:
             engine,
             dataset["questions"],
             pattern_completion=not args.no_pattern_completion,
+            kind_preference=args.kind_preference,
         )
         print(f"\n-- retrieval with {label} --")
         print_report(reports[label], [])
