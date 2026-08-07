@@ -179,6 +179,37 @@ class LearningTest(unittest.TestCase):
         self.assertEqual(len(active), 1)
         self.assertGreaterEqual(active[0].evidence_count, 2)
 
+    def test_rem_phase_strengthens_links_and_resolves_conflicts(self):
+        """Walker & Stickgold (2004): REM integrates associations and
+        reconciles contradictory memories."""
+        now = utcnow()
+        a = self.remember(
+            "Alice visited the harbor on 2026-02-01.",
+            kind=MemoryKind.EPISODIC,
+            cues=["alice", "harbor", "trip"],
+        )
+        b = self.remember(
+            "Alice visited the aquarium on 2026-02-02.",
+            kind=MemoryKind.EPISODIC,
+            cues=["alice", "harbor", "trip"],
+        )
+        c1 = self.remember(
+            "The deadline is Friday.",
+            confidence=0.9,
+            cues=["deadline"],
+        )
+        c2 = self.remember(
+            "The deadline is Monday.",
+            confidence=0.9,
+            cues=["deadline"],
+        )
+        report = self.engine.sleep(now=now)
+        self.assertGreaterEqual(report.rem_links, 1)
+        self.assertGreaterEqual(report.rem_resolved, 1)
+        # conflict pair confidence dropped
+        c1_after = self.engine.backend.get(c1.id)
+        self.assertLess(c1_after.confidence, 0.9)
+
     def test_working_set_orders_by_recent_access(self):
         a = self.remember("Alpha.")
         b = self.remember("Beta.")

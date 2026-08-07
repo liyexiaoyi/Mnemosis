@@ -33,6 +33,8 @@ class ConsolidationReport:
     reflected: list[MemoryItem] = field(default_factory=list)
     replayed: int = 0
     merged: int = 0
+    rem_links: int = 0
+    rem_resolved: int = 0
     total_before: int = 0
     total_after: int = 0
 
@@ -40,7 +42,8 @@ class ConsolidationReport:
         return (
             f"promoted {len(self.promoted)}, pruned {len(self.recycled)}, "
             f"reflected {len(self.reflected)}, replayed {self.replayed}, "
-            f"merged {self.merged}, "
+            f"merged {self.merged}, rem_links {self.rem_links}, "
+            f"rem_resolved {self.rem_resolved}, "
             f"conflicts {len(self.conflicts)} "
             f"({self.total_before} -> {self.total_after} active memories)"
         )
@@ -88,6 +91,7 @@ class Consolidator:
         promoted = self._promote_episodic(now)
         recycled = self._prune_noise(now)
         conflicts = self.detect_conflicts()
+        rem_links, rem_resolved = self._rem_phase(now)
         reflected = self.reflect(summarizer or self.llm_summarizer, now)
         total_after = len(self.store.all_active())
         return ConsolidationReport(
@@ -97,6 +101,8 @@ class Consolidator:
             reflected=reflected,
             replayed=replayed,
             merged=merged,
+            rem_links=rem_links,
+            rem_resolved=rem_resolved,
             total_before=total_before,
             total_after=total_after,
         )
@@ -132,6 +138,42 @@ class Consolidator:
                 self.backend.update(dup)
                 merged += 1
         return merged
+
+    def _rem_phase(self, now: datetime) -> tuple[int, int]:
+        """REM sleep: associative strengthening + conflict resolution.
+
+        Walker & Stickgold (2004): REM sleep integrates new experiences into
+        existing knowledge networks (associative links) and helps the brain
+        reconcile incompatible information. We emulate:
+
+        - links: episodes sharing >= 2 cues get a strengthened association
+          (so later spreading activation reaches them more easily);
+        - resolution: conflicting confident semantic memories both lose a
+          little confidence, mirroring the "reconcile, don't keep both
+          absolute" outcome of REM-mediated memory integration.
+        """
+        episodes = self.store.all_active(MemoryKind.EPISODIC)
+        links = 0
+        for i in range(len(episodes)):
+            a = episodes[i]
+            a_cues = set(a.cues)
+            for b in episodes[i + 1 :]:
+                shared = len(a_cues & set(b.cues))
+                if shared < 2:
+                    continue
+                self.backend.add_link(a.id, b.id, weight=0.8 + 0.1 * shared)
+                links += 1
+
+        resolved = 0
+        for conflict in self.detect_conflicts():
+            a, b = conflict.a, conflict.b
+            if a.confidence > 0.5 and b.confidence > 0.5:
+                a.confidence = max(0.4, a.confidence - 0.1)
+                b.confidence = max(0.4, b.confidence - 0.1)
+                self.backend.update(a)
+                self.backend.update(b)
+                resolved += 1
+        return links, resolved
 
     def _replay_recent(self, now: datetime) -> int:
         """Offline replay of recent salient traces (Gais et al., 2002;

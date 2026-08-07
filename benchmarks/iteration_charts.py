@@ -686,6 +686,75 @@ def real_github_compare_chart() -> None:
     print("written", path)
 
 
+def real_github_compare_table() -> None:
+    """Table-style comparison (Chinese, plain language) — much easier to
+    read than 32 tiny bars."""
+    unified_path = os.path.join(RESULTS_DIR, "unified_compare.json")
+    unified = {}
+    if os.path.exists(unified_path):
+        unified = json.load(open(unified_path, encoding="utf-8"))["table"]
+    official_path = os.path.join(RESULTS_DIR, "official_packages_compare.json")
+    official = {}
+    if os.path.exists(official_path):
+        official = json.load(open(official_path, encoding="utf-8"))
+
+    def pct(v):
+        return f"{v:.0%}" if v is not None else "-"
+
+    rows = []
+    if "mem0_official" in official:
+        d = official["mem0_official"]
+        rows.append(("mem0 官方包", pct(d.get("fact@5")), pct(d.get("event@5")),
+                     pct(d.get("temporal@5")), f"{d.get('distractor_pass', 0)}/16"))
+    if "cognitive_memory_official" in official:
+        d = official["cognitive_memory_official"]
+        rows.append(("cognitive-memory 官方包", pct(d.get("fact@5")), pct(d.get("event@5")),
+                     pct(d.get("temporal@5")), f"{d.get('distractor_pass', 0)}/16"))
+    for key, label in (("BM25", "BM25"), ("嵌入 kNN", "嵌入 kNN"),
+                       ("Mem0-style", "Mem0-style"), ("HippoRAG-style", "HippoRAG-style")):
+        d = unified.get(key, {})
+        rows.append((label, pct(d.get("fact@5")), pct(d.get("event@5")),
+                     pct(d.get("temporal@5")), f"{d.get('distractor_pass', 0)}/16"))
+    for key, label in (("Mnemosis 词法", "Mnemosis 词法"), ("Mnemosis ngram", "Mnemosis ngram")):
+        d = unified.get(key, {})
+        rows.append((label, pct(d.get("fact@5")), pct(d.get("event@5")),
+                     pct(d.get("temporal@5")), f"{d.get('distractor_pass', 0)}/16"))
+
+    w, h = 980, 120 + len(rows) * 52
+    col_x = [40, 320, 470, 620, 790]
+    header = ["系统", "记住事实", "记住事件", "之后发生了什么", "没聊过不乱说"]
+    lines = _svg_open(
+        "真实能力对比表：GitHub 项目 vs Mnemosis（同一 88 题，中文大白话）",
+        "“记住事实”= 问‘喜欢什么颜色’能不能答对；“之后发生了什么”= 问‘去了植物园之后干了啥’；“没聊过不乱说”= 没提过的话题会不会硬编",
+        w, h,
+    )
+    y0 = 88
+    lines.append(f'<line x1="30" y1="{y0}" x2="{w - 20}" y2="{y0}" stroke="#999"/>')
+    for i, htxt in enumerate(header):
+        lines.append(f'<text x="{col_x[i]}" y="{y0 + 22}" font-size="15" font-weight="bold" fill="#222">{htxt}</text>')
+    lines.append(f'<line x1="30" y1="{y0 + 34}" x2="{w - 20}" y2="{y0 + 34}" stroke="#999"/>')
+    yy = y0 + 34
+    for row in rows:
+        yy += 52
+        name = row[0]
+        is_mnemosis = name.startswith("Mnemosis")
+        name_fill = "#1a7f37" if is_mnemosis else "#333"
+        lines.append(f'<text x="{col_x[0]}" y="{yy}" font-size="15" fill="{name_fill}">{name}</text>')
+        for j, val in enumerate(row[1:], start=1):
+            if val.endswith("/16"):
+                good = val.startswith("16")
+            else:
+                good = val.startswith("100%")
+            fill = "#1a7f37" if good else "#d1242f"
+            lines.append(f'<text x="{col_x[j]}" y="{yy}" font-size="15" fill="{fill}">{val}</text>')
+        lines.append(f'<line x1="30" y1="{yy + 20}" x2="{w - 20}" y2="{yy + 20}" stroke="#e5e5e5"/>')
+    lines.append("</svg>")
+    path = os.path.join(OUT_DIR, "iteration_real_compare_table_zh.svg")
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines))
+    print("written", path)
+
+
 def _color(label: str) -> str:
     palette = {
         "BM25": "#72b7b2",
@@ -711,6 +780,7 @@ def main() -> int:
     stress_scale_chart()
     llm_grounding_chart()
     real_github_compare_chart()
+    real_github_compare_table()
     return 0
 
 
