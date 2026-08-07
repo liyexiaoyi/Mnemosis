@@ -107,6 +107,21 @@ class MCPTest(unittest.TestCase):
         )
         self.assertTrue(response["result"]["isError"])
 
+    def test_review_tools(self):
+        remembered = self.call(
+            "remember",
+            {"content": "Alice likes tea.", "kind": "semantic"},
+        )
+        memory_id = remembered["id"]
+        reviewed = self.call(
+            "review",
+            {"memory_id": memory_id, "success": True},
+        )
+        self.assertEqual(reviewed["review_streak"], 1)
+        self.assertEqual(reviewed["retrieval_successes"], 1)
+        due = self.call("review_due", {"limit": 5})
+        self.assertIsInstance(due, list)
+
 
 if __name__ == "__main__":
     unittest.main()

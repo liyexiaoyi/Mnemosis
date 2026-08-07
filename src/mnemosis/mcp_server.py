@@ -141,6 +141,26 @@ class MCPServer:
                     "properties": {"limit": {"type": "integer"}},
                 },
             },
+            {
+                "name": "review_due",
+                "description": "List memories due for spaced review.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {"limit": {"type": "integer"}},
+                },
+            },
+            {
+                "name": "review",
+                "description": "Record a spaced-repetition outcome (success/fail).",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "memory_id": {"type": "string"},
+                        "success": {"type": "boolean"},
+                    },
+                    "required": ["memory_id"],
+                },
+            },
         ]
 
     def handle_line(self, line: str) -> str | None:
@@ -305,6 +325,31 @@ class MCPServer:
                 }
                 for item in self.engine.working_set(limit=int(args.get("limit", 8)))
             ]
+        if name == "review_due":
+            return [
+                {
+                    "id": item.id,
+                    "content": item.content,
+                    "retrievability": round(
+                        self.engine.curve.retrievability(item), 3
+                    ),
+                }
+                for item in self.engine.review_due(
+                    limit=int(args.get("limit", 10))
+                )
+            ]
+        if name == "review":
+            item = self.engine.review(
+                args["memory_id"], success=bool(args.get("success", True))
+            )
+            if item is None:
+                raise ValueError(f"no memory with id {args['memory_id']}")
+            return {
+                "id": item.id,
+                "review_streak": item.review_streak,
+                "retrieval_successes": item.retrieval_successes,
+                "retrieval_failures": item.retrieval_failures,
+            }
         raise ValueError(f"unknown tool: {name}")
 
     def _result(self, message_id: Any, result: Any) -> str:
