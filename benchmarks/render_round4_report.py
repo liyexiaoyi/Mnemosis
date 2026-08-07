@@ -131,10 +131,64 @@ def chart_regression() -> str:
     return path
 
 
+def chart_cam_compare() -> str:
+    """CAM 官方仓库（真实运行）vs 其他记忆系统：同一 12 题。"""
+    with open(os.path.join(_RESULTS, "cam_official.json"), encoding="utf-8") as handle:
+        cam = json.load(handle)
+    rows = [
+        ("Mnemosis + qwen2.5:3b", 0.75, "#1a7f37"),
+        ("mem0 官方包 + qwen2.5:3b", 0.75, "#2f80ed"),
+        ("CAM 官方仓库（端到端）", cam["accuracy"], "#7b2ff7"),
+        ("cognitive-memory + qwen2.5:3b", 0.25, "#c0392b"),
+    ]
+    W, H = 1400, 620
+    img = Image.new("RGB", (W, H), "white")
+    draw = ImageDraw.Draw(img)
+    f_title = _font(28)
+    f_sub = _font(17)
+    f_label = _font(19)
+    f_val = _font(18)
+    f_note = _font(17)
+    draw.text((40, 26), "GitHub 项目真实对比：同一 12 道题（都带本地小模型）", fill="#111", font=f_title)
+    draw.text((40, 72),
+              "CAM 是 NeurIPS 2025 官方仓库（真实安装运行，本机 Ollama 嵌入 + qwen2.5:3b 作答）；"
+              "其余三根柱是 qwen2.5:3b 用各项目检索结果作答。",
+              fill="#555", font=f_sub)
+    chart_h = 300
+    base_y = 430
+    bar_w = 150
+    x0 = 120
+    for i, (name, val, color) in enumerate(rows):
+        x = x0 + i * 300
+        bh = val * chart_h
+        y = base_y - bh
+        draw.rectangle([x, y, x + bar_w, base_y], fill=color)
+        draw.text((x + 48, y - 30), f"{val:.0%}", fill="#222", font=f_val)
+        label = name.replace(" + qwen2.5:3b", "")
+        draw.text((x - 10, base_y + 12), label, fill="#333", font=f_label)
+    draw.line([(60, base_y), (W - 60, base_y)], fill="#999", width=2)
+    for frac, label in ((0.0, "0%"), (0.5, "50%"), (1.0, "100%")):
+        y = base_y - frac * chart_h
+        draw.line([(60, y), (W - 60, y)], fill="#e5e5e5", width=1)
+        draw.text((25, y - 10), label, fill="#666", font=f_val)
+    draw.text((40, 480),
+              f"CAM 真实跑分 {cam['accuracy']:.1%}：事实/事件基本答对，时序答对 2/3，"
+              "没聊过不乱说 0/3（它说的是“资料里没有”，但按统一规则不算 unknown）。",
+              fill="#7b2ff7", font=f_note)
+    draw.text((40, 520),
+              "说明：CAM 论文用 GPT-4o-mini，这里用本地小模型跑，属于同一基准下的保守估计；"
+              "graphiti/letta 需要外部服务仍无法运行。",
+              fill="#555", font=f_note)
+    path = os.path.join(_OUT, "round4_cam_compare.png")
+    img.save(path)
+    return path
+
+
 def main() -> int:
     os.makedirs(_OUT, exist_ok=True)
     print("written:", chart_accommodation())
     print("written:", chart_regression())
+    print("written:", chart_cam_compare())
     return 0
 
 
