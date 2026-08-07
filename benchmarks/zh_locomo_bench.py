@@ -164,6 +164,18 @@ def evaluate(dataset: dict, filter_stopwords: bool) -> dict:
     }
 
 
+def sample_questions(questions: list[dict], max_total: int) -> list[dict]:
+    """Sample evenly across kinds so large runs stay comparable in runtime."""
+    if max_total <= 0 or len(questions) <= max_total:
+        return questions
+    chosen: list[dict] = []
+    for kind in ("fact", "event", "temporal", "distractor"):
+        pool = [q for q in questions if q["kind"] == kind]
+        per = max(1, max_total // 4)
+        chosen.extend(pool[:per])
+    return chosen[:max_total]
+
+
 def cross_format_pairs() -> tuple[list[dict], list[dict]]:
     """12 zh-date memories (queried by ISO date) + 12 ISO memories (queried
     by zh date)."""
@@ -239,6 +251,7 @@ _ORIGINAL = types.CJK_STOPWORDS
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sessions", type=int, default=4)
+    parser.add_argument("--max-questions", type=int, default=0)
     parser.add_argument("--with-llm", action="store_true")
     parser.add_argument(
         "--out",
@@ -248,6 +261,10 @@ def main() -> int:
     )
     args = parser.parse_args()
     dataset = generate(args.sessions)
+    if args.max_questions:
+        dataset["questions"] = sample_questions(
+            dataset["questions"], args.max_questions
+        )
     on = evaluate(dataset, True)
     off = evaluate(dataset, False)
     cross_on = evaluate_cross(True)

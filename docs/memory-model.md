@@ -26,6 +26,15 @@ the core.
 | 18 | Sleep prioritizes salient memories | Rasch & Born (2013): sleep optimizes consolidation of what matters | Emotionally tagged episodes promote with lower access/age thresholds | `consolidation.py` |
 | 19 | Working memory | Atkinson & Shiffrin (1968); Baddeley (2000); CoALA working memory | `working_set()` returns recently used memories for prompt injection | `engine.py` |
 | 20 | Reflection | Park et al. (2023), Generative Agents: agents periodically abstract over their memories | `sleep(summarizer=...)` rewrites evidence-backed semantic facts as abstractions of supporting episodes | `consolidation.py` |
+| 21 | REM associative integration | Walker & Stickgold (2004): REM links new experiences into knowledge networks and reconciles contradictions | Sleep `_rem_phase()` strengthens links between episodes sharing cues and lowers both sides of balanced conflicts | `consolidation.py` |
+| 22 | Pattern completion | Rolls (2013); Theves et al. (2024): a partial cue re-activates a whole integrated pattern | Bounded completion boost for strongly linked neighbours (link weight + shared cues) of a partial match | `dual_track.py` |
+| 23 | Amygdala-modulated consolidation | McGaugh (2004); Krenz et al. (2025): emotional (esp. recurring) experiences consolidate stronger | Sleep `_emotion_phase()` boosts recurring emotional episodes and strengthens emotional links (1.2 vs 1.0) | `consolidation.py` |
+| 24 | Schema assimilation / accommodation | Piaget via CAM (Li et al., NeurIPS 2025): new info either fits a schema or changes it | Sleep `_accommodation_phase()` retires the low-evidence side of a lopsided fact conflict; balanced conflicts stay | `consolidation.py` |
+| 25 | Pattern separation | Bakker et al. (2008, Science): dentate gyrus decorrelates similar-but-distinct memories | Final-rank penalty for candidates sharing cues + high lexical overlap with the top match | `dual_track.py` |
+| 26 | Confidence calibration | Lichtenstein, Fischhoff & Phillips (1977); Yeung & Summerfield (2012): stated confidence should match actual hit rate | `calibrated_confidence()` blends heuristic confidence with Beta-smoothed empirical retrieval outcomes | `metacognition.py` |
+| 27 | Desirable difficulty in review | Bjork & Kroll (2015); Koriat & Goldsmith (1996): uncertain-but-correct retrievals deserve more practice | Confidence-aware review keeps a fractional streak (shorter next interval) for non-HIGH memories | `engine.py`, `forgetting.py` |
+| 28 | Precise event anchoring | (Empirical, round 10 A/B): only date+person anchored episodic matches should be boosted | Kind preference boosts episodic items whose cues contain the query date AND share a person cue; defaults on | `dual_track.py` |
+| 29 | Chinese retrieval noise control | (Empirical, rounds 9-12): zh function words/particles create spurious matches at scale | CJK stopword filtering + zh date normalization ("2026年3月1日" <-> "2026-03-01") in `tokenize()` | `types.py` |
 
 ## Wake / sleep lifecycle
 
