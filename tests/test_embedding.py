@@ -1,7 +1,7 @@
 import unittest
 
 from mnemosis import MemoryEngine
-from mnemosis.embedding import NGramEmbedder
+from mnemosis.embedding import Embedder, NGramEmbedder
 from mnemosis.types import MemoryKind, SourceRecord, SourceType
 
 
@@ -32,6 +32,15 @@ class NGramEmbedderTest(unittest.TestCase):
             self.embedder.embed("中文"), self.embedder.embed("英文")
         )
         self.assertGreater(zh_tech, zh_en)
+
+    def test_unit_norm_cosine_matches_base(self):
+        first = self.embedder.embed("color")
+        second = self.embedder.embed("colour")
+        self.assertAlmostEqual(
+            self.embedder.cosine(first, second),
+            Embedder.cosine(first, second),
+            places=6,
+        )
 
 
 class EmbedderRecallTest(unittest.TestCase):

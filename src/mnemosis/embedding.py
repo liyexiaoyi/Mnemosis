@@ -85,6 +85,11 @@ class NGramEmbedder(Embedder):
             return vector
         return [v / norm for v in vector]
 
+    @staticmethod
+    def cosine(a: list[float], b: list[float]) -> float:
+        """Fast path: both vectors are unit-normalized, so cosine == dot."""
+        return sum(map(operator.mul, a, b))
+
 
 class CallableEmbedder(Embedder):
     """Wrap any external embedding function, e.g. an OpenAI-compatible API."""
