@@ -208,9 +208,17 @@ class MemoryEngine:
         return self.recycle.purge(before=before, limit=limit)
 
     def review_due(
-        self, limit: int = 10, now: datetime | None = None
+        self,
+        limit: int = 10,
+        now: datetime | None = None,
+        importance_first: bool = True,
     ) -> list[MemoryItem]:
-        return self.scheduler.due_items(self.store.all_active(), now=now, limit=limit)
+        return self.scheduler.due_items(
+            self.store.all_active(),
+            now=now,
+            limit=limit,
+            importance_first=importance_first,
+        )
 
     def review(
         self,
