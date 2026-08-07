@@ -62,11 +62,103 @@ class Metacognition:
             * (0.95 + 0.05 * min(item.evidence_count, 5) / 5.0)
         )
         value = max(0.0, min(1.0, value))
+        return self._label_for(value), round(value, 3)
+
+    def calibrate(self, item: MemoryItem, min_evidence: int = 2) -> float | None:
+        """Beta-smoothed empirical accuracy from real retrieval outcomes.
+
+        Lichtenstein, Fischhoff & Phillips (1977): a well-calibrated judge's
+        confidence matches the actual hit rate. Each memory tracks how often
+        retrieval hit or missed; with a Beta(1,1) prior, the empirical rate
+        is (successes+1)/(trials+2). Returns None until enough evidence has
+        accumulated.
+        """
+        trials = item.retrieval_successes + item.retrieval_failures
+        if trials < min_evidence:
+            return None
+        return (item.retrieval_successes + 1.0) / (trials + 2.0)
+
+    def calibrated_confidence(
+        self,
+        item: MemoryItem,
+        now: datetime | None = None,
+        *,
+        evidence_weight: float = 0.5,
+        evidence_scale: int = 5,
+    ) -> tuple[ConfidenceLabel, float]:
+        """Blend the heuristic confidence with the empirical hit rate.
+
+        Yeung & Summerfield (2012): confidence and error monitoring are
+        graded signals that should track actual performance. With little
+        retrieval evidence the heuristic dominates; with more evidence the
+        empirical rate takes over (up to `evidence_weight`).
+        """
+        label, value = self.confidence(item, now)
+        empirical = self.calibrate(item)
+        if empirical is None:
+            return label, value
+        trials = item.retrieval_successes + item.retrieval_failures
+        weight = evidence_weight * min(1.0, trials / evidence_scale)
+        calibrated = value * (1.0 - weight) + empirical * weight
+        calibrated = max(0.0, min(1.0, calibrated))
+        return self._label_for(calibrated), round(calibrated, 3)
+
+    def calibration_stats(
+        self,
+        items: list[MemoryItem],
+        now: datetime | None = None,
+    ) -> dict:
+        """Reliability table + expected calibration error (ECE)."""
+        buckets: dict[int, dict] = {}
+        for item in items:
+            _, pred = self.confidence(item, now)
+            bucket = min(4, int(pred * 5))
+            entry = buckets.setdefault(
+                bucket, {"pred_sum": 0.0, "n": 0, "hits": 0, "fails": 0}
+            )
+            entry["pred_sum"] += pred
+            entry["n"] += 1
+            entry["hits"] += item.retrieval_successes
+            entry["fails"] += item.retrieval_failures
+        rows = []
+        ece_numerator = 0.0
+        total = 0
+        for bucket in range(5):
+            entry = buckets.get(bucket)
+            if not entry or entry["n"] == 0:
+                continue
+            trials = entry["hits"] + entry["fails"]
+            empirical = (
+                (entry["hits"] + 1.0) / (trials + 2.0)
+                if trials > 0
+                else None
+            )
+            mean_pred = entry["pred_sum"] / entry["n"]
+            rows.append(
+                {
+                    "predicted_bucket": f"{bucket * 0.2:.1f}-{(bucket + 1) * 0.2:.1f}",
+                    "n_items": entry["n"],
+                    "mean_predicted": round(mean_pred, 3),
+                    "empirical_hit_rate": (
+                        round(empirical, 3) if empirical is not None else None
+                    ),
+                }
+            )
+            if empirical is not None:
+                ece_numerator += entry["n"] * abs(mean_pred - empirical)
+                total += entry["n"]
+        return {
+            "buckets": rows,
+            "ece": round(ece_numerator / total, 4) if total else 0.0,
+        }
+
+    @staticmethod
+    def _label_for(value: float) -> ConfidenceLabel:
         if value >= 0.7:
-            return ConfidenceLabel.HIGH, round(value, 3)
+            return ConfidenceLabel.HIGH
         if value >= 0.4:
-            return ConfidenceLabel.MEDIUM, round(value, 3)
-        return ConfidenceLabel.LOW, round(value, 3)
+            return ConfidenceLabel.MEDIUM
+        return ConfidenceLabel.LOW
 
     def contradictions(self) -> list[Conflict]:
         if self.consolidator is None:

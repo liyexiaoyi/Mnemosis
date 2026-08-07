@@ -271,6 +271,12 @@ class MemoryEngine:
     ) -> tuple[ConfidenceLabel, float]:
         return self.meta.confidence(item, now)
 
+    def calibrated_confidence(
+        self, item: MemoryItem, now: datetime | None = None
+    ) -> tuple[ConfidenceLabel, float]:
+        """Confidence blended with the memory's empirical retrieval hit rate."""
+        return self.meta.calibrated_confidence(item, now)
+
     # -- associations -------------------------------------------------------------
 
     def related(self, memory_id: str, depth: int = 1, max_nodes: int = 20) -> list[MemoryItem]:
