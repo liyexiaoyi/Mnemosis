@@ -215,10 +215,18 @@ class DualTrackStore:
             return
         activated: dict[str, tuple[float, MemoryItem]] = {}
         for root_score, _, root, _, _ in roots:
-            boost = root_score * discount
-            for linked in self.backend.related(
-                root.id, depth=1, max_nodes=max_neighbors
-            ):
+            neighbors = self.backend.related(
+                root.id, depth=1, max_nodes=1000
+            )
+            # Temporal contiguity: temporally adjacent memories associate more
+            # strongly, so their activation decays with distance from the root.
+            neighbors.sort(
+                key=lambda item: abs(
+                    (item.created_at - root.created_at).total_seconds()
+                )
+            )
+            for rank, linked in enumerate(neighbors[:max_neighbors]):
+                boost = root_score * discount * (0.985**rank)
                 current = activated.get(linked.id)
                 if current is None or boost > current[0]:
                     activated[linked.id] = (boost, root)
