@@ -226,9 +226,7 @@ class DualTrackStore:
             # Temporal contiguity: temporally adjacent memories associate more
             # strongly, so their activation decays with distance from the root.
             neighbors.sort(
-                key=lambda item: abs(
-                    (item.created_at - root.created_at).total_seconds()
-                )
+                key=lambda item: abs(item.seq - root.seq)
             )
             for rank, linked in enumerate(neighbors[:max_neighbors]):
                 boost = root_score * discount * (0.985**rank)

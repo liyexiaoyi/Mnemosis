@@ -116,6 +116,7 @@ class MemoryItem:
     storage_strength: float = 1.0
     updated_at: datetime | None = None
     revision_count: int = 0
+    seq: int = 0
 
     def __post_init__(self) -> None:
         self.content_hash = self.content_hash or hash_content(self.content)
@@ -132,6 +133,7 @@ class MemoryItem:
             self.context = self.context.strip() or None
         self.storage_strength = max(0.1, min(2.0, self.storage_strength))
         self.revision_count = max(0, int(self.revision_count))
+        self.seq = max(0, int(self.seq))
 
     def touch(self, now: datetime | None = None) -> None:
         """Mark as accessed; used by the forgetting curve reinforcement."""
@@ -159,6 +161,7 @@ class MemoryItem:
             "storage_strength": self.storage_strength,
             "updated_at": _iso(self.updated_at),
             "revision_count": self.revision_count,
+            "seq": self.seq,
         }
 
     @classmethod
@@ -183,6 +186,7 @@ class MemoryItem:
             storage_strength=data.get("storage_strength", 1.0),
             updated_at=_from_iso(data.get("updated_at")),
             revision_count=data.get("revision_count", 0),
+            seq=data.get("seq", 0),
         )
 
 

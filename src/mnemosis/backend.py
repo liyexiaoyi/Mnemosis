@@ -78,8 +78,11 @@ class DictBackend(Backend):
         self._cues: dict[str, set[str]] = {}
         self._links: dict[tuple[str, str], float] = {}
         self._adj: dict[str, set[str]] = {}
+        self._seq = 0
 
     def add(self, item: MemoryItem) -> None:
+        self._seq += 1
+        item.seq = self._seq
         self._items[item.id] = item
 
     def upsert(self, item: MemoryItem) -> MemoryItem:
@@ -88,6 +91,8 @@ class DictBackend(Backend):
             self.add(item)
             return item
         _merge_stats(existing, item)
+        self._seq += 1
+        item.seq = self._seq
         self.add_cues(existing.id, item.cues)
         return existing
 
@@ -127,7 +132,7 @@ class DictBackend(Backend):
             for item in self._items.values()
             if item.status == status and (kind is None or item.kind == kind)
         ]
-        items.sort(key=lambda i: i.created_at, reverse=True)
+        items.sort(key=lambda i: i.seq, reverse=True)
         return items[:limit] if limit is not None else items
 
     def add_cues(self, memory_id: str, cues: Iterable[str]) -> None:
@@ -138,7 +143,7 @@ class DictBackend(Backend):
         cue = cue.strip().lower()
         ids = sorted(self._cues.get(cue, set()))
         items = [self._items[i] for i in ids if i in self._items]
-        items.sort(key=lambda item: (item.created_at, item.content))
+        items.sort(key=lambda item: (item.seq, item.content))
         return items
 
     def add_link(self, src: str, dst: str, weight: float = 1.0) -> None:
@@ -162,7 +167,7 @@ class DictBackend(Backend):
                 neighbors |= self._adj.get(node, set())
             frontier = neighbors - seen
         result = [self._items[i] for i in frontier if i in self._items]
-        result.sort(key=lambda item: (item.created_at, item.content))
+        result.sort(key=lambda item: (item.seq, item.content))
         return result[:max_nodes]
 
     def stats(self) -> dict:
@@ -264,6 +269,7 @@ class SQLiteBackend(Backend):
             "storage_strength": "storage_strength REAL NOT NULL DEFAULT 1.0",
             "updated_at": "updated_at TEXT",
             "revision_count": "revision_count INTEGER NOT NULL DEFAULT 0",
+            "seq": "seq INTEGER NOT NULL DEFAULT 0",
         }
         with self._conn:
             for name, ddl in additions.items():
@@ -273,6 +279,10 @@ class SQLiteBackend(Backend):
                     )
 
     def add(self, item: MemoryItem) -> None:
+        row = self._conn.execute(
+            "SELECT COALESCE(MAX(seq), 0) + 1 AS next FROM memories"
+        ).fetchone()
+        item.seq = row["next"]
         with self._conn:
             self._conn.execute(
                 """
@@ -280,8 +290,8 @@ class SQLiteBackend(Backend):
                     id, kind, content, content_hash, source_json, cues_json,
                     created_at, last_access_at, access_count, importance,
                     strength, confidence, status, context, affect, evidence_count,
-                    storage_strength, updated_at, revision_count
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    storage_strength, updated_at, revision_count, seq
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 _item_row(item),
             )
@@ -291,6 +301,10 @@ class SQLiteBackend(Backend):
         if existing is None:
             self.add(item)
             return item
+        row = self._conn.execute(
+            "SELECT COALESCE(MAX(seq), 0) + 1 AS next FROM memories"
+        ).fetchone()
+        item.seq = row["next"]
         _merge_stats(existing, item)
         self.update(existing)
         self.add_cues(existing.id, item.cues)
@@ -363,7 +377,7 @@ class SQLiteBackend(Backend):
         if kind is not None:
             sql += " AND kind = ?"
             params.append(kind.value)
-        sql += " ORDER BY created_at DESC"
+        sql += " ORDER BY seq DESC"
         if limit is not None:
             sql += " LIMIT ?"
             params.append(limit)
@@ -390,7 +404,7 @@ class SQLiteBackend(Backend):
             """,
             (cue,),
         ).fetchall()
-        rows.sort(key=lambda row: (row["created_at"], row["content"]))
+        rows.sort(key=lambda row: (row["seq"], row["content"]))
         return [_row_to_item(r) for r in rows]
 
     def add_link(self, src: str, dst: str, weight: float = 1.0) -> None:
@@ -430,7 +444,7 @@ class SQLiteBackend(Backend):
         rows = self._conn.execute(
             f"""
             SELECT * FROM memories WHERE id IN ({placeholders})
-            ORDER BY created_at, content
+            ORDER BY seq, content
             """,
             list(frontier),
         ).fetchall()
@@ -470,6 +484,7 @@ def _merge_stats(target: MemoryItem, incoming: MemoryItem) -> None:
         target.storage_strength, incoming.storage_strength
     )
     target.revision_count = max(target.revision_count, incoming.revision_count)
+    target.seq = min(target.seq, incoming.seq) if incoming.seq else target.seq
     if incoming.updated_at and (
         target.updated_at is None or incoming.updated_at > target.updated_at
     ):
@@ -503,6 +518,7 @@ def _item_row(item: MemoryItem) -> tuple:
         item.storage_strength,
         item.updated_at.isoformat() if item.updated_at else None,
         item.revision_count,
+        item.seq,
     )
 
 
@@ -529,6 +545,7 @@ def _row_to_item(row: sqlite3.Row | None) -> MemoryItem | None:
         "storage_strength": row["storage_strength"],
         "updated_at": row["updated_at"],
         "revision_count": row["revision_count"],
+        "seq": row["seq"],
     }
     return MemoryItem.from_dict(data)
 

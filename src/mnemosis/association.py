@@ -37,7 +37,9 @@ class AssociationIndex:
             self.backend.get(rid) for rid in related_ids
         ]
         related = [other for other in related if other is not None]
-        related.sort(key=lambda other: other.created_at, reverse=True)
+        related.sort(
+            key=lambda other: (other.seq, other.content), reverse=True
+        )
         for other in related[:max_links]:
             self.backend.add_link(item.id, other.id, weight)
             self.backend.add_link(other.id, item.id, weight)
