@@ -72,7 +72,11 @@ LLM answer accuracy on a 12-question subset:
 | Approach | gemma3:12b | qwen2.5-vl |
 |---|---|---|
 | llm_alone | 0.250 | 0.250 |
-| llm_with_mnemosis | 1.000 | 0.833 |
+| llm_with_mnemosis | 0.92–1.00 | 0.83–0.92 |
+
+Observed range across repeated runs: with perfect retrieval context, the
+residual misses are model-side temporal reasoning (the correct event is
+present in the context), not memory retrieval failures.
 
 ### Reading the temporal number
 

@@ -22,6 +22,7 @@ import argparse
 import json
 import os
 import random
+import re
 import sys
 import time
 from collections import defaultdict
@@ -311,9 +312,19 @@ def eval_with_llm(
                     )
                     results = engine.recall(question["q"], top_k=k)
                     if question["kind"] == "temporal":
-                        results.sort(key=lambda r: r.item.created_at)
+                        def event_date(result) -> str:
+                            match = re.search(
+                                r"\d{4}-\d{2}-\d{2}", result.item.content
+                            )
+                            return (
+                                match.group(0)
+                                if match
+                                else result.item.created_at.date().isoformat()
+                            )
+
+                        results.sort(key=event_date)
                         context = "\n".join(
-                            f"- {r.item.created_at.date()}: {r.item.content}"
+                            f"- {event_date(r)}: {r.item.content}"
                             for r in results
                         )
                     else:
@@ -323,6 +334,11 @@ def eval_with_llm(
                         "If the context lacks the answer, answer 'unknown'.\n\n"
                         f"Context:\n{context}\n\nQuestion: {question['q']}"
                     )
+                    if question["kind"] == "temporal":
+                        prompt += (
+                            "\nThe 'next' event is the one with the earliest "
+                            "date strictly after the anchor date in the context."
+                        )
                 start = time.perf_counter()
                 answer = ollama_generate(model, prompt, url, timeout)
                 elapsed += time.perf_counter() - start
