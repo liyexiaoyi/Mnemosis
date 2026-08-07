@@ -110,3 +110,7 @@ Results (30 simulated days, seed-free deterministic):
   neutral memories after 30 days.
 - `update()` replaces stale facts cleanly (old content no longer surfaces)
   and sleep detects the planted contradiction.
+
+`--sleep` mode on locomo_bench verifies consolidation does not hurt
+retrieval: after `engine.sleep()`, fact/event hit@1 stay 1.000 and temporal
+strict@5 stays 0.625 (ngram).

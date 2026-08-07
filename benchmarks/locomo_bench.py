@@ -294,6 +294,7 @@ def eval_with_llm(
         for condition in ("llm_alone", "llm_with_mnemosis"):
             hits = 0
             elapsed = 0.0
+            details: list[dict] = []
             for question in chosen:
                 if condition == "llm_alone":
                     prompt = (
@@ -314,6 +315,16 @@ def eval_with_llm(
                 elapsed += time.perf_counter() - start
                 score = score_answer(answer, question["answer"])
                 hits += int(score >= 1.0)
+                details.append(
+                    {
+                        "kind": question["kind"],
+                        "question": question["q"],
+                        "answer": answer,
+                        "expected": question["answer"],
+                        "score": round(score, 3),
+                        "seconds": round(time.perf_counter() - start, 2),
+                    }
+                )
             rows.append(
                 {
                     "approach": condition,
@@ -321,6 +332,7 @@ def eval_with_llm(
                     "n": len(chosen),
                     "accuracy": round(hits / len(chosen), 3),
                     "avg_seconds": round(elapsed / len(chosen), 2),
+                    "details": details,
                 }
             )
     return rows
@@ -366,6 +378,11 @@ def main() -> int:
     parser.add_argument("--sessions", type=int, default=24)
     parser.add_argument("--events-per-session", type=int, default=5)
     parser.add_argument("--with-llm", action="store_true")
+    parser.add_argument(
+        "--sleep",
+        action="store_true",
+        help="run engine.sleep() after ingestion, before evaluation",
+    )
     parser.add_argument("--models", nargs="+", default=["gemma3:12b"])
     parser.add_argument("--url", default="http://127.0.0.1:11434")
     parser.add_argument("--timeout", type=int, default=180)
@@ -396,6 +413,8 @@ def main() -> int:
     reports = {}
     for label, embedder in (("keyword", None), ("ngram", NGramEmbedder())):
         engine = build_engine(dataset, embedder=embedder)
+        if args.sleep:
+            engine.sleep()
         reports[label] = eval_retrieval(engine, dataset["questions"])
         print(f"\n-- retrieval with {label} --")
         print_report(reports[label], [])
