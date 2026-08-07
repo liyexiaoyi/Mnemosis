@@ -182,6 +182,24 @@ def generate_dataset(
                 }
             )
 
+    # Partial-cue questions (pattern completion): only person + object are
+    # given, no date. Multiple events may match — we measure whether the
+    # *correct* event is in top-5, which requires the memory system to use
+    # context/association instead of exact lexical matching.
+    for event in events:
+        person = event["person"]
+        if not re.fullmatch(r"[A-Za-z]+", person):
+            continue  # skip CJK names for stable regex-free handling
+        object_token = event["answer"].split()[-1]
+        questions.append(
+            {
+                "kind": "partial",
+                "q": f"{person} {object_token}",
+                "answer": event["answer"],
+                "expected": [event["content"]],
+            }
+        )
+
     return {
         "seed": seed,
         "sessions": sessions,
@@ -413,6 +431,18 @@ def print_report(retrieval: dict, llm_rows: list[dict]) -> None:
     totals = {"n": 0, "hit1": 0, "hit5": 0, "pass": 0, "anchor5": 0, "mrr": 0.0}
     for kind, values in sorted(retrieval["stats"].items()):
         n = values["n"]
+        if kind == "partial":
+            # partial-cue questions are a separate harder track; keep the
+            # classic 88-question total comparable with earlier runs.
+            h1 = values["hit1"] / n if n else 0.0
+            h5 = values["hit5"] / n if n else 0.0
+            anchor5 = values["anchor5"] / n if n else 0.0
+            mrr = values["mrr"] / n if n else 0.0
+            print(
+                f"{kind:12s} {n:>4d} {h1:>7.3f} {h5:>7.3f} "
+                f"{anchor5:>9.3f} {mrr:>7.3f} {values['pass']:>6d}"
+            )
+            continue
         for key in totals:
             totals[key] += values[key]
         h1 = values["hit1"] / n if n else 0.0
