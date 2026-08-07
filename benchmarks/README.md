@@ -62,6 +62,7 @@ python benchmarks/locomo_bench.py --with-llm      # + local LLM grounding
 |---|---|---|---|---|---|
 | keyword | 0.958 | 0.958 | 0.917 | 0.958 | 0.792 |
 | ngram embedder | 1.000 | 1.000 | 0.917 | 1.000 | 0.958 |
+| BM25 baseline (hippo-memory-style) | 1.000 | 1.000 | 1.000 | 1.000 | 0.458 |
 
 Distractor questions pass 16/16 (never-mentioned topics are reported as
 knowledge gaps rather than confabulated).
@@ -80,6 +81,13 @@ surfaces the anchor event 67% of the time (ngram), but the *next* event shares
 no words with the query, so strict top-5 retrieval alone cannot find it. This
 is expected — the full pipeline resolves it by retrieving the anchor and
 letting the LLM reason over the linked neighborhood (see the LLM rows above).
+
+### Distractor behavior (confabulation guard)
+
+Mnemosis reports knowledge gaps for all 16 never-mentioned topics (16/16).
+BM25 — which has no metacognition — returns the most lexically similar memory
+for every one of them (0/16), e.g. answering "What is Alice's favorite music
+genre?" with "Alice's favorite color is amber."
 
 ### Reproducibility
 

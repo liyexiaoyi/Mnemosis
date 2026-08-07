@@ -77,6 +77,7 @@ class DictBackend(Backend):
         self._items: dict[str, MemoryItem] = {}
         self._cues: dict[str, set[str]] = {}
         self._links: dict[tuple[str, str], float] = {}
+        self._adj: dict[str, set[str]] = {}
 
     def add(self, item: MemoryItem) -> None:
         self._items[item.id] = item
@@ -110,6 +111,9 @@ class DictBackend(Backend):
         self._links = {
             (a, b): w for (a, b), w in self._links.items() if a != memory_id and b != memory_id
         }
+        self._adj.pop(memory_id, None)
+        for neighbors in self._adj.values():
+            neighbors.discard(memory_id)
 
     def list(
         self,
@@ -141,6 +145,8 @@ class DictBackend(Backend):
         if src == dst:
             return
         self._links[(src, dst)] = max(self._links.get((src, dst), 0.0), weight)
+        self._adj.setdefault(src, set()).add(dst)
+        self._adj.setdefault(dst, set()).add(src)
 
     def related(
         self, memory_id: str, depth: int = 1, max_nodes: int = 20
@@ -148,17 +154,13 @@ class DictBackend(Backend):
         frontier = {memory_id}
         seen: set[str] = set()
         for _ in range(max(1, depth)):
-            nxt: set[str] = set()
-            for node in frontier:
-                seen.add(node)
-                for (a, b), w in self._links.items():
-                    if a == node and b not in seen:
-                        nxt.add(b)
-                    if b == node and a not in seen:
-                        nxt.add(a)
-            frontier = nxt
             if not frontier:
                 break
+            seen |= frontier
+            neighbors: set[str] = set()
+            for node in frontier:
+                neighbors |= self._adj.get(node, set())
+            frontier = neighbors - seen
         result = [self._items[i] for i in frontier if i in self._items]
         result.sort(key=lambda item: (item.created_at, item.content))
         return result[:max_nodes]

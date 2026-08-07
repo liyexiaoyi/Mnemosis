@@ -31,6 +31,8 @@ from mnemosis import MemoryEngine
 from mnemosis.embedding import NGramEmbedder
 from mnemosis.types import MemoryKind, SourceRecord, SourceType
 
+from bm25_baseline import Bm25Index
+
 try:
     from compare_with_models import ollama_generate, score_answer  # script mode
 except ImportError:  # package mode (e.g. from tests)
@@ -248,6 +250,30 @@ def eval_retrieval(engine: MemoryEngine, questions: list[dict], top_k: int = 5) 
     return {"stats": dict(stats), "details": details}
 
 
+def eval_bm25(dataset: dict, questions: list[dict], top_k: int = 5) -> dict:
+    """Evaluate a plain BM25 index on the same questions (no memory logic)."""
+    memories = dataset["facts"] + dataset["events"]
+    index = Bm25Index(memories)
+    stats: dict[str, dict] = defaultdict(
+        lambda: {"n": 0, "hit1": 0, "hit5": 0, "pass": 0}
+    )
+    for question in questions:
+        kind = question["kind"]
+        stats[kind]["n"] += 1
+        contents = index.recall(question["q"], top_k=top_k)
+        if kind == "distractor":
+            top_score = index.score(question["q"], 0)
+            for idx in range(1, len(memories)):
+                top_score = max(top_score, index.score(question["q"], idx))
+            passed = top_score == 0.0
+            stats[kind]["pass"] += int(passed)
+            continue
+        expected = question["expected"]
+        stats[kind]["hit1"] += int(bool(contents) and contents[0] == expected[0])
+        stats[kind]["hit5"] += int(all(item in contents for item in expected))
+    return {"stats": dict(stats), "details": []}
+
+
 def eval_with_llm(
     engine: MemoryEngine,
     questions: list[dict],
@@ -255,6 +281,7 @@ def eval_with_llm(
     url: str,
     timeout: int,
     limit: int,
+    context_k: int = 3,
 ) -> list[dict]:
     chosen: list[dict] = []
     for kind in ("fact", "event", "temporal", "distractor"):
@@ -275,7 +302,7 @@ def eval_with_llm(
                         f"Question: {question['q']}"
                     )
                 else:
-                    results = engine.recall(question["q"], top_k=3)
+                    results = engine.recall(question["q"], top_k=context_k)
                     context = "\n".join(f"- {r.item.content}" for r in results)
                     prompt = (
                         "Answer using ONLY the memory context below. "
@@ -343,6 +370,13 @@ def main() -> int:
     parser.add_argument("--url", default="http://127.0.0.1:11434")
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--llm-questions", type=int, default=12)
+    parser.add_argument("--llm-context-k", type=int, default=3)
+    parser.add_argument(
+        "--llm-embedder",
+        choices=["keyword", "ngram"],
+        default="ngram",
+        help="retrieval mode used to build LLM grounding context",
+    )
     parser.add_argument(
         "--out",
         default=os.path.join(
@@ -369,17 +403,35 @@ def main() -> int:
 
     llm_rows = []
     if args.with_llm:
-        engine = build_engine(dataset)
+        llm_embedder = (
+            NGramEmbedder() if args.llm_embedder == "ngram" else None
+        )
+        llm_engine = build_engine(dataset, embedder=llm_embedder)
         llm_rows = eval_with_llm(
-            engine,
+            llm_engine,
             dataset["questions"],
             args.models,
             args.url,
             args.timeout,
             args.llm_questions,
+            args.llm_context_k,
         )
-        print_report(reports["keyword"], llm_rows)
-        engine.close()
+        llm_engine.close()
+    print_report(reports["keyword"], llm_rows)
+
+    print("\n== BM25 baseline (hippo-memory-style retrieval) ==")
+    bm25 = eval_bm25(dataset, dataset["questions"])
+    print(
+        f"{'category':12s} {'n':>4s} {'hit@1':>7s} {'hit@5':>7s} {'pass':>6s}"
+    )
+    for kind, values in sorted(bm25["stats"].items()):
+        n = values["n"]
+        print(
+            f"{kind:12s} {n:>4d} "
+            f"{values['hit1'] / n if n else 0.0:>7.3f} "
+            f"{values['hit5'] / n if n else 0.0:>7.3f} "
+            f"{values['pass']:>6d}"
+        )
 
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as handle:
@@ -397,6 +449,7 @@ def main() -> int:
                     label: {"stats": reports[label]["stats"]}
                     for label in reports
                 },
+                "bm25": {"stats": bm25["stats"]},
                 "llm": llm_rows,
             },
             handle,
