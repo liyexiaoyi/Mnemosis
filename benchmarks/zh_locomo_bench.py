@@ -162,6 +162,75 @@ def evaluate(dataset: dict, filter_stopwords: bool) -> dict:
     }
 
 
+def cross_format_pairs() -> tuple[list[dict], list[dict]]:
+    """12 zh-date memories (queried by ISO date) + 12 ISO memories (queried
+    by zh date)."""
+    memories: list[dict] = []
+    questions: list[dict] = []
+    start = date(2026, 5, 1)
+    for i in range(12):
+        day = start + timedelta(days=i)
+        iso = day.isoformat()
+        zh = f"{day.year}年{day.month}月{day.day}日"
+        person = NAMES[i % 3]
+        obj = ITEMS[i % 3]
+        if i % 2 == 0:
+            memories.append(
+                {
+                    "content": f"{person}在{zh}买了{obj}。",
+                    "kind": "episodic",
+                    "cues": [person],
+                }
+            )
+            questions.append(
+                {
+                    "kind": "event",
+                    "q": f"{person}在{iso}买了什么？",
+                    "answer": obj,
+                    "expected": [f"{person}在{zh}买了{obj}。"],
+                }
+            )
+        else:
+            memories.append(
+                {
+                    "content": f"{person}在{iso}买了{obj}。",
+                    "kind": "episodic",
+                    "cues": [person],
+                }
+            )
+            questions.append(
+                {
+                    "kind": "event",
+                    "q": f"{person}在{zh}买了什么？",
+                    "answer": obj,
+                    "expected": [f"{person}在{iso}买了{obj}。"],
+                }
+            )
+    return memories, questions
+
+
+def evaluate_cross(normalize: bool) -> dict:
+    types.ZH_DATE_NORMALIZE = normalize
+    memories, questions = cross_format_pairs()
+    engine = MemoryEngine()
+    user = SourceRecord(origin=SourceType.USER)
+    for m in memories:
+        engine.remember(
+            m["content"],
+            kind=MemoryKind(m["kind"]),
+            source=user,
+            cues=m["cues"],
+            importance=0.5,
+        )
+    hits = 0
+    for q in questions:
+        results = engine.recall(q["q"], top_k=5)
+        contents = [r.item.content for r in results]
+        hits += int(all(e in contents for e in q["expected"]))
+    engine.close()
+    return {"normalize": normalize, "hit5": (hits, len(questions))}
+
+
 _ORIGINAL = types.CJK_STOPWORDS
 
 
@@ -177,7 +246,10 @@ def main() -> int:
     dataset = generate()
     on = evaluate(dataset, True)
     off = evaluate(dataset, False)
-    report = {"on": on, "off": off}
+    cross_on = evaluate_cross(True)
+    cross_off = evaluate_cross(False)
+    report = {"on": on, "off": off,
+              "cross_format": {"on": cross_on, "off": cross_off}}
     print(json.dumps(report, ensure_ascii=False, indent=2))
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as handle:

@@ -32,6 +32,10 @@ CJK_STOPWORDS = frozenset(
     "很真最更又再却曾已什怎么"
 )
 
+# Toggle for Chinese-date normalization ("2026年3月1日" -> "2026-03-01"),
+# kept module-level so benchmarks can A/B it.
+ZH_DATE_NORMALIZE = True
+
 
 def hash_content(content: str) -> str:
     """Stable content hash used for semantic deduplication."""
@@ -248,6 +252,23 @@ def tokenize(text: str) -> list[str]:
     for token in re.findall(compound_pattern, lowered):
         if token not in STOPWORDS:
             tokens.append(token)
+    # Chinese dates "2026年3月1日" also emit the canonical ISO token so
+    # "2026-03-01" queries match Chinese-dated memories and vice versa.
+    if ZH_DATE_NORMALIZE:
+        zh_dates = re.findall(
+            r"(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日", lowered
+        )
+        for y, m, d in zh_dates:
+            tokens.append(f"{int(y):04d}-{int(m):02d}-{int(d):02d}")
+        # Remove the matched Chinese-date spans (年月日 chars) from the CJK
+        # stream: the normalized ISO token carries the date, and the bare
+        # 年/月/日 chars would otherwise make ANY zh-dated memory match any
+        # zh-date query regardless of the actual day.
+        lowered = re.sub(
+            r"\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日",
+            lambda m: " " * len(m.group(0)),
+            lowered,
+        )
     rest = re.sub(compound_pattern, " ", lowered)
     for word in re.findall(r"[a-z0-9]+", rest):
         if len(word) > 1 and word not in STOPWORDS:

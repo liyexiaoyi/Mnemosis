@@ -58,6 +58,35 @@ class ChineseOptimizationTest(unittest.TestCase):
             results[0].item.content, "阿丽在2026年3月1日买了笔记本。"
         )
 
+    def test_cross_format_dates_match(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        # stored with a Chinese date, queried with an ISO date
+        engine.remember(
+            "阿丽在2026年3月1日买了笔记本。",
+            kind=MemoryKind.EPISODIC,
+            source=user,
+            cues=["阿丽"],
+        )
+        results = engine.recall("阿丽 2026-03-01", top_k=3)
+        self.assertTrue(results)
+        self.assertEqual(
+            results[0].item.content, "阿丽在2026年3月1日买了笔记本。"
+        )
+        # stored with an ISO date, queried with a Chinese date
+        engine2 = MemoryEngine()
+        engine2.remember(
+            "小波在2026-04-02买了相机。",
+            kind=MemoryKind.EPISODIC,
+            source=user,
+            cues=["小波"],
+        )
+        results2 = engine2.recall("小波在2026年4月2日", top_k=3)
+        self.assertTrue(results2)
+        self.assertEqual(
+            results2[0].item.content, "小波在2026-04-02买了相机。"
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
