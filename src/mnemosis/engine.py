@@ -150,7 +150,9 @@ class MemoryEngine:
         now: datetime | None = None,
         context: str | None = None,
         suppression_factor: float = 0.02,
+        suppression_min_cues: int = 2,
         embedder: Embedder | None = None,
+        expansion_discount: float = 0.95,
     ) -> list[RecallResult]:
         embedder = embedder or self.embedder
         return self.store.recall(
@@ -160,7 +162,9 @@ class MemoryEngine:
             now=now,
             context=context,
             suppression_factor=suppression_factor,
+            suppression_min_cues=suppression_min_cues,
             embedder=embedder,
+            expansion_discount=expansion_discount,
         )
 
     # -- sleep cycle ----------------------------------------------------------

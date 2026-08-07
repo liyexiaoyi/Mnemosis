@@ -211,7 +211,7 @@ def tokenize(text: str) -> list[str]:
     """Tokenize for keyword recall: latin words + CJK chars and bigrams."""
     tokens: list[str] = []
     for word in re.findall(r"[a-z0-9]+", text.lower()):
-        if len(word) > 1:
+        if len(word) > 1 and word not in STOPWORDS:
             tokens.append(word)
     cjk = "".join(re.findall(r"[\u4e00-\u9fff]", text.lower()))
     for ch in cjk:

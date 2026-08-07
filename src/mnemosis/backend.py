@@ -132,7 +132,10 @@ class DictBackend(Backend):
 
     def find_by_cue(self, cue: str) -> list[MemoryItem]:
         cue = cue.strip().lower()
-        return [self._items[i] for i in self._cues.get(cue, set()) if i in self._items]
+        ids = sorted(self._cues.get(cue, set()))
+        items = [self._items[i] for i in ids if i in self._items]
+        items.sort(key=lambda item: (item.created_at, item.content))
+        return items
 
     def add_link(self, src: str, dst: str, weight: float = 1.0) -> None:
         if src == dst:
@@ -157,6 +160,7 @@ class DictBackend(Backend):
             if not frontier:
                 break
         result = [self._items[i] for i in frontier if i in self._items]
+        result.sort(key=lambda item: (item.created_at, item.content))
         return result[:max_nodes]
 
     def stats(self) -> dict:
@@ -384,6 +388,7 @@ class SQLiteBackend(Backend):
             """,
             (cue,),
         ).fetchall()
+        rows.sort(key=lambda row: (row["created_at"], row["content"]))
         return [_row_to_item(r) for r in rows]
 
     def add_link(self, src: str, dst: str, weight: float = 1.0) -> None:
@@ -421,7 +426,11 @@ class SQLiteBackend(Backend):
             return []
         placeholders = ",".join("?" for _ in frontier)
         rows = self._conn.execute(
-            f"SELECT * FROM memories WHERE id IN ({placeholders})", list(frontier)
+            f"""
+            SELECT * FROM memories WHERE id IN ({placeholders})
+            ORDER BY created_at, content
+            """,
+            list(frontier),
         ).fetchall()
         return [_row_to_item(r) for r in rows][:max_nodes]
 

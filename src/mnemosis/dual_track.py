@@ -85,13 +85,17 @@ class DualTrackStore:
         reinforce: bool = True,
         context: str | None = None,
         suppression_factor: float = 0.02,
+        suppression_min_cues: int = 2,
         embedder: Embedder | None = None,
+        expansion_discount: float = 0.95,
+        max_expansion_roots: int = 5,
+        max_expansion_neighbors: int = 50,
     ) -> list[RecallResult]:
         now = now or utcnow()
         candidates = self.backend.list(kind=kind)
         query_terms = set(tokenize(query))
         query_vector = embedder.embed(query) if embedder is not None else None
-        scored: list[tuple[float, float, MemoryItem, list[str]]] = []
+        scored: list[tuple[float, float, MemoryItem, list[str], bool]] = []
         for item in candidates:
             overlap = _overlap(query_terms, item)
             retrievability = self.curve.retrievability(item, now)
@@ -129,38 +133,123 @@ class DualTrackStore:
                 reasons.append("high importance")
             if context_match:
                 reasons.append("context match")
-            scored.append((score, overlap, item, reasons))
+            matched = overlap > 0.0 or semantic >= 0.2
+            scored.append((score, overlap, item, reasons, matched))
         scored.sort(key=lambda entry: entry[0], reverse=True)
+        self._spread_activation(
+            scored,
+            query_terms,
+            now,
+            context,
+            query_vector,
+            embedder,
+            expansion_discount,
+            max_expansion_roots,
+            max_expansion_neighbors,
+        )
         results = [
             RecallResult(item=item, score=score, reasons=reasons)
-            for score, _, item, reasons in scored[:top_k]
+            for score, _, item, reasons, _ in scored[:top_k]
         ]
         if reinforce:
-            for score, overlap, item, _ in scored[:top_k]:
+            for score, overlap, item, _, matched in scored[:top_k]:
+                if not matched:
+                    continue  # failed retrieval does not strengthen (testing effect)
                 # Testing effect (Roediger & Karpicke, 2006): reinforcement
                 # scales with how well the memory matched the retrieval.
                 delta = 0.05 + 0.15 * overlap
                 self.curve.reinforce(item, delta=delta, now=now)
                 self.backend.update(item)
             if suppression_factor > 0:
-                self._suppress_linked_rivals(results, suppression_factor)
+                matched_items = [
+                    item
+                    for _, _, item, _, matched in scored[:top_k]
+                    if matched
+                ]
+                self._suppress_linked_rivals(
+                    matched_items, suppression_factor, suppression_min_cues
+                )
         return results
+
+    def _spread_activation(
+        self,
+        scored: list[tuple[float, float, MemoryItem, list[str], bool]],
+        query_terms: set[str],
+        now: datetime,
+        context: str | None,
+        query_vector: list[float] | None,
+        embedder: Embedder | None,
+        discount: float,
+        max_roots: int,
+        max_neighbors: int,
+    ) -> None:
+        """Spreading activation over the association graph (HippoRAG-style).
+
+        Memories linked to the strongest matches get a discounted score boost,
+        so "what did Alice do after X?" can surface the chronologically next
+        event even when it shares no words with the query.
+        """
+        roots = [entry for entry in scored[:max_roots] if entry[4]]
+        if not roots:
+            return
+        activated: dict[str, tuple[float, MemoryItem]] = {}
+        for root_score, _, root, _, _ in roots:
+            boost = root_score * discount
+            for linked in self.backend.related(
+                root.id, depth=1, max_nodes=max_neighbors
+            ):
+                current = activated.get(linked.id)
+                if current is None or boost > current[0]:
+                    activated[linked.id] = (boost, root)
+        if not activated:
+            return
+
+        activated_ids = set(activated)
+        for index, (score, overlap, item, reasons, matched) in enumerate(scored):
+            if item.id not in activated_ids:
+                continue
+            boost, root = activated[item.id]
+            if boost > score:
+                reason = f"linked to '{root.content[:40]}'"
+                scored[index] = (boost, overlap, item, reasons + [reason], matched)
+        for linked_id, (boost, root) in activated.items():
+            if any(entry[2].id == linked_id for entry in scored):
+                continue
+            linked = self.backend.get(linked_id)
+            if linked is None:
+                continue
+            scored.append(
+                (
+                    boost,
+                    0.0,
+                    linked,
+                    [f"linked to '{root.content[:40]}'"],
+                    False,
+                )
+            )
+        scored.sort(key=lambda entry: entry[0], reverse=True)
 
     def _suppress_linked_rivals(
         self,
-        results: list[RecallResult],
+        items: list[MemoryItem],
         suppression_factor: float,
+        min_shared_cues: int,
     ) -> None:
         """Retrieval-induced forgetting (Anderson, Bjork & Bjork, 1994).
 
-        Memories linked to what was just recalled — but not themselves
-        recalled — lose a little strength.
+        Only *close competitors* — linked memories sharing at least
+        `min_shared_cues` cues with what was recalled — lose a little
+        strength. This mirrors RIF's category-competitor effect instead of
+        punishing everything loosely related.
         """
-        selected = {r.item.id for r in results}
+        selected = {item.id for item in items}
         suppressed: set[str] = set()
-        for r in results:
-            for linked in self.backend.related(r.item.id, depth=1, max_nodes=50):
+        for item in items:
+            item_cues = set(item.cues)
+            for linked in self.backend.related(item.id, depth=1, max_nodes=50):
                 if linked.id in selected or linked.id in suppressed:
+                    continue
+                if len(item_cues & set(linked.cues)) < min_shared_cues:
                     continue
                 linked.strength = max(0.0, linked.strength - suppression_factor)
                 self.backend.update(linked)

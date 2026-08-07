@@ -111,6 +111,29 @@ class CognitionTest(unittest.TestCase):
         check = self.engine.check("alpha details", top_k=1)
         self.assertTrue(any(item.id == blocked.id for item in check.blocked))
 
+    def test_associative_expansion_surfaces_linked_neighbor(self):
+        first = self.engine.remember(
+            "Alice visited the aquarium on 2026-02-02.",
+            kind=MemoryKind.EPISODIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["alice", "2026-02-02", "session0"],
+        )
+        second = self.engine.remember(
+            "Alice bought a camera on 2026-02-03.",
+            kind=MemoryKind.EPISODIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["alice", "2026-02-03", "session0"],
+        )
+        results = self.engine.recall(
+            "after visiting the aquarium, what did Alice do next?", top_k=5
+        )
+        contents = [r.item.content for r in results]
+        self.assertIn(first.content, contents)
+        self.assertIn(second.content, contents)
+        self.assertTrue(
+            any("linked to" in reason for r in results for reason in r.reasons)
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

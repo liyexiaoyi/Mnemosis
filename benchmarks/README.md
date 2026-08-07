@@ -44,3 +44,44 @@ sleep must stay under generous bounds. Run with the rest of the suite:
 python -m unittest discover -s tests
 ```
 
+## locomo_bench.py
+
+LoCoMo-style long-conversation memory evaluation: a deterministic synthetic
+persona (4 people, 24 sessions, 5 dated events each) with 88 questions across
+four categories — fact recall, event recall, temporal ordering, and
+never-mentioned distractors.
+
+```bash
+python benchmarks/locomo_bench.py                 # retrieval only
+python benchmarks/locomo_bench.py --with-llm      # + local LLM grounding
+```
+
+### Results (seed 42, deterministic)
+
+| Mode | event hit@1 | event hit@5 | fact hit@1 | fact hit@5 | temporal anchor@5 |
+|---|---|---|---|---|---|
+| keyword | 0.250 | 0.958 | 0.625 | 0.917 | 0.083 |
+| ngram embedder | 0.792 | 0.917 | 0.792 | 0.958 | 0.667 |
+
+Distractor questions pass 16/16 (never-mentioned topics are reported as
+knowledge gaps rather than confabulated).
+
+LLM answer accuracy on a 12-question subset:
+
+| Approach | gemma3:12b | qwen2.5-vl |
+|---|---|---|
+| llm_alone | 0.250 | 0.250 |
+| llm_with_mnemosis | 0.667 | 0.750 |
+
+### Reading the temporal number
+
+Temporal questions ("after X, what did Y do next?") are the hardest: retrieval
+surfaces the anchor event 67% of the time (ngram), but the *next* event shares
+no words with the query, so strict top-5 retrieval alone cannot find it. This
+is expected — the full pipeline resolves it by retrieving the anchor and
+letting the LLM reason over the linked neighborhood (see the LLM rows above).
+
+### Reproducibility
+
+Results are deterministic for a fixed seed (tie-breaking is by
+`(created_at, content)`, never by random ids or set iteration order).
