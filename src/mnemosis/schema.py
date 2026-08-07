@@ -62,12 +62,14 @@ class EventChainIndex:
     def __init__(self, backend: Backend) -> None:
         self.backend = backend
         self._cache: dict[str, str | None] | None = None
+        self._version = 0
+        self._built_version = -1
 
     def invalidate(self) -> None:
-        self._cache = None
+        self._version += 1
 
     def _build(self) -> dict[str, str | None]:
-        if self._cache is not None:
+        if self._cache is not None and self._version == self._built_version:
             return self._cache
         groups: dict[tuple[str, int | None], list[MemoryItem]] = {}
         for item in self.backend.list(kind=MemoryKind.EPISODIC):
@@ -83,6 +85,7 @@ class EventChainIndex:
             for current, following in zip(items, items[1:]):
                 chain[current.id] = following.id
         self._cache = chain
+        self._built_version = self._version
         return chain
 
     def next_event_id(self, memory_id: str) -> str | None:
