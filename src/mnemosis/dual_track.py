@@ -181,13 +181,6 @@ class DualTrackStore:
             matched = overlap > 0.0 or semantic >= 0.2
             scored.append((score, overlap, item, reasons, matched))
         scored.sort(key=lambda entry: entry[0], reverse=True)
-        if separation:
-            self._separate_near_duplicates(
-                scored,
-                min_shared_cues=sep_shared_cues_min,
-                overlap_min=sep_overlap_min,
-                penalty=sep_penalty,
-            )
         self._spread_activation(
             scored,
             query_terms,
@@ -214,6 +207,13 @@ class DualTrackStore:
                 max_roots=pc_max_roots,
                 max_neighbors=pc_max_neighbors,
                 max_appended=pc_max_appended,
+            )
+        if separation:
+            self._separate_near_duplicates(
+                scored,
+                min_shared_cues=sep_shared_cues_min,
+                overlap_min=sep_overlap_min,
+                penalty=sep_penalty,
             )
         results = [
             RecallResult(item=item, score=score, reasons=reasons)
