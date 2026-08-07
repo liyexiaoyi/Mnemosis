@@ -120,10 +120,12 @@ def tenk_ab_chart() -> None:
         return
     data = json.load(open(work, encoding="utf-8"))
     old, new = data["old"], data["new"]
+    distractor_total = 16.0  # the benchmark always asks 16 distractor questions
     rows = [
         ("找到正确答案（前5）", old["total_hit5"], new["total_hit5"]),
         ("时序题命中（前5）", old["temporal_hit5"], new["temporal_hit5"]),
-        ("没聊过的话题不乱说", old["distractor_pass"], new["distractor_pass"]),
+        ("没聊过的话题不乱说", old["distractor_pass"] / distractor_total,
+         new["distractor_pass"] / distractor_total),
     ]
     w, h = 820, 400
     ml, mr, mt, mb = 70, 20, 70, 90
