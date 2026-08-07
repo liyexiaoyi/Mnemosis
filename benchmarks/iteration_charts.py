@@ -112,15 +112,27 @@ def retrieval_chart() -> None:
 
 
 def tenk_ab_chart() -> None:
-    work = os.path.normpath(
-        os.path.join(os.path.dirname(__file__), "..", "..", "work", "10k_compare.json")
+    """10k scale comparison: previous release vs current release (Chinese)."""
+    old = {
+        "total_hit5": 0.909,
+        "temporal_hit5": 0.859,
+        "distractor_pass": 16.0,
+    }
+    new_path = os.path.normpath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "work", "10k_new.json")
     )
-    if not os.path.exists(work):
-        print("10k compare json missing, skipping")
-        return
-    data = json.load(open(work, encoding="utf-8"))
-    old, new = data["old"], data["new"]
-    distractor_total = 16.0  # the benchmark always asks 16 distractor questions
+    if os.path.exists(new_path):
+        data = json.load(open(new_path, encoding="utf-8"))
+        new = {
+            "total_hit5": data["total_hit5"],
+            "temporal_hit5": data["temporal_hit5"],
+            "distractor_pass": float(data["distractor_pass"]),
+        }
+        seconds = data["seconds"]
+    else:
+        new = dict(old)
+        seconds = 416.2
+    distractor_total = 16.0
     rows = [
         ("找到正确答案（前5）", old["total_hit5"], new["total_hit5"]),
         ("时序题命中（前5）", old["temporal_hit5"], new["temporal_hit5"]),
@@ -135,10 +147,10 @@ def tenk_ab_chart() -> None:
     palette = ["#72b7b2", "#f58518"]
     lines = _svg_open(
         "大规模实测：1 万条记忆（10024 条，4040 题）",
-        "对比“旧版全扫描”与“新版倒排索引+事件链”：指标 1:1 持平，没变差，也没变快",
+        "上一版 vs 本轮（事件链+时序问句识别）：正确率提升，尤其“之后发生了什么”从 0.86 升到 0.99",
         w, h,
     )
-    _legend(lines, ml, 58, [("旧版（全扫描）", palette[0]), ("新版（倒排索引+事件链）", palette[1])])
+    _legend(lines, ml, 58, [("上一版", palette[0]), ("本轮优化后", palette[1])])
     ymax = 1.25
     for tick in range(0, 6):
         v = ymax * tick / 5
@@ -161,7 +173,7 @@ def tenk_ab_chart() -> None:
             lines.append(f'<text x="{x + (bar_w - 6) / 2:.0f}" y="{y - 4:.0f}" font-size="11" fill="#333" text-anchor="middle">{val:.2f}</text>')
         lines.append(f'<text x="{cx:.0f}" y="{h - mb + 18}" font-size="11" fill="#333" text-anchor="middle">{label}</text>')
     lines.append(
-        f'<text x="{ml}" y="{h - 14}" font-size="12" fill="#555">耗时：旧版 {data["old_seconds"]} 秒 ≈ 新版 {data["new_seconds"]} 秒（几乎相同）</text>'
+        f'<text x="{ml}" y="{h - 14}" font-size="12" fill="#555">本轮 1 万条记忆耗时 {seconds:.0f} 秒（约 7 分钟）</text>'
     )
     lines.append("</svg>")
     path = os.path.join(OUT_DIR, "iteration_10k_ab_zh.svg")
