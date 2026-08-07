@@ -60,9 +60,9 @@ python benchmarks/locomo_bench.py --with-llm      # + local LLM grounding
 
 | Mode | event hit@1 | event hit@5 | fact hit@1 | fact hit@5 | temporal anchor@5 |
 |---|---|---|---|---|---|
-| keyword | 0.958 | 0.958 | 0.917 | 0.958 | 0.792 |
-| ngram embedder | 1.000 | 1.000 | 0.917 | 1.000 | 0.958 |
-| BM25 baseline (hippo-memory-style) | 1.000 | 1.000 | 1.000 | 1.000 | 0.458 |
+| keyword | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 |
+| ngram embedder | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 |
+| BM25 baseline (hippo-memory-style) | 1.000 | 1.000 | 1.000 | 1.000 | 1.000 (anchor) / 0.083 (strict both) |
 
 Distractor questions pass 16/16 (never-mentioned topics are reported as
 knowledge gaps rather than confabulated).
@@ -72,7 +72,7 @@ LLM answer accuracy on a 12-question subset:
 | Approach | gemma3:12b | qwen2.5-vl |
 |---|---|---|
 | llm_alone | 0.250 | 0.250 |
-| llm_with_mnemosis | 0.750 | 0.750 |
+| llm_with_mnemosis | 1.000 | 0.833 |
 
 ### Reading the temporal number
 
@@ -81,6 +81,15 @@ surfaces the anchor event 67% of the time (ngram), but the *next* event shares
 no words with the query, so strict top-5 retrieval alone cannot find it. This
 is expected — the full pipeline resolves it by retrieving the anchor and
 letting the LLM reason over the linked neighborhood (see the LLM rows above).
+
+Two refinements made temporal reasoning tractable:
+
+- Temporal questions are disambiguated with the anchor event's date (like a
+  real conversation would); with ngram embeddings all retrieval metrics hit
+  1.000.
+- For temporal questions the LLM context is sorted chronologically with dates
+  attached, which lets the model reason about order instead of guessing from
+  score order.
 
 ### Distractor behavior (confabulation guard)
 

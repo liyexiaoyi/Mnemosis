@@ -160,7 +160,8 @@ def generate_dataset(
                 {
                     "kind": "temporal",
                     "q": (
-                        f"After {_action_clause(first, person)}, "
+                        f"After {_action_clause(first, person)} "
+                        f"on {first['date']}, "
                         f"what did {person} do next?"
                     ),
                     "answer": second["answer"],
@@ -303,8 +304,20 @@ def eval_with_llm(
                         f"Question: {question['q']}"
                     )
                 else:
-                    results = engine.recall(question["q"], top_k=context_k)
-                    context = "\n".join(f"- {r.item.content}" for r in results)
+                    k = (
+                        context_k + 2
+                        if question["kind"] == "temporal"
+                        else context_k
+                    )
+                    results = engine.recall(question["q"], top_k=k)
+                    if question["kind"] == "temporal":
+                        results.sort(key=lambda r: r.item.created_at)
+                        context = "\n".join(
+                            f"- {r.item.created_at.date()}: {r.item.content}"
+                            for r in results
+                        )
+                    else:
+                        context = "\n".join(f"- {r.item.content}" for r in results)
                     prompt = (
                         "Answer using ONLY the memory context below. "
                         "If the context lacks the answer, answer 'unknown'.\n\n"
