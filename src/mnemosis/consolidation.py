@@ -35,6 +35,8 @@ class ConsolidationReport:
     merged: int = 0
     rem_links: int = 0
     rem_resolved: int = 0
+    emotion_boosted: int = 0
+    emotion_links: int = 0
     total_before: int = 0
     total_after: int = 0
 
@@ -44,6 +46,8 @@ class ConsolidationReport:
             f"reflected {len(self.reflected)}, replayed {self.replayed}, "
             f"merged {self.merged}, rem_links {self.rem_links}, "
             f"rem_resolved {self.rem_resolved}, "
+            f"emotion_boosted {self.emotion_boosted}, "
+            f"emotion_links {self.emotion_links}, "
             f"conflicts {len(self.conflicts)} "
             f"({self.total_before} -> {self.total_after} active memories)"
         )
@@ -92,6 +96,7 @@ class Consolidator:
         recycled = self._prune_noise(now)
         conflicts = self.detect_conflicts()
         rem_links, rem_resolved = self._rem_phase(now)
+        emotion_boosted, emotion_links = self._emotion_phase(now)
         reflected = self.reflect(summarizer or self.llm_summarizer, now)
         total_after = len(self.store.all_active())
         return ConsolidationReport(
@@ -103,9 +108,56 @@ class Consolidator:
             merged=merged,
             rem_links=rem_links,
             rem_resolved=rem_resolved,
+            emotion_boosted=emotion_boosted,
+            emotion_links=emotion_links,
             total_before=total_before,
             total_after=total_after,
         )
+
+    def _emotion_phase(self, now: datetime) -> tuple[int, int]:
+        """Amygdala-modulated consolidation (McGaugh, 2004; Krenz et al., 2025).
+
+        Emotionally arousing experiences are consolidated more strongly than
+        neutral ones, and *recurring* emotional events benefit most: the
+        initial amygdala response stabilises a neocortical pattern that later
+        repetitions strengthen (Krenz et al., 2025, J. Neurosci.). We emulate:
+
+        - recurring emotional episodes (same content hash collapsed by the
+          merge pass, so their `evidence_count` is the number of repeats)
+          gain extra confidence / storage strength on top of plain merge;
+        - links between distinct emotional episodes sharing a cue are
+          strengthened (amygdala-hippocampal coupling), so one cue can
+          re-activate the whole emotional cluster.
+        """
+        episodes = self.store.all_active(MemoryKind.EPISODIC)
+        emotional = [item for item in episodes if item.affect]
+        boosted = 0
+        for item in emotional:
+            repeats = item.evidence_count
+            if repeats < 2:
+                continue
+            gain = repeats - 1
+            item.confidence = min(1.0, item.confidence + 0.03 * gain)
+            item.storage_strength = min(
+                2.0, item.storage_strength + 0.05 * gain
+            )
+            item.strength = min(1.0, item.strength + 0.03)
+            self.backend.update(item)
+            boosted += 1
+
+        links = 0
+        for i in range(len(emotional)):
+            a = emotional[i]
+            a_cues = set(a.cues)
+            for b in emotional[i + 1 :]:
+                if a.content_hash == b.content_hash:
+                    continue
+                if not (a_cues & set(b.cues)):
+                    continue
+                self.backend.add_link(a.id, b.id, weight=1.2)
+                self.backend.add_link(b.id, a.id, weight=1.2)
+                links += 1
+        return boosted, links
 
     def _merge_duplicates(self, now: datetime) -> int:
         """Merge near-duplicate episodic traces (complementary learning
@@ -278,7 +330,10 @@ class Consolidator:
                 source=item.source,
                 cues=list(item.cues) + ["consolidated"],
                 importance=max(item.importance, self.promotion_importance),
-                confidence=min(1.0, 0.6 + 0.08 * evidence),
+                confidence=min(
+                    1.0,
+                    0.6 + 0.08 * evidence + (0.05 if item.affect else 0.0),
+                ),
                 strength=item.strength,
                 context=item.context,
                 affect=item.affect,
