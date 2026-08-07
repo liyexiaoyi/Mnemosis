@@ -606,12 +606,25 @@ def real_github_compare_chart() -> None:
     if os.path.exists(official_path):
         official = json.load(open(official_path, encoding="utf-8"))["official_cm_unified_rule"]
 
+    mem0_path = os.path.join(RESULTS_DIR, "official_mem0.json")
+    mem0_official = {}
+    if os.path.exists(mem0_path):
+        m0 = json.load(open(mem0_path, encoding="utf-8"))
+        mem0_official = {
+            "fact@5": m0.get("fact@5", 0.0),
+            "event@5": m0.get("event@5", 0.0),
+            "temporal@5": m0.get("temporal@5", 0.0),
+            "distractor_pass": m0.get("distractor_pass", 0),
+            "total@5": m0.get("total_hit5", 0.0),
+        }
+
     systems = [
+        ("mem0 官方包", mem0_official),
+        ("cognitive-memory\n(官方包)", official),
         ("BM25", unified["BM25"]),
         ("嵌入 kNN", unified["嵌入 kNN"]),
         ("Mem0-style", unified["Mem0-style"]),
         ("HippoRAG-style", unified["HippoRAG-style"]),
-        ("cognitive-memory\n(官方包)", official),
         ("Mnemosis 词法", unified["Mnemosis 词法"]),
         ("Mnemosis ngram", unified["Mnemosis ngram"]),
     ]
@@ -627,7 +640,7 @@ def real_github_compare_chart() -> None:
     group_w = plot_w / len(cats)
     n = len(systems)
     bar_w = min(26.0, group_w / (n + 1) * 0.9)
-    palette = ["#b0b0b0", "#8fa0c8", "#e45756", "#f2cf5b", "#c58fce", "#54a24b", "#f58518"]
+    palette = ["#c58fce", "#8fa0c8", "#b0b0b0", "#4c78a8", "#e45756", "#f2cf5b", "#54a24b", "#f58518"]
     lines = _svg_open(
         "真实能力对比：GitHub 上的记忆项目 vs Mnemosis（同一 88 题）",
         "cognitive-memory 为官方 PyPI 包 0.5.1 直接运行；其余为忠实复刻核心管线（官方包无法在本机安装）。Mnemosis 是唯一四关全过的",
