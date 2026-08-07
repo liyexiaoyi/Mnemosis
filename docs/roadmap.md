@@ -10,7 +10,8 @@
 
 ## v0.3 — evaluation
 
-- [ ] Benchmarks: recall precision/recall, forgetting curve behavior,
+- [x] Local LLM comparison harness (`benchmarks/compare_with_models.py`)
+- [ ] Larger benchmarks: recall precision/recall, forgetting curve behavior,
       contradiction detection accuracy
 - [ ] Deterministic test corpus + human-labeled golden set
 - [ ] Comparison scripts against Mem0 / Letta / cognitive-memory

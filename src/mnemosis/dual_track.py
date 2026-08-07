@@ -88,7 +88,7 @@ class DualTrackStore:
         now = now or utcnow()
         candidates = self.backend.list(kind=kind)
         query_terms = set(tokenize(query))
-        scored: list[RecallResult] = []
+        scored: list[tuple[float, float, MemoryItem, list[str]]] = []
         for item in candidates:
             overlap = _overlap(query_terms, item)
             retrievability = self.curve.retrievability(item, now)
@@ -112,17 +112,19 @@ class DualTrackStore:
                 reasons.append("high importance")
             if context_match:
                 reasons.append("context match")
-            scored.append(RecallResult(item=item, score=score, reasons=reasons))
-        scored.sort(key=lambda r: r.score, reverse=True)
-        results = scored[:top_k]
+            scored.append((score, overlap, item, reasons))
+        scored.sort(key=lambda entry: entry[0], reverse=True)
+        results = [
+            RecallResult(item=item, score=score, reasons=reasons)
+            for score, _, item, reasons in scored[:top_k]
+        ]
         if reinforce:
-            for r in results:
+            for score, overlap, item, _ in scored[:top_k]:
                 # Testing effect (Roediger & Karpicke, 2006): reinforcement
                 # scales with how well the memory matched the retrieval.
-                overlap = _overlap(query_terms, r.item)
                 delta = 0.05 + 0.15 * overlap
-                self.curve.reinforce(r.item, delta=delta, now=now)
-                self.backend.update(r.item)
+                self.curve.reinforce(item, delta=delta, now=now)
+                self.backend.update(item)
             if suppression_factor > 0:
                 self._suppress_linked_rivals(results, suppression_factor)
         return results

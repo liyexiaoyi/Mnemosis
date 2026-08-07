@@ -66,7 +66,7 @@ class MemoryStatus(str, Enum):
 AFFECT_TAGS = {"positive", "negative", "arousing", "mixed", "neutral"}
 
 
-@dataclass
+@dataclass(slots=True)
 class SourceRecord:
     """Provenance for a memory (human principle #6: source monitoring)."""
 
@@ -93,7 +93,7 @@ class SourceRecord:
         )
 
 
-@dataclass
+@dataclass(slots=True)
 class MemoryItem:
     """A single memory with its lifecycle state."""
 
@@ -186,7 +186,7 @@ class MemoryItem:
         )
 
 
-@dataclass
+@dataclass(slots=True)
 class RecallResult:
     """A recalled memory with its score and explanation."""
 

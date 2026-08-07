@@ -9,7 +9,6 @@ from __future__ import annotations
 import json
 import sqlite3
 from abc import ABC, abstractmethod
-from datetime import datetime
 from typing import Iterable
 
 from .types import (
@@ -17,7 +16,6 @@ from .types import (
     MemoryKind,
     MemoryStatus,
     normalize_cues,
-    utcnow,
 )
 
 
@@ -184,6 +182,9 @@ class SQLiteBackend(Backend):
         self._conn = sqlite3.connect(path)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA synchronous=NORMAL")
+        self._conn.execute("PRAGMA temp_store=MEMORY")
+        self._conn.execute("PRAGMA cache_size=-20000")
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._create_schema()
 

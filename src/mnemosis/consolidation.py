@@ -16,7 +16,7 @@ from .dual_track import DualTrackStore
 from .types import MemoryItem, MemoryKind, MemoryStatus, hash_content, utcnow
 
 
-@dataclass
+@dataclass(slots=True)
 class Conflict:
     """Two confident facts that both seem true but cannot be."""
 
@@ -25,7 +25,7 @@ class Conflict:
     reason: str
 
 
-@dataclass
+@dataclass(slots=True)
 class ConsolidationReport:
     promoted: list[MemoryItem] = field(default_factory=list)
     recycled: list[str] = field(default_factory=list)

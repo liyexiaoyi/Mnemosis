@@ -22,7 +22,7 @@ class ConfidenceLabel(str, Enum):
     LOW = "low"
 
 
-@dataclass
+@dataclass(slots=True)
 class MetacognitiveCheck:
     """Result of `engine.check(query)`: think before answering."""
 
