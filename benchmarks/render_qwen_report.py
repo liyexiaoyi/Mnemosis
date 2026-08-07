@@ -159,6 +159,118 @@ def memory_table_chart() -> str:
     return path
 
 
+def all_models_matrix_chart() -> str:
+    """4 模型 × 裸答/接 Mnemosis 记忆 对比图（含 Codex 自己）。"""
+    models = [
+        ("qwen3-vl:8b（最新千问）", 0.25, 0.917),
+        ("qwen2.5-vl", 0.25, 0.833),
+        ("qwen2.5:3b", 0.25, 0.75),
+        ("Codex（我自己）", 0.25, 1.0),
+    ]
+    W, H = 1100, 560
+    img = Image.new("RGB", (W, H), "white")
+    draw = ImageDraw.Draw(img)
+    f_title = _font(26)
+    f_sub = _font(16)
+    f_label = _font(18)
+    f_val = _font(17)
+    draw.text((40, 25), "四个“大脑”横向对比：裸答 vs 接 Mnemosis 记忆", fill="#111", font=f_title)
+    draw.text((40, 65),
+              "同一批 12 题、同一评分规则。灰柱=模型裸答；绿柱=把 Mnemosis 检索到的记忆放进上下文再回答",
+              fill="#555", font=f_sub)
+    n = len(models)
+    group_w = 240
+    bar_w = 72
+    chart_h = 280
+    base_y = 420
+    x0 = 70
+    for i, (name, bare, mem) in enumerate(models):
+        gx = x0 + i * group_w
+        draw.text((gx + 10, 120), name, fill="#111", font=f_label)
+        for j, (val, label, color) in enumerate(
+            ((bare, "裸答", "#b0b0b0"), (mem, "+Mnemosis", "#1a7f37"))
+        ):
+            bh = val * chart_h
+            x = gx + 25 + j * (bar_w + 18)
+            y = base_y - bh
+            draw.rectangle([x, y, x + bar_w, base_y], fill=color)
+            draw.text((x + 16, y - 26), f"{val:.0%}", fill="#222", font=f_val)
+            draw.text((x + 4, base_y + 10), label, fill="#333", font=f_val)
+    draw.line([(50, base_y), (W - 40, base_y)], fill="#999", width=2)
+    for val, label in ((0, "0%"), (0.5, "50%"), (1.0, "100%")):
+        y = base_y - val * chart_h
+        draw.line([(50, y), (W - 40, y)], fill="#e5e5e5", width=1)
+        draw.text((20, y - 10), label, fill="#666", font=f_val)
+    path = os.path.join(_OUT, "models_mnemosis_matrix.png")
+    img.save(path)
+    return path
+
+
+def model_project_heatmap() -> str:
+    """模型 × 记忆项目 热力图（真实矩阵数据）。"""
+    matrix = json.load(
+        open(
+            os.path.normpath(
+                os.path.join(_BENCH, "..", "..", "work", "model_project_matrix.json")
+            ),
+            encoding="utf-8",
+        )
+    )
+    # add qwen3-vl and Codex (Mnemosis column from earlier evals)
+    matrix.setdefault("qwen3-vl:8b（最新）", {})
+    matrix["qwen3-vl:8b（最新）"]["Mnemosis"] = 0.917
+    matrix["qwen3-vl:8b（最新）"]["mem0 官方包"] = None
+    matrix.setdefault("Codex（我自己）", {})
+    matrix["Codex（我自己）"]["Mnemosis"] = 1.0
+    matrix["Codex（我自己）"]["mem0 官方包"] = None
+
+    models = ["qwen2.5:3b", "qwen2.5-vl", "qwen3-vl:8b（最新）", "Codex（我自己）"]
+    projects = ["Mnemosis", "mem0 官方包"]
+
+    def get_val(model, proj):
+        """Look up a value, tolerating mojibake keys written via shells."""
+        pmap = matrix.get(model, {})
+        if proj in pmap:
+            return pmap[proj]
+        for k, v in pmap.items():
+            if "mnemosis" in k.lower() and "mnemosis" in proj.lower():
+                return v
+            if "mem0" in k.lower() and "mem0" in proj.lower():
+                return v
+        return None
+
+    W, H = 900, 120 + len(models) * 90
+    img = Image.new("RGB", (W, H), "white")
+    draw = ImageDraw.Draw(img)
+    f_title = _font(24)
+    f_sub = _font(15)
+    f_cell = _font(20)
+    draw.text((40, 22), "模型 × 记忆项目 横向对比（同一 12 题）", fill="#111", font=f_title)
+    draw.text((40, 60),
+              "读法：模型先用该项目的记忆库检索，再回答；“-”= 该模型未接入此项目记忆",
+              fill="#555", font=f_sub)
+    col_x = [300, 560, 820]
+    y0 = 110
+    draw.text((col_x[0], y0), "Mnemosis", fill="#111", font=f_cell)
+    draw.text((col_x[1], y0), "mem0 官方包", fill="#111", font=f_cell)
+    yy = y0
+    for model in models:
+        yy += 90
+        draw.text((60, yy), model, fill="#222", font=f_cell)
+        for j, proj in enumerate(projects):
+            val = get_val(model, proj)
+            cx = col_x[j]
+            if val is None:
+                draw.text((cx, yy), "-", fill="#999", font=f_cell)
+            else:
+                color = "#1a7f37" if val >= 0.9 else ("#e6a700" if val >= 0.7 else "#c0392b")
+                draw.text((cx, yy), f"{val:.0%}", fill=color, font=f_cell)
+        draw.line([(40, yy + 40), (W - 40, yy + 40)], fill="#e5e5e5", width=1)
+    path = os.path.join(_OUT, "model_project_heatmap.png")
+    img.save(path)
+    return path
+
+
 def main() -> int:
     os.makedirs(_OUT, exist_ok=True)
     # read latest locomo result with LLM rows
@@ -188,8 +300,12 @@ def main() -> int:
         ]
     p1 = qwen_accuracy_chart(llm_rows)
     p2 = memory_table_chart()
+    p3 = all_models_matrix_chart()
+    p4 = model_project_heatmap()
     print("written:", p1)
     print("written:", p2)
+    print("written:", p3)
+    print("written:", p4)
     return 0
 
 
