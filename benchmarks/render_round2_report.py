@@ -193,9 +193,9 @@ def chart_model_x_project() -> str:
         "qwen3-vl:8b": "#1a7f37",
         "qwen2.5-vl": "#2f80ed",
         "qwen2.5:3b": "#e6a700",
-        "Codex（我自己）": "#7b2ff7",
+        "DeepSeek V4 Flash（我）": "#7b2ff7",
     }
-    models = ["qwen3-vl:8b", "qwen2.5-vl", "qwen2.5:3b", "Codex（我自己）"]
+    models = ["qwen3-vl:8b", "qwen2.5-vl", "qwen2.5:3b", "DeepSeek V4 Flash（我）"]
     W, H = 1500, 700
     img = Image.new("RGB", (W, H), "white")
     draw = ImageDraw.Draw(img)
@@ -224,7 +224,7 @@ def chart_model_x_project() -> str:
             if project not in project_labels:
                 continue
             val = None
-            if model == "Codex（我自己）":
+            if model == "DeepSeek V4 Flash（我）":
                 val = codex_acc
             if val is None:
                 row = models_map.get(model)
@@ -264,7 +264,7 @@ def chart_project_heatmap() -> str:
         "mem0": "mem0 官方包",
         "cognitive": "cognitive-memory 官方包",
     }
-    models = ["qwen3-vl:8b", "qwen2.5-vl", "qwen2.5:3b", "Codex（我自己）"]
+    models = ["qwen3-vl:8b", "qwen2.5-vl", "qwen2.5:3b", "DeepSeek V4 Flash（我）"]
     W, H = 1250, 170 + len(project_rows) * 88
     img = Image.new("RGB", (W, H), "white")
     draw = ImageDraw.Draw(img)
@@ -286,7 +286,7 @@ def chart_project_heatmap() -> str:
         draw.text((40, yy), project_labels.get(project, project), fill="#222", font=f_cell)
         for j, model in enumerate(models):
             val = None
-            if model == "Codex（我自己）":
+            if model == "DeepSeek V4 Flash（我）":
                 val = codex_acc
             if val is None:
                 row = models_map.get(model)

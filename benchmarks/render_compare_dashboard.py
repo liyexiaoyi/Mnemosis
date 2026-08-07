@@ -74,7 +74,7 @@ def _leaderboard_rows() -> list[tuple[str, float, str]]:
             if score_answer(a, by_q.get(q, {}).get("answer", "")) >= 1.0
         )
         rows.append(
-            (f"Codex（我自己） × {label}", hits / len(answered), color)
+            (f"DeepSeek V4 Flash（我） × {label}", hits / len(answered), color)
         )
     cam = _cam()
     rows.append(
