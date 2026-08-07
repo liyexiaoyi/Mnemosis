@@ -298,6 +298,53 @@ def temporal_improvement_chart() -> None:
     print("written", path)
 
 
+def learning_curve_chart() -> None:
+    """Testing effect vs decay: trained vs fresh engine (real JSON)."""
+    lifecycle = latest("lifecycle_")
+    tvf = lifecycle.get("learning_curve", {}).get("trained_vs_fresh", {})
+    trained = float(tvf.get("trained_after_gap", 0.636))
+    fresh = float(tvf.get("fresh_after_gap", 0.545))
+    w, h = 760, 340
+    ml, mr, mt, mb = 70, 20, 70, 80
+    plot_w, plot_h = w - ml - mr, h - mt - mb
+    group_w = plot_w / 2
+    bar_w = 60
+    palette = ["#54a24b", "#b0b0b0"]
+    lines = _svg_open(
+        "测试效应实测：同样过 7 天，“练过一轮”vs“全新”",
+        "成功回忆会强化记忆（测试效应），所以练过的引擎比全新引擎高 9.1 个百分点；没练过=纯遗忘",
+        w, h,
+    )
+    _legend(lines, ml, 58, [("练过一轮检索", palette[0]), ("全新引擎", palette[1])])
+    ymax = 1.0
+    for tick in range(0, 6):
+        v = ymax * tick / 5
+        y = h - mb - plot_h * tick / 5
+        lines.append(f'<line x1="{ml}" y1="{y:.0f}" x2="{w - mr}" y2="{y:.0f}" stroke="#eee"/>')
+        lines.append(f'<text x="{ml - 8}" y="{y + 4:.0f}" font-size="11" fill="#666" text-anchor="end">{v:.2f}</text>')
+    lines.append(f'<line x1="{ml}" y1="{h - mb}" x2="{w - mr}" y2="{h - mb}" stroke="#999"/>')
+    lines.append(f'<line x1="{ml}" y1="{mt}" x2="{ml}" y2="{h - mb}" stroke="#999"/>')
+    lines.append(
+        f'<text x="14" y="{(mt + h - mb) / 2}" font-size="12" fill="#666" '
+        f'transform="rotate(-90 14,{(mt + h - mb) / 2})" text-anchor="middle">命中率</text>'
+    )
+    for i, (label, val, color) in enumerate(
+        [("练过一轮检索", trained, palette[0]), ("全新引擎", fresh, palette[1])]
+    ):
+        cx = ml + group_w * i + group_w / 2
+        bh = plot_h * val / ymax
+        x = cx - bar_w / 2
+        y = h - mb - bh
+        lines.append(f'<rect x="{x:.0f}" y="{y:.0f}" width="{bar_w}" height="{bh:.0f}" fill="{color}" rx="2"/>')
+        lines.append(f'<text x="{cx:.0f}" y="{y - 4:.0f}" font-size="12" fill="#333" text-anchor="middle">{val:.3f}</text>')
+        lines.append(f'<text x="{cx:.0f}" y="{h - mb + 18}" font-size="11" fill="#333" text-anchor="middle">{label}</text>')
+    lines.append("</svg>")
+    path = os.path.join(OUT_DIR, "iteration_learning_curve_zh.svg")
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines))
+    print("written", path)
+
+
 def _color(label: str) -> str:
     palette = {
         "BM25": "#72b7b2",
@@ -316,6 +363,7 @@ def main() -> int:
     tenk_ab_chart()
     unified_leaderboard_chart()
     temporal_improvement_chart()
+    learning_curve_chart()
     return 0
 
 

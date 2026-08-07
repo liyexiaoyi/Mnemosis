@@ -145,6 +145,28 @@ class LearningTest(unittest.TestCase):
         self.assertGreater(recent_after.storage_strength, storage_before[0])
         self.assertEqual(old_after.storage_strength, storage_before[1])
 
+    def test_review_outcome_adaptive_spacing(self):
+        """engine.review() drives the adaptive scheduler: success grows the
+        streak and next interval; failure resets it (Smolen et al., 2016)."""
+        from datetime import timedelta
+        item = self.remember("A scheduled memory.")
+        now = utcnow()
+        storage_before = item.storage_strength
+        ok = self.engine.review(item.id, success=True, now=now)
+        self.assertEqual(ok.review_streak, 1)
+        self.assertGreater(ok.storage_strength, storage_before)
+        interval_after_success = (
+            self.engine.scheduler.next_review_at(ok, now) - now
+        ).total_seconds() / 3600.0
+        self.assertAlmostEqual(interval_after_success, 24.0)
+        failed = self.engine.review(item.id, success=False, now=now)
+        self.assertEqual(failed.review_streak, 0)
+        self.assertEqual(failed.retrieval_failures, 1)
+        interval_after_failure = (
+            self.engine.scheduler.next_review_at(failed, now) - now
+        ).total_seconds() / 3600.0
+        self.assertAlmostEqual(interval_after_failure, 24.0)
+
     def test_working_set_orders_by_recent_access(self):
         a = self.remember("Alpha.")
         b = self.remember("Beta.")

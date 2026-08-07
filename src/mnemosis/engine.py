@@ -206,6 +206,35 @@ class MemoryEngine:
     ) -> list[MemoryItem]:
         return self.scheduler.due_items(self.store.all_active(), now=now, limit=limit)
 
+    def review(
+        self,
+        memory_id: str,
+        *,
+        success: bool,
+        now: datetime | None = None,
+    ) -> MemoryItem | None:
+        """Record a spaced-repetition outcome for a memory.
+
+        Spacing effect (Cepeda et al., 2006) + adaptive scheduling (Smolen
+        et al., 2016): a successful review extends the streak and grows the
+        next interval; a failed review resets the streak so the trace is
+        re-presented sooner. Call this from the agent loop whenever the agent
+        can judge whether the recalled content was actually correct.
+        """
+        item = self.backend.get(memory_id)
+        if item is None:
+            return None
+        now = now or utcnow()
+        self.scheduler.record_outcome(item, success=success, now=now)
+        if success:
+            self.curve.reinforce_review(item, delta=0.1, now=now)
+        else:
+            # failure slightly weakens retrieval strength: the trace was not
+            # retrievable, so the forgetting curve reflects it.
+            item.strength = max(0.3, item.strength - 0.05)
+        self.backend.update(item)
+        return item
+
     def working_set(self, limit: int = 8) -> list[MemoryItem]:
         """Recently used memories, newest first (working memory).
 
