@@ -488,6 +488,56 @@ def metacognition_chart() -> None:
     print("written", path)
 
 
+def stress_scale_chart() -> None:
+    """Temporal recall under scale stress (real measurements)."""
+    work = os.path.normpath(
+        os.path.join(os.path.dirname(__file__), "..", "..", "work", "stress_scale.json")
+    )
+    if not os.path.exists(work):
+        print("stress_scale.json missing, skipping")
+        return
+    rows = json.load(open(work, encoding="utf-8"))
+    w, h = 820, 380
+    ml, mr, mt, mb = 70, 20, 70, 70
+    plot_w, plot_h = w - ml - mr, h - mt - mb
+    lines = _svg_open(
+        "压力测试：记忆越多，“之后发生了什么”还能答对吗",
+        "数据从 144 条涨到 4024 条，时序命中率只从 100% 缓降到 97.8%——能力随规模保持",
+        w, h,
+    )
+    ymax = 1.05
+    for tick in range(0, 6):
+        v = ymax * tick / 5
+        y = h - mb - plot_h * tick / 5
+        lines.append(f'<line x1="{ml}" y1="{y:.0f}" x2="{w - mr}" y2="{y:.0f}" stroke="#eee"/>')
+        lines.append(f'<text x="{ml - 8}" y="{y + 4:.0f}" font-size="11" fill="#666" text-anchor="end">{v:.2f}</text>')
+    lines.append(f'<line x1="{ml}" y1="{h - mb}" x2="{w - mr}" y2="{h - mb}" stroke="#999"/>')
+    lines.append(f'<line x1="{ml}" y1="{mt}" x2="{ml}" y2="{h - mb}" stroke="#999"/>')
+    lines.append(
+        f'<text x="14" y="{(mt + h - mb) / 2}" font-size="12" fill="#666" '
+        f'transform="rotate(-90 14,{(mt + h - mb) / 2})" text-anchor="middle">时序题命中率</text>'
+    )
+    xmin, xmax = rows[0]["sessions"], rows[-1]["sessions"]
+    points = []
+    for r in rows:
+        x = ml + plot_w * (r["sessions"] - xmin) / (xmax - xmin)
+        y = h - mb - plot_h * r["temporal_hit5"] / ymax
+        points.append((x, y))
+    poly = " ".join(f"{x:.1f},{y:.1f}" for x, y in points)
+    lines.append(f'<polyline points="{poly}" fill="none" stroke="#54a24b" stroke-width="3"/>')
+    for (x, y), r in zip(points, rows):
+        lines.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="4.5" fill="#54a24b"/>')
+        lines.append(f'<text x="{x:.1f}" y="{y - 10:.1f}" font-size="11" fill="#333" text-anchor="middle">{r["temporal_hit5"]:.3f}</text>')
+    for r in rows:
+        x = ml + plot_w * (r["sessions"] - xmin) / (xmax - xmin)
+        lines.append(f'<text x="{x:.1f}" y="{h - mb + 18}" font-size="10" fill="#555" text-anchor="middle">{r["items"]}条</text>')
+    lines.append("</svg>")
+    path = os.path.join(OUT_DIR, "iteration_stress_scale_zh.svg")
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines))
+    print("written", path)
+
+
 def _color(label: str) -> str:
     palette = {
         "BM25": "#72b7b2",
@@ -510,6 +560,7 @@ def main() -> int:
     sleep_dedup_chart()
     spaced_review_chart()
     metacognition_chart()
+    stress_scale_chart()
     return 0
 
 
