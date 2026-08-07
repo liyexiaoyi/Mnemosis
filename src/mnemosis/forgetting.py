@@ -169,14 +169,30 @@ class ReviewScheduler:
         now: datetime | None = None,
         limit: int = 10,
         due_threshold: float = 0.5,
+        importance_first: bool = True,
     ) -> list[MemoryItem]:
+        """Due memories, most important first.
+
+        Rasch & Born (2013): consolidation and rehearsal prioritise salient
+        content. When the daily review quota is limited, high-importance due
+        memories are selected before low-importance ones (ties broken by
+        retrievability, most forgotten first).
+        """
         now = now or utcnow()
         due = [
             item
             for item in items
             if self.is_due(item, now, due_threshold=due_threshold)
         ]
-        due.sort(key=lambda i: self.curve.retrievability(i, now))
+        if importance_first:
+            due.sort(
+                key=lambda i: (
+                    -i.importance,
+                    self.curve.retrievability(i, now),
+                )
+            )
+        else:
+            due.sort(key=lambda i: self.curve.retrievability(i, now))
         return due[:limit]
 
 

@@ -34,7 +34,7 @@ def _zh_date(day) -> str:
     return f"{day.year}年{day.month}月{day.day}日"
 
 
-def build() -> tuple[MemoryEngine, list[dict], str]:
+def build(sessions: int = 6) -> tuple[MemoryEngine, list[dict], str]:
     engine = MemoryEngine()
     user = SourceRecord(origin=SourceType.USER)
     from datetime import date
@@ -51,12 +51,16 @@ def build() -> tuple[MemoryEngine, list[dict], str]:
                 source=user,
                 cues=[name, key],
             )
-        for i in range(6):
-            day = start + timedelta(days=p * 12 + i)
+        for i in range(sessions):
+            day = start + timedelta(days=p * sessions + i)
             day_str = _zh_date(day) if i % 2 == 0 else day.isoformat()
-            obj = [COLORS[p], FOODS[p], CITIES[p], PLACES[p],
-                   "笔记本", "唱片"][i]
-            verb = ["买了", "吃了", "去了", "去了", "买了", "买了"][i]
+            cycle = [
+                COLORS[p], FOODS[p], CITIES[p], PLACES[p],
+                "笔记本", "唱片",
+            ]
+            verbs = ["买了", "吃了", "去了", "去了", "买了", "买了"]
+            obj = f"{cycle[i % 6]}{i // 6 or ''}"
+            verb = verbs[i % 6]
             engine.remember(
                 f"{name}在{day_str}{verb}{obj}。",
                 kind=MemoryKind.EPISODIC,
@@ -134,6 +138,7 @@ def simulate_review(engine, confidence_aware: bool) -> int:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--sessions", type=int, default=6)
     parser.add_argument(
         "--out",
         default=os.path.join(
@@ -144,7 +149,7 @@ def main() -> int:
     final_day = utcnow() + timedelta(days=28)
     results = {}
     for aware in (True, False):
-        engine, questions, update_q = build()
+        engine, questions, update_q = build(args.sessions)
         engine.sleep()
         baseline = score_questions(engine, questions)
         update_top = engine.recall(update_q, top_k=1)
@@ -157,11 +162,12 @@ def main() -> int:
             "reviews": reviews, "update_ok": update_ok,
         }
         engine.close()
-    engine, questions, _ = build()
+    engine, questions, _ = build(args.sessions)
     engine.sleep()
     no_review = score_questions(engine, questions, now=final_day)
     engine.close()
-    report = {"results": results, "no_review": no_review}
+    report = {"sessions": args.sessions, "results": results,
+              "no_review": no_review}
     print(json.dumps(report, ensure_ascii=False, indent=2))
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as handle:

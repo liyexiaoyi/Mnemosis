@@ -56,6 +56,30 @@ class ReviewSchedulerTest(unittest.TestCase):
         self.assertIn(old, due)
         self.assertNotIn(fresh, due)
 
+    def test_due_items_prioritise_important_memories(self):
+        """Rasch & Born (2013): rehearsal prioritises salient content."""
+        curve = ForgettingCurve(decay_rate=0.05)
+        scheduler = ReviewScheduler(curve, base_interval_hours=24)
+        now = utcnow()
+        low = make_item(
+            content="low", created_at=now - timedelta(days=40),
+            importance=0.3,
+        )
+        high = make_item(
+            content="high", created_at=now - timedelta(days=20),
+            importance=0.9,
+        )
+        mid = make_item(
+            content="mid", created_at=now - timedelta(days=25),
+            importance=0.6,
+        )
+        due = scheduler.due_items([low, high, mid], now=now, limit=2)
+        self.assertEqual([i.content for i in due], ["high", "mid"])
+        due2 = scheduler.due_items(
+            [low, high, mid], now=now, limit=2, importance_first=False
+        )
+        self.assertEqual([i.content for i in due2], ["low", "mid"])
+
     def test_spacing_effect_durable_gain(self):
         """Cepeda et al. (2006): longer gap before a successful retrieval
         yields a larger durable (storage-strength) gain."""
