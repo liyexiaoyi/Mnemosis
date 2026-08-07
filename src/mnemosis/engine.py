@@ -161,7 +161,7 @@ class MemoryEngine:
         temporal_boost: float = 1.0,
         pattern_completion: bool = True,
         separation: bool = True,
-        kind_preference: bool = False,
+        kind_preference: bool = True,
     ) -> list[RecallResult]:
         embedder = embedder or self.embedder
         return self.store.recall(

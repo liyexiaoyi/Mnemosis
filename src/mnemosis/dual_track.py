@@ -113,7 +113,7 @@ class DualTrackStore:
         sep_shared_cues_min: int = 2,
         sep_overlap_min: float = 0.35,
         sep_penalty: float = 0.08,
-        kind_preference: bool = False,
+        kind_preference: bool = True,
         kind_pref: float = 0.03,
     ) -> list[RecallResult]:
         now = now or utcnow()

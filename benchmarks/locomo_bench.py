@@ -223,7 +223,7 @@ def eval_retrieval(
     top_k: int = 5,
     now=None,
     pattern_completion: bool = True,
-    kind_preference: bool = False,
+    kind_preference: bool = True,
 ) -> dict:
     stats: dict[str, dict] = defaultdict(
         lambda: {"n": 0, "hit1": 0, "hit5": 0, "pass": 0, "anchor5": 0, "mrr": 0.0}
@@ -497,9 +497,9 @@ def main() -> int:
         help="disable hippocampal pattern completion (A/B control)",
     )
     parser.add_argument(
-        "--kind-preference",
+        "--no-kind-preference",
         action="store_true",
-        help="enable gist/verbatim kind preference (A/B control, default off)",
+        help="disable precise event/fact kind preference (A/B control)",
     )
     parser.add_argument(
         "--llm-embedder",
@@ -537,7 +537,7 @@ def main() -> int:
             engine,
             dataset["questions"],
             pattern_completion=not args.no_pattern_completion,
-            kind_preference=args.kind_preference,
+            kind_preference=not args.no_kind_preference,
         )
         print(f"\n-- retrieval with {label} --")
         print_report(reports[label], [])

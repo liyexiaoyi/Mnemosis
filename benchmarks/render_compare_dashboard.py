@@ -80,6 +80,13 @@ def _leaderboard_rows() -> list[tuple[str, float, str]]:
     rows.append(
         ("CAM 官方仓库（端到端）", cam["accuracy"], "#7b2ff7")
     )
+    tencent_path = os.path.join(_RESULTS, "tencent_official.json")
+    if os.path.exists(tencent_path):
+        with open(tencent_path, encoding="utf-8") as handle:
+            tencent = json.load(handle)
+        rows.append(
+            ("TencentDB Agent Memory（本地服务）", tencent["accuracy"], "#0b5fff")
+        )
     rows.sort(key=lambda r: r[1], reverse=True)
     return rows
 
