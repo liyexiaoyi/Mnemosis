@@ -60,3 +60,13 @@ class Bm25Index:
         )
         return [self.items[idx]["content"] for idx in scored[:top_k]]
 
+    def search(self, query: str, top_k: int = 5) -> list[tuple[str, float]]:
+        scored = sorted(
+            range(self.n_docs),
+            key=lambda idx: self.score(query, idx),
+            reverse=True,
+        )
+        return [
+            (self.items[idx]["content"], self.score(query, idx))
+            for idx in scored[:top_k]
+        ]

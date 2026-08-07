@@ -33,6 +33,7 @@ from mnemosis.embedding import NGramEmbedder
 from mnemosis.types import MemoryKind, SourceRecord, SourceType
 
 from bm25_baseline import Bm25Index
+from embedding_baseline import EmbeddingBaseline
 
 try:
     from compare_with_models import ollama_generate, score_answer  # script mode
@@ -218,7 +219,7 @@ def build_engine(dataset: dict, embedder=None) -> MemoryEngine:
 
 def eval_retrieval(engine: MemoryEngine, questions: list[dict], top_k: int = 5) -> dict:
     stats: dict[str, dict] = defaultdict(
-        lambda: {"n": 0, "hit1": 0, "hit5": 0, "pass": 0, "anchor5": 0}
+        lambda: {"n": 0, "hit1": 0, "hit5": 0, "pass": 0, "anchor5": 0, "mrr": 0.0}
     )
     details = []
     for question in questions:
@@ -236,9 +237,16 @@ def eval_retrieval(engine: MemoryEngine, questions: list[dict], top_k: int = 5) 
         hit1 = bool(results) and contents[0] == expected[0]
         hit5 = all(item in contents for item in expected)
         anchor5 = bool(results) and expected[0] in contents
+        rank = 0
+        for index, content in enumerate(contents, start=1):
+            if content == expected[0]:
+                rank = index
+                break
+        mrr = 1.0 / rank if rank else 0.0
         stats[kind]["hit1"] += int(hit1)
         stats[kind]["hit5"] += int(hit5)
         stats[kind]["anchor5"] += int(anchor5)
+        stats[kind]["mrr"] += mrr
         details.append(
             {
                 "kind": kind,
@@ -246,34 +254,58 @@ def eval_retrieval(engine: MemoryEngine, questions: list[dict], top_k: int = 5) 
                 "hit1": hit1,
                 "hit5": hit5,
                 "anchor5": anchor5,
+                "mrr": round(mrr, 3),
                 "top": contents[:top_k],
             }
         )
     return {"stats": dict(stats), "details": details}
 
 
-def eval_bm25(dataset: dict, questions: list[dict], top_k: int = 5) -> dict:
-    """Evaluate a plain BM25 index on the same questions (no memory logic)."""
-    memories = dataset["facts"] + dataset["events"]
-    index = Bm25Index(memories)
+def eval_baseline(
+    questions: list[dict],
+    search_fn,
+    top_k: int = 5,
+    pass_fn=None,
+) -> dict:
+    """Evaluate a plain ranked baseline (BM25 / embedding kNN) on the questions."""
     stats: dict[str, dict] = defaultdict(
         lambda: {"n": 0, "hit1": 0, "hit5": 0, "pass": 0}
     )
     for question in questions:
         kind = question["kind"]
         stats[kind]["n"] += 1
-        contents = index.recall(question["q"], top_k=top_k)
+        results = search_fn(question["q"], top_k)
+        contents = [content for content, _ in results]
         if kind == "distractor":
-            top_score = index.score(question["q"], 0)
-            for idx in range(1, len(memories)):
-                top_score = max(top_score, index.score(question["q"], idx))
-            passed = top_score == 0.0
+            passed = pass_fn(results) if pass_fn else (not contents)
             stats[kind]["pass"] += int(passed)
             continue
         expected = question["expected"]
         stats[kind]["hit1"] += int(bool(contents) and contents[0] == expected[0])
         stats[kind]["hit5"] += int(all(item in contents for item in expected))
     return {"stats": dict(stats), "details": []}
+
+
+def eval_bm25(dataset: dict, questions: list[dict], top_k: int = 5) -> dict:
+    """Evaluate a plain BM25 index on the same questions (no memory logic)."""
+    index = Bm25Index(dataset["facts"] + dataset["events"])
+    return eval_baseline(
+        questions,
+        index.search,
+        top_k=top_k,
+        pass_fn=lambda results: (results[0][1] == 0.0) if results else True,
+    )
+
+
+def eval_embedding(dataset: dict, questions: list[dict], top_k: int = 5) -> dict:
+    """Evaluate pure embedding kNN (naive vector-store RAG)."""
+    index = EmbeddingBaseline(dataset["facts"] + dataset["events"])
+    return eval_baseline(
+        questions,
+        index.search,
+        top_k=top_k,
+        pass_fn=lambda results: (results[0][1] < 0.15) if results else True,
+    )
 
 
 def eval_with_llm(
@@ -371,9 +403,9 @@ def print_report(retrieval: dict, llm_rows: list[dict]) -> None:
     print("\n== Mnemosis retrieval ==")
     print(
         f"{'category':12s} {'n':>4s} {'hit@1':>7s} {'hit@5':>7s} "
-        f"{'anchor@5':>9s} {'pass':>6s}"
+        f"{'anchor@5':>9s} {'MRR':>7s} {'pass':>6s}"
     )
-    totals = {"n": 0, "hit1": 0, "hit5": 0, "pass": 0, "anchor5": 0}
+    totals = {"n": 0, "hit1": 0, "hit5": 0, "pass": 0, "anchor5": 0, "mrr": 0.0}
     for kind, values in sorted(retrieval["stats"].items()):
         n = values["n"]
         for key in totals:
@@ -381,15 +413,17 @@ def print_report(retrieval: dict, llm_rows: list[dict]) -> None:
         h1 = values["hit1"] / n if n else 0.0
         h5 = values["hit5"] / n if n else 0.0
         anchor5 = values["anchor5"] / n if n else 0.0
+        mrr = values["mrr"] / n if n else 0.0
         print(
             f"{kind:12s} {n:>4d} {h1:>7.3f} {h5:>7.3f} "
-            f"{anchor5:>9.3f} {values['pass']:>6d}"
+            f"{anchor5:>9.3f} {mrr:>7.3f} {values['pass']:>6d}"
         )
     print(
         f"{'total':12s} {totals['n']:>4d} "
         f"{totals['hit1'] / totals['n']:>7.3f} "
         f"{totals['hit5'] / totals['n']:>7.3f} "
-        f"{totals['anchor5'] / totals['n']:>9.3f}"
+        f"{totals['anchor5'] / totals['n']:>9.3f} "
+        f"{totals['mrr'] / totals['n']:>7.3f}"
     )
     if llm_rows:
         print("\n== LLM answer accuracy ==")
@@ -469,17 +503,21 @@ def main() -> int:
 
     print("\n== BM25 baseline (hippo-memory-style retrieval) ==")
     bm25 = eval_bm25(dataset, dataset["questions"])
+    print("\n== embedding kNN baseline (naive vector store) ==")
+    embedding = eval_embedding(dataset, dataset["questions"])
     print(
         f"{'category':12s} {'n':>4s} {'hit@1':>7s} {'hit@5':>7s} {'pass':>6s}"
     )
-    for kind, values in sorted(bm25["stats"].items()):
-        n = values["n"]
-        print(
-            f"{kind:12s} {n:>4d} "
-            f"{values['hit1'] / n if n else 0.0:>7.3f} "
-            f"{values['hit5'] / n if n else 0.0:>7.3f} "
-            f"{values['pass']:>6d}"
-        )
+    for label, report in (("bm25", bm25), ("embedding", embedding)):
+        print(f"-- {label} --")
+        for kind, values in sorted(report["stats"].items()):
+            n = values["n"]
+            print(
+                f"{kind:12s} {n:>4d} "
+                f"{values['hit1'] / n if n else 0.0:>7.3f} "
+                f"{values['hit5'] / n if n else 0.0:>7.3f} "
+                f"{values['pass']:>6d}"
+            )
 
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as handle:
@@ -498,6 +536,7 @@ def main() -> int:
                     for label in reports
                 },
                 "bm25": {"stats": bm25["stats"]},
+                "embedding_knn": {"stats": embedding["stats"]},
                 "llm": llm_rows,
             },
             handle,
