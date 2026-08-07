@@ -217,7 +217,12 @@ def build_engine(dataset: dict, embedder=None) -> MemoryEngine:
     return engine
 
 
-def eval_retrieval(engine: MemoryEngine, questions: list[dict], top_k: int = 5) -> dict:
+def eval_retrieval(
+    engine: MemoryEngine,
+    questions: list[dict],
+    top_k: int = 5,
+    now=None,
+) -> dict:
     stats: dict[str, dict] = defaultdict(
         lambda: {"n": 0, "hit1": 0, "hit5": 0, "pass": 0, "anchor5": 0, "mrr": 0.0}
     )
@@ -231,7 +236,7 @@ def eval_retrieval(engine: MemoryEngine, questions: list[dict], top_k: int = 5) 
             stats[kind]["pass"] += int(passed)
             details.append({"kind": kind, "q": question["q"], "pass": passed})
             continue
-        results = engine.recall(question["q"], top_k=top_k)
+        results = engine.recall(question["q"], top_k=top_k, now=now)
         contents = [r.item.content for r in results]
         expected = question["expected"]
         hit1 = bool(results) and contents[0] == expected[0]

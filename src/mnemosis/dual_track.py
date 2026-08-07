@@ -162,9 +162,23 @@ class DualTrackStore:
                     continue  # failed retrieval does not strengthen (testing effect)
                 # Testing effect (Roediger & Karpicke, 2006): reinforcement
                 # scales with how well the memory matched the retrieval.
+                # Desirable difficulty (Bjork & Kroll, 2015): a successful
+                # retrieval that required more effort (low retrievability)
+                # yields a larger gain than an effortless one.
+                retrievability = min(
+                    1.0, self.curve.retrievability(item, now)
+                )
+                effort = 1.0 - retrievability
                 delta = 0.05 + 0.15 * overlap
-                self.curve.reinforce(item, delta=delta, now=now)
+                self.curve.reinforce_review(
+                    item,
+                    delta=delta,
+                    now=now,
+                    effort=effort,
+                )
+                item.retrieval_successes += 1
                 self.backend.update(item)
+            self._record_misses(scored, top_k, now)
             if suppression_factor > 0:
                 matched_items = [
                     item
@@ -179,6 +193,24 @@ class DualTrackStore:
                     query_terms,
                 )
         return results
+
+    def _record_misses(
+        self,
+        scored: list[tuple[float, float, MemoryItem, list[str], bool]],
+        top_k: int,
+        now: datetime,
+    ) -> None:
+        """Track retrieval failures for adaptive scheduling (Smolen et al. 2016).
+
+        Memories that appeared among the top candidates but did not actually
+        match the query are counted as failed retrievals; the review scheduler
+        can then re-present them sooner instead of letting the interval grow.
+        """
+        for _, _, item, _, matched in scored[:top_k]:
+            if matched:
+                continue
+            item.retrieval_failures += 1
+            self.backend.update(item)
 
     def _terms(self, item: MemoryItem) -> frozenset[str]:
         """Cached token terms for an item (auto-invalidated on change)."""

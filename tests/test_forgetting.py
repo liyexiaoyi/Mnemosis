@@ -56,7 +56,57 @@ class ReviewSchedulerTest(unittest.TestCase):
         self.assertIn(old, due)
         self.assertNotIn(fresh, due)
 
+    def test_spacing_effect_durable_gain(self):
+        """Cepeda et al. (2006): longer gap before a successful retrieval
+        yields a larger durable (storage-strength) gain."""
+        curve = ForgettingCurve(decay_rate=0.01)
+        now = utcnow()
+        recent = make_item(strength=0.5, created_at=now)
+        spaced = make_item(strength=0.5, created_at=now - timedelta(days=5))
+        recent.last_access_at = now
+        spaced.last_access_at = now - timedelta(days=5)
+        curve.reinforce_review(recent, delta=0.1, now=now, effort=0.5)
+        curve.reinforce_review(spaced, delta=0.1, now=now, effort=0.5)
+        self.assertGreater(
+            spaced.storage_strength, recent.storage_strength
+        )
+
+    def test_effort_scaled_reinforcement(self):
+        """Bjork & Kroll (2015): harder-but-successful retrieval reinforces
+        more than an effortless one."""
+        curve = ForgettingCurve(decay_rate=0.01)
+        now = utcnow()
+        easy = make_item(strength=0.5, created_at=now)
+        hard = make_item(strength=0.5, created_at=now)
+        easy.last_access_at = now
+        hard.last_access_at = now
+        curve.reinforce_review(easy, delta=0.1, now=now, effort=0.0)
+        curve.reinforce_review(hard, delta=0.1, now=now, effort=1.0)
+        self.assertGreater(hard.storage_strength, easy.storage_strength)
+
+    def test_record_outcome_adaptive_spacing(self):
+        """Smolen et al. (2016): failures reset the review streak so the next
+        interval shrinks; successes extend it."""
+        scheduler = ReviewScheduler(ForgettingCurve(), base_interval_hours=24)
+        now = utcnow()
+        item = make_item()
+        scheduler.record_outcome(item, success=True, now=now)
+        scheduler.record_outcome(item, success=True, now=now)
+        self.assertEqual(item.review_streak, 2)
+        self.assertEqual(item.retrieval_successes, 2)
+        interval = (
+            scheduler.next_review_at(item, now) - now
+        ).total_seconds() / 3600.0
+        self.assertAlmostEqual(interval, 48.0)  # base 24 * 2^1
+        # failure resets
+        scheduler.record_outcome(item, success=False, now=now)
+        self.assertEqual(item.review_streak, 0)
+        self.assertEqual(item.retrieval_failures, 1)
+        next_at = scheduler.next_review_at(item, now)
+        self.assertLessEqual(
+            (next_at - now).total_seconds() / 3600.0, 24.0
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
-

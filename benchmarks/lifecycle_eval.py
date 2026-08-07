@@ -189,20 +189,44 @@ def run_concurrency_check() -> dict:
     return {"reader_sees_writer_data": ok}
 
 
-def run_learning_curve(rounds: int = 3) -> dict:
-    """Re-ask the same questions over successive rounds; retrieval should
-    strengthen with use (use-it-or-lose-it in reverse)."""
+def run_learning_curve(rounds: int = 3, gap_days: int = 7) -> dict:
+    """Testing effect vs time decay, measured as a controlled comparison.
+
+    Two identical engines are built. One is "trained": the full question set
+    is asked once, then again after ``gap_days`` (with time advancing, so the
+    successful retrievals get spaced reinforcement). The other engine is
+    untouched and evaluated at the same final time. The trained engine should
+    recall better than the fresh one — that gap is the net testing effect
+    (Roediger & Karpicke, 2006) minus pure decay.
+    """
     dataset = generate_dataset(seed=42, sessions=24, events_per_session=5)
-    engine = build_engine(dataset, embedder=NGramEmbedder())
-    hit1_by_round: list[float] = []
-    for _ in range(rounds):
-        report = eval_retrieval(engine, dataset["questions"])
+    embedder = NGramEmbedder()
+    trained = build_engine(dataset, embedder=embedder)
+    fresh = build_engine(dataset, embedder=embedder)
+    t0 = utcnow()
+
+    def hit1_at(engine, when) -> float:
+        report = eval_retrieval(engine, dataset["questions"], now=when)
         stats = report["stats"]
         n = sum(values["n"] for values in stats.values())
         hits = sum(values["hit1"] for values in stats.values())
-        hit1_by_round.append(round(hits / n, 3))
-    engine.close()
-    return {"hit1_by_round": hit1_by_round}
+        return round(hits / n, 3)
+
+    # same engine trains at t0, then is re-tested after gap_days (spacing).
+    t1 = t0 + timedelta(days=gap_days)
+    by_round: list[float] = [hit1_at(trained, t0)]
+    trained_hit1 = hit1_at(trained, t1)
+    fresh_hit1 = hit1_at(fresh, t1)
+    trained.close()
+    fresh.close()
+    return {
+        "hit1_by_round": by_round,
+        "trained_vs_fresh": {
+            "trained_after_gap": trained_hit1,
+            "fresh_after_gap": fresh_hit1,
+            "testing_effect_gain": round(trained_hit1 - fresh_hit1, 3),
+        },
+    }
 
 
 def main() -> int:
@@ -246,6 +270,14 @@ def main() -> int:
     print(f"  reader sees writer data : {concurrency['reader_sees_writer_data']}")
     print("== learning curve (same 88 questions, repeated) ==")
     print(f"  hit@1 by round          : {learning['hit1_by_round']}")
+    trained_vs_fresh = learning["trained_vs_fresh"]
+    print(
+        f"  trained after 7d gap    : {trained_vs_fresh['trained_after_gap']}"
+    )
+    print(f"  fresh after 7d          : {trained_vs_fresh['fresh_after_gap']}")
+    print(
+        f"  net testing effect      : {trained_vs_fresh['testing_effect_gain']:+.3f}"
+    )
 
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as handle:

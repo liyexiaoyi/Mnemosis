@@ -216,7 +216,11 @@ class SQLiteBackend(Backend):
                     importance    REAL NOT NULL DEFAULT 0.5,
                     strength      REAL NOT NULL DEFAULT 1.0,
                     confidence    REAL NOT NULL DEFAULT 1.0,
-                    status        TEXT NOT NULL DEFAULT 'active'
+                    status        TEXT NOT NULL DEFAULT 'active',
+                    last_review_at TEXT,
+                    review_streak  INTEGER NOT NULL DEFAULT 0,
+                    retrieval_successes INTEGER NOT NULL DEFAULT 0,
+                    retrieval_failures  INTEGER NOT NULL DEFAULT 0
                 )
                 """
             )
@@ -270,6 +274,10 @@ class SQLiteBackend(Backend):
             "updated_at": "updated_at TEXT",
             "revision_count": "revision_count INTEGER NOT NULL DEFAULT 0",
             "seq": "seq INTEGER NOT NULL DEFAULT 0",
+            "last_review_at": "last_review_at TEXT",
+            "review_streak": "review_streak INTEGER NOT NULL DEFAULT 0",
+            "retrieval_successes": "retrieval_successes INTEGER NOT NULL DEFAULT 0",
+            "retrieval_failures": "retrieval_failures INTEGER NOT NULL DEFAULT 0",
         }
         with self._conn:
             for name, ddl in additions.items():
@@ -290,8 +298,11 @@ class SQLiteBackend(Backend):
                     id, kind, content, content_hash, source_json, cues_json,
                     created_at, last_access_at, access_count, importance,
                     strength, confidence, status, context, affect, evidence_count,
-                    storage_strength, updated_at, revision_count, seq
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    storage_strength, updated_at, revision_count, seq,
+                    last_review_at, review_streak, retrieval_successes,
+                    retrieval_failures
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                          ?, ?, ?, ?)
                 """,
                 _item_row(item),
             )
@@ -334,7 +345,9 @@ class SQLiteBackend(Backend):
                     created_at = ?, last_access_at = ?, access_count = ?,
                     importance = ?, strength = ?, confidence = ?, status = ?,
                     context = ?, affect = ?, evidence_count = ?,
-                    storage_strength = ?, updated_at = ?, revision_count = ?
+                    storage_strength = ?, updated_at = ?, revision_count = ?,
+                    seq = ?, last_review_at = ?, review_streak = ?,
+                    retrieval_successes = ?, retrieval_failures = ?
                 WHERE id = ?
                 """,
                 (
@@ -355,6 +368,11 @@ class SQLiteBackend(Backend):
                     item.storage_strength,
                     item.updated_at.isoformat() if item.updated_at else None,
                     item.revision_count,
+                    item.seq,
+                    item.last_review_at.isoformat() if item.last_review_at else None,
+                    item.review_streak,
+                    item.retrieval_successes,
+                    item.retrieval_failures,
                     item.id,
                 ),
             )
@@ -519,6 +537,10 @@ def _item_row(item: MemoryItem) -> tuple:
         item.updated_at.isoformat() if item.updated_at else None,
         item.revision_count,
         item.seq,
+        item.last_review_at.isoformat() if item.last_review_at else None,
+        item.review_streak,
+        item.retrieval_successes,
+        item.retrieval_failures,
     )
 
 
@@ -546,6 +568,10 @@ def _row_to_item(row: sqlite3.Row | None) -> MemoryItem | None:
         "updated_at": row["updated_at"],
         "revision_count": row["revision_count"],
         "seq": row["seq"],
+        "last_review_at": row["last_review_at"],
+        "review_streak": row["review_streak"],
+        "retrieval_successes": row["retrieval_successes"],
+        "retrieval_failures": row["retrieval_failures"],
     }
     return MemoryItem.from_dict(data)
 

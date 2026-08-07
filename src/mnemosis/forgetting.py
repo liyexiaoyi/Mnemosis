@@ -69,6 +69,32 @@ class ForgettingCurve:
         item.touch(now or utcnow())
         return item.strength
 
+    def reinforce_review(
+        self,
+        item: MemoryItem,
+        delta: float = 0.1,
+        now: datetime | None = None,
+        *,
+        effort: float = 1.0,
+    ) -> float:
+        """Spacing-aware reinforcement for a *successful* retrieval.
+
+        Two learning-science effects modulate the gain:
+
+        - Spacing effect (Cepeda et al., 2006): a successful retrieval after
+          a longer gap produces a larger durable gain, up to a saturating
+          ceiling (gains stop growing past ~7 days).
+        - Retrieval effort (Bjork & Kroll, 2015; Kornell & Vaughn, 2016):
+          the harder the successful retrieval, the stronger the
+          reinforcement (desirable difficulty), scaled by ``effort`` in
+          [0, 1] (0 = effortless, 1 = maximum effort).
+        """
+        now = now or utcnow()
+        spacing_hours = self.hours_since_last_access(item, now)
+        spacing_gain = 1.0 + 0.45 * min(1.0, spacing_hours / 168.0)
+        effort_gain = 1.0 + 0.5 * max(0.0, min(1.0, effort))
+        return self.reinforce(item, delta * spacing_gain * effort_gain, now)
+
     def is_forgotten(
         self, item: MemoryItem, threshold: float = 0.2, now: datetime | None = None
     ) -> bool:
@@ -93,8 +119,35 @@ class ReviewScheduler:
     def next_review_at(
         self, item: MemoryItem, now: datetime | None = None
     ) -> datetime:
+        """Next review uses the adaptive streak, not raw access count.
+
+        ``review_streak`` counts consecutive *successful* reviews, which is
+        the variable spaced repetition actually optimizes (Smolen et al.,
+        2016). Failures reset the streak, so a struggling memory gets short
+        intervals again instead of an ever-growing one.
+        """
         now = now or utcnow()
-        return now + timedelta(hours=self.next_interval_hours(item.access_count))
+        return now + timedelta(
+            hours=self.next_interval_hours(item.review_streak)
+        )
+
+    def record_outcome(
+        self, item: MemoryItem, success: bool, now: datetime | None = None
+    ) -> None:
+        """Update review scheduling state from a retrieval outcome.
+
+        Adaptive spacing (Cepeda et al., 2006; Smolen et al., 2016): a
+        successful retrieval at the scheduled review extends the streak (next
+        interval grows); a failure resets the streak and keeps the next
+        interval short so the trace is re-presented soon.
+        """
+        now = now or utcnow()
+        item.review_streak = item.review_streak + 1 if success else 0
+        if success:
+            item.retrieval_successes += 1
+        else:
+            item.retrieval_failures += 1
+        item.last_review_at = now
 
     def is_due(
         self,

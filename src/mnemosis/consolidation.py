@@ -31,13 +31,15 @@ class ConsolidationReport:
     recycled: list[str] = field(default_factory=list)
     conflicts: list[Conflict] = field(default_factory=list)
     reflected: list[MemoryItem] = field(default_factory=list)
+    replayed: int = 0
     total_before: int = 0
     total_after: int = 0
 
     def summary(self) -> str:
         return (
             f"promoted {len(self.promoted)}, pruned {len(self.recycled)}, "
-            f"reflected {len(self.reflected)}, conflicts {len(self.conflicts)} "
+            f"reflected {len(self.reflected)}, replayed {self.replayed}, "
+            f"conflicts {len(self.conflicts)} "
             f"({self.total_before} -> {self.total_after} active memories)"
         )
 
@@ -55,6 +57,9 @@ class Consolidator:
         prune_age_days: float = 30.0,
         conflict_min_confidence: float = 0.6,
         llm_summarizer: Callable[[list[str]], str] | None = None,
+        replay_window: int = 64,
+        replay_min_importance: float = 0.4,
+        replay_recency_days: float = 7.0,
     ) -> None:
         self.store = store
         self.backend = backend
@@ -65,6 +70,9 @@ class Consolidator:
         self.prune_age_days = prune_age_days
         self.conflict_min_confidence = conflict_min_confidence
         self.llm_summarizer = llm_summarizer
+        self.replay_window = max(1, int(replay_window))
+        self.replay_min_importance = replay_min_importance
+        self.replay_recency_days = max(1.0, replay_recency_days)
 
     def sleep(
         self,
@@ -73,6 +81,7 @@ class Consolidator:
     ) -> ConsolidationReport:
         now = now or utcnow()
         total_before = len(self.store.all_active())
+        replayed = self._replay_recent(now)
         promoted = self._promote_episodic(now)
         recycled = self._prune_noise(now)
         conflicts = self.detect_conflicts()
@@ -83,9 +92,40 @@ class Consolidator:
             recycled=recycled,
             conflicts=conflicts,
             reflected=reflected,
+            replayed=replayed,
             total_before=total_before,
             total_after=total_after,
         )
+
+    def _replay_recent(self, now: datetime) -> int:
+        """Offline replay of recent salient traces (Gais et al., 2002;
+        Rasch & Born, 2013).
+
+        Sleep spindles preferentially replay traces encoded during the most
+        recent waking period, and emotional/salient content is replayed more
+        often. We emulate this with a bounded replay pass over the newest
+        episodic memories: each gets a small durable storage-strength gain
+        that scales with recency and importance. The window is bounded so the
+        pass stays cheap at scale.
+        """
+        episodes = self.store.all_active(MemoryKind.EPISODIC)
+        episodes.sort(key=lambda item: item.seq, reverse=True)
+        replay_window_seconds = self.replay_recency_days * 86400.0
+        replayed = 0
+        for item in episodes[: self.replay_window]:
+            age_seconds = max(0.0, (now - item.created_at).total_seconds())
+            if age_seconds > replay_window_seconds:
+                continue
+            if item.importance < self.replay_min_importance:
+                continue
+            recency_weight = 1.0 - 0.5 * min(1.0, age_seconds / replay_window_seconds)
+            gain = 0.02 * recency_weight * (0.5 + item.importance)
+            item.storage_strength = min(2.0, item.storage_strength + gain)
+            item.strength = min(1.0, item.strength + gain)
+            item.touch(now)
+            self.backend.update(item)
+            replayed += 1
+        return replayed
 
     def reflect(
         self,

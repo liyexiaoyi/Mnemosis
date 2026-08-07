@@ -119,6 +119,32 @@ class LearningTest(unittest.TestCase):
         self.assertEqual(len(report.promoted), 1)
         self.assertEqual(report.promoted[0].content, emotional.content)
 
+    def test_sleep_replays_recent_salient_episodes(self):
+        """Gais et al. (2002): sleep replays recently encoded, salient traces,
+        giving them a durable strength gain."""
+        now = utcnow()
+        recent = self.remember(
+            "We shipped the new search index today.",
+            kind=MemoryKind.EPISODIC,
+            source=self.user,
+            created_at=now - timedelta(hours=2),
+            importance=0.8,
+        )
+        old = self.remember(
+            "We shipped the old batch job a month ago.",
+            kind=MemoryKind.EPISODIC,
+            source=self.user,
+            created_at=now - timedelta(days=40),
+            importance=0.8,
+        )
+        storage_before = (recent.storage_strength, old.storage_strength)
+        report = self.engine.sleep(now=now)
+        self.assertGreaterEqual(report.replayed, 1)
+        recent_after = self.engine.backend.get(recent.id)
+        old_after = self.engine.backend.get(old.id)
+        self.assertGreater(recent_after.storage_strength, storage_before[0])
+        self.assertEqual(old_after.storage_strength, storage_before[1])
+
     def test_working_set_orders_by_recent_access(self):
         a = self.remember("Alpha.")
         b = self.remember("Beta.")

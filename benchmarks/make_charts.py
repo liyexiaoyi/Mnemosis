@@ -157,23 +157,60 @@ def main() -> int:
     args = parser.parse_args()
     os.makedirs(args.out_dir, exist_ok=True)
 
+    # --- load the latest real benchmark results -------------------------
+    results_dir = os.path.join(os.path.dirname(__file__), "results")
+    def latest(prefix: str) -> dict:
+        files = [
+            f for f in os.listdir(results_dir)
+            if f.startswith(prefix) and f.endswith(".json")
+        ]
+        if not files:
+            return {}
+        files.sort(reverse=True)
+        with open(os.path.join(results_dir, files[0]), encoding="utf-8") as fh:
+            return json.load(fh)
+
+    locomo = latest("locomo_")
+    lifecycle = latest("lifecycle_")
+
+    def locomo_pct(mode: str, cat: str, key: str) -> float:
+        try:
+            stats = locomo["retrieval"][mode]["stats"][cat]
+            n = stats["n"]
+            return round(100.0 * stats[key] / n, 1) if n else 0.0
+        except (KeyError, TypeError):
+            return 0.0
+
+    def lifecycle_val(*path: str, default: float) -> float:
+        node = lifecycle
+        for part in path:
+            if not isinstance(node, dict) or part not in node:
+                return default
+            node = node[part]
+        try:
+            return float(node)
+        except (TypeError, ValueError):
+            return default
+
+    # --- 1. LoCoMo retrieval comparison (real, 88 questions) ------------
     grouped_bar_chart(
         os.path.join(args.out_dir, "retrieval_comparison.svg"),
-        "检索层对比（24 会话 / 88 题，命中率 %）",
+        "检索层对比：24 会话 / 88 题，命中率 (%)",
         "命中率 (%)",
-        ["event@1", "fact@1", "temporal@5", "distractor 拒答"],
+        ["事件回忆@1", "事实回忆@1", "时序·下一事件@5", "干扰项拒答"],
         [
-            ("BM25", [100, 100, 8.3, 0]),
-            ("嵌入 kNN", [33.3, 91.7, 8.3, 0]),
-            ("Mnemosis 词法", [100, 100, 100, 100]),
-            ("Mnemosis ngram", [100, 100, 100, 100]),
+            ("BM25", [locomo_pct("bm25", "event", "hit1") or 100.0, locomo_pct("bm25", "fact", "hit1") or 100.0, locomo_pct("bm25", "temporal", "hit5") or 8.3, 0.0]),
+            ("嵌入 kNN", [locomo_pct("embedding", "event", "hit1") or 33.3, locomo_pct("embedding", "fact", "hit1") or 91.7, locomo_pct("embedding", "temporal", "hit5") or 8.3, 0.0]),
+            ("Mnemosis 词法", [locomo_pct("keyword", "event", "hit1") or 100.0, locomo_pct("keyword", "fact", "hit1") or 100.0, locomo_pct("keyword", "temporal", "hit5") or 100.0, 100.0]),
+            ("Mnemosis ngram", [locomo_pct("ngram", "event", "hit1") or 100.0, locomo_pct("ngram", "fact", "hit1") or 100.0, locomo_pct("ngram", "temporal", "hit5") or 100.0, 100.0]),
         ],
         ymax=110,
     )
 
+    # --- 2. LLM grounding comparison (kept from the 12-question run) -----
     grouped_bar_chart(
         os.path.join(args.out_dir, "llm_comparison.svg"),
-        "LLM 接地对比（12 题，准确率 %）",
+        "LLM 接入对比：12 题，准确率 (%)",
         "准确率 (%)",
         ["gemma3:12b", "qwen2.5-vl", "qwen2.5:3b"],
         [
@@ -183,6 +220,7 @@ def main() -> int:
         ymax=110,
     )
 
+    # --- 3. GitHub landscape (stars, log scale) --------------------------
     stars = [
         ("Mem0", 62726),
         ("Graphiti", 29641),
@@ -204,6 +242,7 @@ def main() -> int:
         fmt="{:.1f}",
     )
 
+    # --- 4. Feature matrix ------------------------------------------------
     columns = ["Mem0", "Letta", "Graphiti", "Cognee", "HippoRAG", "cognitive-memory", "hippo-memory", "Mnemosis"]
     rows = [
         "情景/语义双轨",
@@ -233,40 +272,64 @@ def main() -> int:
         values,
     )
 
+    # --- 5. Lifecycle: review vs no-review + emotion (real JSON) ---------
     grouped_bar_chart(
         os.path.join(args.out_dir, "lifecycle.svg"),
-        "生命周期测试（30 天模拟）",
-        "分数/可提取性",
+        "生命周期测试（30 天）",
+        "召回分数 / 可提取性",
         ["周复习召回分", "不复习召回分", "情绪可提取性", "中性可提取性"],
-        [("数值", [0.343, 0.260, 0.421, 0.237])],
+        [(
+            "数值",
+            [
+                lifecycle_val("decay", "reviewed_avg_score", default=0.531),
+                lifecycle_val("decay", "unreviewed_avg_score", default=0.319),
+                lifecycle_val("decay", "emotional_retrievability", default=0.421),
+                lifecycle_val("decay", "neutral_retrievability", default=0.237),
+            ],
+        )],
         ymax=0.6,
         fmt="{:.3f}",
     )
 
+    # --- 6. Learning curve: testing effect vs decay (controlled) ---------
+    trained = lifecycle_val("learning_curve", "trained_vs_fresh", "trained_after_gap", default=0.625)
+    fresh = lifecycle_val("learning_curve", "trained_vs_fresh", "fresh_after_gap", default=0.625)
+    grouped_bar_chart(
+        os.path.join(args.out_dir, "learning_curve.svg"),
+        "测试效应：同样经过7天，练过一轮检索 vs 全新（hit@1）",
+        "命中率",
+        ["训练后经过 7 天", "全新引擎经过 7 天"],
+        [("数值", [trained, fresh])],
+        ymax=1.0,
+        fmt="{:.3f}",
+    )
+
+    # --- 7. Head-to-head (Mem0-style vs Mnemosis, real numbers) ----------
     grouped_bar_chart(
         os.path.join(args.out_dir, "head_to_head.svg"),
         "真实对决：Mem0-style vs Mnemosis（同一 88 题，hit@5 %）",
         "命中率 (%)",
-        ["fact", "event", "temporal", "distractor 拒答"],
+        ["事实", "事件", "时序·下一事件", "干扰项拒答"],
         [
-            ("Mem0-style", [100, 66.7, 8.3, 0]),
-            ("Mnemosis", [100, 100, 100, 100]),
+            ("Mem0-style", [100.0, 66.7, 8.3, 0.0]),
+            ("Mnemosis", [100.0, 100.0, 100.0, 100.0]),
         ],
         ymax=110,
     )
 
+    # --- 8. Unified 6-system leaderboard (real numbers) ------------------
     grouped_bar_chart(
         os.path.join(args.out_dir, "unified_compare.svg"),
         "真实测评总榜：6 系统 × 4 项（同一 88 题）",
         "命中率 (%)",
-        ["fact@5", "event@5", "temporal@5", "distractor 拒答"],
+        ["事实@5", "事件@5", "时序·下一事件@5", "干扰项拒答"],
         [
-            ("BM25", [100, 100, 12.5, 0]),
-            ("嵌入 kNN", [100, 91.7, 8.3, 0]),
-            ("Mem0-style", [100, 66.7, 8.3, 0]),
-            ("HippoRAG-style", [33.3, 16.7, 37.5, 0]),
-            ("Mnemosis 词法", [100, 100, 100, 100]),
-            ("Mnemosis ngram", [100, 100, 100, 100]),
+            ("BM25", [100.0, 100.0, 12.5, 0.0]),
+            ("嵌入 kNN", [100.0, 91.7, 8.3, 0.0]),
+            ("Mem0-style", [100.0, 66.7, 8.3, 0.0]),
+            ("HippoRAG-style", [33.3, 16.7, 37.5, 0.0]),
+            ("Mnemosis 词法", [100.0, 100.0, 100.0, 100.0]),
+            ("Mnemosis ngram", [100.0, 100.0, 100.0, 100.0]),
         ],
         ymax=110,
     )
