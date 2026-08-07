@@ -62,6 +62,10 @@ class Backend(ABC):
     def add_link(self, src: str, dst: str, weight: float = 1.0) -> None: ...
 
     @abstractmethod
+    def link_weight(self, src: str, dst: str) -> float:
+        """Return the weight of the src->dst link (0.0 if absent)."""
+
+    @abstractmethod
     def related(
         self, memory_id: str, depth: int = 1, max_nodes: int = 20
     ) -> list[MemoryItem]: ...
@@ -152,6 +156,9 @@ class DictBackend(Backend):
         self._links[(src, dst)] = max(self._links.get((src, dst), 0.0), weight)
         self._adj.setdefault(src, set()).add(dst)
         self._adj.setdefault(dst, set()).add(src)
+
+    def link_weight(self, src: str, dst: str) -> float:
+        return self._links.get((src, dst), 0.0)
 
     def related(
         self, memory_id: str, depth: int = 1, max_nodes: int = 20
@@ -436,6 +443,13 @@ class SQLiteBackend(Backend):
                 """,
                 (src, dst, weight),
             )
+
+    def link_weight(self, src: str, dst: str) -> float:
+        row = self._conn.execute(
+            "SELECT weight FROM links WHERE src = ? AND dst = ?",
+            (src, dst),
+        ).fetchone()
+        return float(row["weight"]) if row else 0.0
 
     def related(
         self, memory_id: str, depth: int = 1, max_nodes: int = 20

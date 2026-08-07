@@ -22,6 +22,9 @@ reconciling — the way human memory actually works.
   gaps before the agent answers.
 - **Associative recall** — memories are indexed by multiple cues (time, topic,
   people, keywords) and linked, so any angle can reach them.
+- **Pattern completion** - a partial cue re-activates a whole well-integrated
+  pattern: weakly retrievable memories that are strongly linked to a partial
+  match get a bounded completion boost (Rolls, 2013; Theves et al., 2024).
 - **Context-dependent recall** — memories keep the context they were formed
   in, and recall boosts context matches (Godden & Baddeley, 1975).
 - **Emotional persistence** — affect-tagged memories decay more slowly

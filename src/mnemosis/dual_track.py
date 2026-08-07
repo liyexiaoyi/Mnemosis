@@ -38,6 +38,7 @@ class DualTrackStore:
         self._term_cache: dict[tuple, frozenset[str]] = {}
         self._embed_cache: dict[str, list[float]] = {}
         self._inverted: dict[str, dict[str, set[str]]] = {}
+        self.pattern_completions = 0
 
     def remember(
         self,
@@ -98,6 +99,15 @@ class DualTrackStore:
         max_expansion_neighbors: int = 50,
         event_chain: EventChainIndex | None = None,
         temporal_boost: float = 1.0,
+        pattern_completion: bool = True,
+        pc_min_overlap: float = 0.25,
+        pc_max_overlap: float = 0.95,
+        pc_link_weight_min: float = 0.8,
+        pc_min_shared_cues: int = 2,
+        pc_boost_scale: float = 0.9,
+        pc_max_roots: int = 4,
+        pc_max_neighbors: int = 8,
+        pc_max_appended: int = 16,
     ) -> list[RecallResult]:
         now = now or utcnow()
         candidates = self.backend.list(kind=kind)
@@ -182,6 +192,18 @@ class DualTrackStore:
             self._follow_event_chain(
                 scored, event_chain, temporal_boost
             )
+        if pattern_completion:
+            self._pattern_completion(
+                scored,
+                min_overlap=pc_min_overlap,
+                max_overlap=pc_max_overlap,
+                link_weight_min=pc_link_weight_min,
+                min_shared_cues=pc_min_shared_cues,
+                boost_scale=pc_boost_scale,
+                max_roots=pc_max_roots,
+                max_neighbors=pc_max_neighbors,
+                max_appended=pc_max_appended,
+            )
         results = [
             RecallResult(item=item, score=score, reasons=reasons)
             for score, _, item, reasons, _ in scored[:top_k]
@@ -223,6 +245,79 @@ class DualTrackStore:
                     query_terms,
                 )
         return results
+
+    def _pattern_completion(
+        self,
+        scored: list[tuple[float, float, MemoryItem, list[str], bool]],
+        *,
+        min_overlap: float,
+        max_overlap: float,
+        link_weight_min: float,
+        min_shared_cues: int,
+        boost_scale: float,
+        max_roots: int,
+        max_neighbors: int,
+        max_appended: int,
+    ) -> None:
+        """Hippocampal pattern completion (Rolls, 2013; Theves et al., 2024).
+
+        A partial cue -- the query overlaps with only some of a memory's
+        pattern -- is enough to re-activate the whole integrated cluster in
+        the MTL memory system. We emulate this with a *bounded* completion
+        pass: for partially matched roots, strongly linked neighbours (strong
+        link weight AND at least `min_shared_cues` shared cues) receive a
+        discounted boost, so the rest of the pattern can surface even when it
+        shares no words with the query.
+
+        The pass is deliberately bounded (few roots, few neighbours, small
+        boost) so large stores do not flood the top-k with loosely related
+        items; it never changes the base ranking logic for fully matched
+        memories.
+        """
+        roots = [
+            entry
+            for entry in scored
+            if min_overlap <= entry[1] < max_overlap
+        ][:max_roots]
+        if not roots:
+            return
+        boosts: dict[str, float] = {}
+        for score, _, item, _, _ in roots:
+            root_cues = set(item.cues)
+            for linked in self.backend.related(
+                item.id, depth=1, max_nodes=1000
+            )[:max_neighbors]:
+                if self.backend.link_weight(item.id, linked.id) < link_weight_min:
+                    continue
+                if len(root_cues & set(linked.cues)) < min_shared_cues:
+                    continue
+                boost = score * boost_scale * min(1.0, linked.confidence)
+                if boost > boosts.get(linked.id, 0.0):
+                    boosts[linked.id] = boost
+        if not boosts:
+            return
+        existing_ids = {entry[2].id for entry in scored}
+        reason = "\u6a21\u5f0f\u8865\u5168(\u90e8\u5206\u7ebf\u7d22)"
+        applied = 0
+        for index, (score, overlap, item, reasons, matched) in enumerate(scored):
+            boost = boosts.get(item.id)
+            if boost is None or boost <= score:
+                continue
+            scored[index] = (boost, overlap, item, reasons + [reason], matched)
+            applied += 1
+        appended = 0
+        for linked_id, boost in boosts.items():
+            if linked_id in existing_ids or appended >= max_appended:
+                continue
+            linked = self.backend.get(linked_id)
+            if linked is None:
+                continue
+            scored.append((boost, 0.0, linked, [reason], False))
+            existing_ids.add(linked_id)
+            appended += 1
+        if applied or appended:
+            self.pattern_completions += applied + appended
+            scored.sort(key=lambda entry: entry[0], reverse=True)
 
     def _term_index(self, kind: MemoryKind | None) -> dict[str, set[str]]:
         """Lazily built inverted index: term -> memory ids.

@@ -222,6 +222,7 @@ def eval_retrieval(
     questions: list[dict],
     top_k: int = 5,
     now=None,
+    pattern_completion: bool = True,
 ) -> dict:
     stats: dict[str, dict] = defaultdict(
         lambda: {"n": 0, "hit1": 0, "hit5": 0, "pass": 0, "anchor5": 0, "mrr": 0.0}
@@ -236,7 +237,12 @@ def eval_retrieval(
             stats[kind]["pass"] += int(passed)
             details.append({"kind": kind, "q": question["q"], "pass": passed})
             continue
-        results = engine.recall(question["q"], top_k=top_k, now=now)
+        results = engine.recall(
+            question["q"],
+            top_k=top_k,
+            now=now,
+            pattern_completion=pattern_completion,
+        )
         contents = [r.item.content for r in results]
         expected = question["expected"]
         hit1 = bool(results) and contents[0] == expected[0]
@@ -484,6 +490,11 @@ def main() -> int:
         help="repeat the LLM eval N times and report mean/min/max accuracy",
     )
     parser.add_argument(
+        "--no-pattern-completion",
+        action="store_true",
+        help="disable hippocampal pattern completion (A/B control)",
+    )
+    parser.add_argument(
         "--llm-embedder",
         choices=["keyword", "ngram"],
         default="ngram",
@@ -515,7 +526,11 @@ def main() -> int:
         engine = build_engine(dataset, embedder=embedder)
         if args.sleep:
             engine.sleep()
-        reports[label] = eval_retrieval(engine, dataset["questions"])
+        reports[label] = eval_retrieval(
+            engine,
+            dataset["questions"],
+            pattern_completion=not args.no_pattern_completion,
+        )
         print(f"\n-- retrieval with {label} --")
         print_report(reports[label], [])
         engine.close()
