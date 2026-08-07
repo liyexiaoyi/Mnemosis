@@ -243,6 +243,18 @@ def main() -> int:
         fmt="{:.3f}",
     )
 
+    grouped_bar_chart(
+        os.path.join(args.out_dir, "head_to_head.svg"),
+        "真实对决：Mem0-style vs Mnemosis（同一 88 题，hit@5 %）",
+        "命中率 (%)",
+        ["fact", "event", "temporal", "distractor 拒答"],
+        [
+            ("Mem0-style", [100, 66.7, 8.3, 0]),
+            ("Mnemosis", [100, 100, 100, 100]),
+        ],
+        ymax=110,
+    )
+
     print(f"charts written to {args.out_dir}")
     return 0
 
