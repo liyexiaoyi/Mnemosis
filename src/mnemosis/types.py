@@ -208,12 +208,22 @@ def normalize_cues(cues: list[str]) -> list[str]:
 
 
 def tokenize(text: str) -> list[str]:
-    """Tokenize for keyword recall: latin words + CJK chars and bigrams."""
+    """Tokenize for keyword recall.
+
+    Dates and hyphenated compounds stay atomic ("2026-02-01" is one token),
+    then latin words (stopword-filtered) + CJK chars and bigrams.
+    """
+    lowered = text.lower()
     tokens: list[str] = []
-    for word in re.findall(r"[a-z0-9]+", text.lower()):
+    compound_pattern = r"[a-z0-9]+(?:[-_][a-z0-9]+)+"
+    for token in re.findall(compound_pattern, lowered):
+        if token not in STOPWORDS:
+            tokens.append(token)
+    rest = re.sub(compound_pattern, " ", lowered)
+    for word in re.findall(r"[a-z0-9]+", rest):
         if len(word) > 1 and word not in STOPWORDS:
             tokens.append(word)
-    cjk = "".join(re.findall(r"[\u4e00-\u9fff]", text.lower()))
+    cjk = "".join(re.findall(r"[\u4e00-\u9fff]", lowered))
     for ch in cjk:
         tokens.append(ch)
     for i in range(len(cjk) - 1):

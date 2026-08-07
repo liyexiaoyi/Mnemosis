@@ -134,6 +134,31 @@ class CognitionTest(unittest.TestCase):
             any("linked to" in reason for r in results for reason in r.reasons)
         )
 
+    def test_reinforcement_does_not_dominate_exact_match(self):
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        target = engine.remember(
+            "Alice bought a vinyl record on 2026-07-08.",
+            kind=MemoryKind.EPISODIC,
+            source=user,
+            cues=["alice", "2026-07-08", "session26"],
+        )
+        filler = engine.remember(
+            "Alice's favorite color is coral.",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["alice", "color"],
+        )
+        for _ in range(20):
+            engine.recall("alice favorite color", top_k=1)
+        self.assertGreater(
+            engine.curve.retrievability(filler), 1.0  # storage multiplier
+        )
+        results = engine.recall(
+            "What did Alice buy on 2026-07-08?", top_k=3
+        )
+        self.assertEqual(results[0].item.id, target.id)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -60,8 +60,8 @@ python benchmarks/locomo_bench.py --with-llm      # + local LLM grounding
 
 | Mode | event hit@1 | event hit@5 | fact hit@1 | fact hit@5 | temporal anchor@5 |
 |---|---|---|---|---|---|
-| keyword | 0.250 | 0.958 | 0.625 | 0.917 | 0.083 |
-| ngram embedder | 0.792 | 0.917 | 0.792 | 0.958 | 0.667 |
+| keyword | 0.958 | 0.958 | 0.917 | 0.958 | 0.792 |
+| ngram embedder | 1.000 | 1.000 | 0.917 | 1.000 | 0.958 |
 
 Distractor questions pass 16/16 (never-mentioned topics are reported as
 knowledge gaps rather than confabulated).
@@ -71,7 +71,7 @@ LLM answer accuracy on a 12-question subset:
 | Approach | gemma3:12b | qwen2.5-vl |
 |---|---|---|
 | llm_alone | 0.250 | 0.250 |
-| llm_with_mnemosis | 0.667 | 0.750 |
+| llm_with_mnemosis | 0.750 | 0.750 |
 
 ### Reading the temporal number
 

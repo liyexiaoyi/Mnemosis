@@ -34,6 +34,8 @@ class DualTrackStore:
         self.backend = backend
         self.curve = curve
         self.scorer = scorer
+        self._term_cache: dict[tuple, frozenset[str]] = {}
+        self._embed_cache: dict[str, list[float]] = {}
 
     def remember(
         self,
@@ -97,8 +99,10 @@ class DualTrackStore:
         query_vector = embedder.embed(query) if embedder is not None else None
         scored: list[tuple[float, float, MemoryItem, list[str], bool]] = []
         for item in candidates:
-            overlap = _overlap(query_terms, item)
-            retrievability = self.curve.retrievability(item, now)
+            overlap = _overlap(query_terms, self._terms(item))
+            retrievability = min(
+                1.0, self.curve.retrievability(item, now)
+            )
             context_match = (
                 context is not None
                 and item.context is not None
@@ -107,7 +111,7 @@ class DualTrackStore:
             reasons: list[str] = []
             semantic = 0.0
             if query_vector is not None:
-                item_vector = embedder.embed(item.content)
+                item_vector = self._embedding(item, embedder)
                 semantic = embedder.cosine(query_vector, item_vector)
                 score = (
                     0.30 * overlap
@@ -170,6 +174,23 @@ class DualTrackStore:
                     matched_items, suppression_factor, suppression_min_cues
                 )
         return results
+
+    def _terms(self, item: MemoryItem) -> frozenset[str]:
+        """Cached token terms for an item (auto-invalidated on change)."""
+        key = (item.id, item.content_hash, item.revision_count, tuple(item.cues))
+        cached = self._term_cache.get(key)
+        if cached is None:
+            cached = frozenset(tokenize(item.content)) | frozenset(item.cues)
+            self._term_cache[key] = cached
+        return cached
+
+    def _embedding(self, item: MemoryItem, embedder: Embedder) -> list[float]:
+        """Cached embedding for an item (keyed by content hash)."""
+        cached = self._embed_cache.get(item.content_hash)
+        if cached is None:
+            cached = embedder.embed(item.content)
+            self._embed_cache[item.content_hash] = cached
+        return cached
 
     def _spread_activation(
         self,
@@ -264,13 +285,14 @@ class DualTrackStore:
         return self.backend.list(kind=kind)
 
 
-def _overlap(query_terms: set[str], item: MemoryItem) -> float:
-    """Keyword/cue overlap in [0, 1] between query and a memory."""
-    item_terms = set(tokenize(item.content)) | set(item.cues)
+def _overlap(query_terms: set[str], item_terms: frozenset[str]) -> float:
+    """Keyword/cue overlap in [0, 1] between query and an item's terms."""
     if not query_terms or not item_terms:
         return 0.0
     hits = len(query_terms & item_terms)
-    return hits / max(1.0, math.sqrt(len(query_terms) * max(len(item_terms), 1)))
+    return hits / max(
+        1.0, math.sqrt(len(query_terms) * max(len(item_terms), 1))
+    )
 
 
 __all__ = ["DualTrackStore"]
