@@ -311,6 +311,37 @@ def run_spaced_review_eval(
     }
 
 
+def run_metacognition_eval() -> dict:
+    """Hallucination guard: known topics are found, unknown topics are gaps.
+
+    This mirrors a RAG agent deciding whether to answer: with Mnemosis'
+    metacognition, "I don't know" is an explicit, reliable outcome instead of
+    a confident guess.
+    """
+    user = SourceRecord(origin=SourceType.USER)
+    engine = MemoryEngine()
+    engine.remember(
+        "Alice's favorite color is teal.",
+        kind=MemoryKind.SEMANTIC,
+        source=user,
+        cues=["alice", "color"],
+    )
+    engine.remember(
+        "Bob's favorite food is ramen.",
+        kind=MemoryKind.SEMANTIC,
+        source=user,
+        cues=["bob", "food"],
+    )
+    known = engine.check("What is Alice's favorite color?").gaps
+    unknown = engine.check("What is Alice's favorite dessert?").gaps
+    engine.close()
+    return {
+        "known_query_gaps": len(known),
+        "unknown_query_gaps": len(unknown),
+        "hallucination_guard": bool(unknown) and not known,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--days", type=int, default=30)
@@ -332,6 +363,7 @@ def main() -> int:
     learning = run_learning_curve()
     merge = run_merge_eval()
     spaced = run_spaced_review_eval()
+    meta = run_metacognition_eval()
     print("== decay ==")
     print(f"  retention after {args.days} days:")
     print(f"    reviewed weekly : {decay['reviewed_retention']:.3f}")
@@ -371,6 +403,10 @@ def main() -> int:
     print(f"  reviewed : {spaced['reviewed_kept']}/{spaced['total']} still retrievable")
     print(f"  never    : {spaced['unreviewed_kept']}/{spaced['total']} still retrievable")
     print(f"  advantage: +{spaced['review_advantage']} memories kept")
+    print("== metacognition (hallucination guard) ==")
+    print(f"  known question gaps     : {meta['known_query_gaps']}")
+    print(f"  unknown question gaps   : {meta['unknown_query_gaps']}")
+    print(f"  hallucination guard OK  : {meta['hallucination_guard']}")
 
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as handle:
@@ -383,6 +419,7 @@ def main() -> int:
                 "learning_curve": learning,
                 "merge": merge,
                 "spaced_review": spaced,
+                "metacognition": meta,
             },
             handle,
             ensure_ascii=False,

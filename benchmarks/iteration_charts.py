@@ -442,6 +442,52 @@ def spaced_review_chart() -> None:
     print("written", path)
 
 
+def metacognition_chart() -> None:
+    """Hallucination guard: known vs unknown query gaps (real JSON)."""
+    lifecycle = latest("lifecycle_")
+    meta = lifecycle.get("metacognition", {})
+    known_gaps = int(meta.get("known_query_gaps", 0))
+    unknown_gaps = int(meta.get("unknown_query_gaps", 1))
+    w, h = 760, 340
+    ml, mr, mt, mb = 70, 20, 70, 80
+    plot_w, plot_h = w - ml - mr, h - mt - mb
+    group_w = plot_w / 2
+    bar_w = 60
+    palette = ["#54a24b", "#e45756"]
+    lines = _svg_open(
+        "元认知实测：知道就知道，不知道就说不知道",
+        "问到没学过的知识，系统能识别“知识缺口”并拒绝硬答——这是防幻觉的关键",
+        w, h,
+    )
+    ymax = 2.0
+    for tick in range(0, 5):
+        v = ymax * tick / 4
+        y = h - mb - plot_h * tick / 4
+        lines.append(f'<line x1="{ml}" y1="{y:.0f}" x2="{w - mr}" y2="{y:.0f}" stroke="#eee"/>')
+        lines.append(f'<text x="{ml - 8}" y="{y + 4:.0f}" font-size="11" fill="#666" text-anchor="end">{v:.0f}</text>')
+    lines.append(f'<line x1="{ml}" y1="{h - mb}" x2="{w - mr}" y2="{h - mb}" stroke="#999"/>')
+    lines.append(f'<line x1="{ml}" y1="{mt}" x2="{ml}" y2="{h - mb}" stroke="#999"/>')
+    lines.append(
+        f'<text x="14" y="{(mt + h - mb) / 2}" font-size="12" fill="#666" '
+        f'transform="rotate(-90 14,{(mt + h - mb) / 2})" text-anchor="middle">知识缺口数</text>'
+    )
+    for i, (label, val, color) in enumerate(
+        [("学过的问题", known_gaps, palette[0]), ("没学过的问题", unknown_gaps, palette[1])]
+    ):
+        cx = ml + group_w * i + group_w / 2
+        bh = plot_h * val / ymax
+        x = cx - bar_w / 2
+        y = h - mb - bh
+        lines.append(f'<rect x="{x:.0f}" y="{y:.0f}" width="{bar_w}" height="{max(2.0, bh):.0f}" fill="{color}" rx="2"/>')
+        lines.append(f'<text x="{cx:.0f}" y="{y - 4:.0f}" font-size="12" fill="#333" text-anchor="middle">{val}</text>')
+        lines.append(f'<text x="{cx:.0f}" y="{h - mb + 18}" font-size="11" fill="#333" text-anchor="middle">{label}</text>')
+    lines.append("</svg>")
+    path = os.path.join(OUT_DIR, "iteration_metacognition_zh.svg")
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines))
+    print("written", path)
+
+
 def _color(label: str) -> str:
     palette = {
         "BM25": "#72b7b2",
@@ -463,6 +509,7 @@ def main() -> int:
     learning_curve_chart()
     sleep_dedup_chart()
     spaced_review_chart()
+    metacognition_chart()
     return 0
 
 
