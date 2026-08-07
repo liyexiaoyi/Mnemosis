@@ -125,6 +125,9 @@ Results (30 simulated days, seed-free deterministic):
   and sleep detects the planted contradiction.
 - At 1,000 memories, updating one fact still fully replaces it (no stale copy
   survives) and two WAL connections see each other's writes.
+- Learning curve: re-answering the same 88 questions three times keeps
+  hit@1 perfectly stable at 0.818 (retrieval-induced forgetting is bounded:
+  only true query competitors are suppressed, strength never drops below 0.7).
 
 `--sleep` mode on locomo_bench verifies consolidation does not hurt
 retrieval: after `engine.sleep()`, fact/event hit@1 stay 1.000 and temporal

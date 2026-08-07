@@ -86,8 +86,9 @@ class DualTrackStore:
         now: datetime | None = None,
         reinforce: bool = True,
         context: str | None = None,
-        suppression_factor: float = 0.02,
+        suppression_factor: float = 0.01,
         suppression_min_cues: int = 2,
+        suppression_floor: float = 0.7,
         embedder: Embedder | None = None,
         expansion_discount: float = 0.95,
         max_expansion_roots: int = 5,
@@ -171,7 +172,11 @@ class DualTrackStore:
                     if matched
                 ]
                 self._suppress_linked_rivals(
-                    matched_items, suppression_factor, suppression_min_cues
+                    matched_items,
+                    suppression_factor,
+                    suppression_min_cues,
+                    suppression_floor,
+                    query_terms,
                 )
         return results
 
@@ -263,6 +268,8 @@ class DualTrackStore:
         items: list[MemoryItem],
         suppression_factor: float,
         min_shared_cues: int,
+        floor: float,
+        query_terms: set[str],
     ) -> None:
         """Retrieval-induced forgetting (Anderson, Bjork & Bjork, 1994).
 
@@ -280,7 +287,11 @@ class DualTrackStore:
                     continue
                 if len(item_cues & set(linked.cues)) < min_shared_cues:
                     continue
-                linked.strength = max(0.0, linked.strength - suppression_factor)
+                if not _overlap(query_terms, self._terms(linked)) > 0.0:
+                    continue  # only true retrieval competitors are suppressed
+                linked.strength = max(
+                    floor, linked.strength - suppression_factor
+                )
                 self.backend.update(linked)
                 suppressed.add(linked.id)
 

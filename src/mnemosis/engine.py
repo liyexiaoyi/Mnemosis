@@ -149,8 +149,9 @@ class MemoryEngine:
         top_k: int = 5,
         now: datetime | None = None,
         context: str | None = None,
-        suppression_factor: float = 0.02,
+        suppression_factor: float = 0.01,
         suppression_min_cues: int = 2,
+        suppression_floor: float = 0.7,
         embedder: Embedder | None = None,
         expansion_discount: float = 0.95,
     ) -> list[RecallResult]:
@@ -163,6 +164,7 @@ class MemoryEngine:
             context=context,
             suppression_factor=suppression_factor,
             suppression_min_cues=suppression_min_cues,
+            suppression_floor=suppression_floor,
             embedder=embedder,
             expansion_discount=expansion_discount,
         )

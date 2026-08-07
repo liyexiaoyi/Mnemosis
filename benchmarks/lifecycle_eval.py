@@ -18,7 +18,17 @@ import time
 from datetime import timedelta
 
 from mnemosis import MemoryEngine
+from mnemosis.embedding import NGramEmbedder
 from mnemosis.types import MemoryKind, SourceRecord, SourceType, utcnow
+
+try:
+    from locomo_bench import build_engine, eval_retrieval, generate_dataset
+except ImportError:
+    from benchmarks.locomo_bench import (
+        build_engine,
+        eval_retrieval,
+        generate_dataset,
+    )
 
 
 def run_decay_eval(days: int = 30, review_every_days: int = 7) -> dict:
@@ -179,6 +189,22 @@ def run_concurrency_check() -> dict:
     return {"reader_sees_writer_data": ok}
 
 
+def run_learning_curve(rounds: int = 3) -> dict:
+    """Re-ask the same questions over successive rounds; retrieval should
+    strengthen with use (use-it-or-lose-it in reverse)."""
+    dataset = generate_dataset(seed=42, sessions=24, events_per_session=5)
+    engine = build_engine(dataset, embedder=NGramEmbedder())
+    hit1_by_round: list[float] = []
+    for _ in range(rounds):
+        report = eval_retrieval(engine, dataset["questions"])
+        stats = report["stats"]
+        n = sum(values["n"] for values in stats.values())
+        hits = sum(values["hit1"] for values in stats.values())
+        hit1_by_round.append(round(hits / n, 3))
+    engine.close()
+    return {"hit1_by_round": hit1_by_round}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--days", type=int, default=30)
@@ -197,6 +223,7 @@ def main() -> int:
     update = run_update_eval()
     scale = run_update_at_scale()
     concurrency = run_concurrency_check()
+    learning = run_learning_curve()
     print("== decay ==")
     print(f"  retention after {args.days} days:")
     print(f"    reviewed weekly : {decay['reviewed_retention']:.3f}")
@@ -217,6 +244,8 @@ def main() -> int:
     print(f"  stale fact survives     : {scale['stale_survives']}")
     print("== concurrency (WAL, two connections) ==")
     print(f"  reader sees writer data : {concurrency['reader_sees_writer_data']}")
+    print("== learning curve (same 88 questions, repeated) ==")
+    print(f"  hit@1 by round          : {learning['hit1_by_round']}")
 
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as handle:
@@ -226,6 +255,7 @@ def main() -> int:
                 "update": update,
                 "update_at_scale": scale,
                 "concurrency": concurrency,
+                "learning_curve": learning,
             },
             handle,
             ensure_ascii=False,
