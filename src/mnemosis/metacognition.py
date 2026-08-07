@@ -13,6 +13,7 @@ from enum import Enum
 from .consolidation import Conflict
 from .dual_track import DualTrackStore
 from .forgetting import ForgettingCurve
+from .embedding import Embedder
 from .types import MemoryItem, SourceType, tokenize, utcnow
 
 
@@ -42,10 +43,12 @@ class Metacognition:
         store: DualTrackStore,
         curve: ForgettingCurve,
         consolidator=None,
+        semantic_gap_threshold: float = 0.35,
     ) -> None:
         self.store = store
         self.curve = curve
         self.consolidator = consolidator
+        self.semantic_gap_threshold = semantic_gap_threshold
 
     def confidence(
         self, item: MemoryItem, now: datetime | None = None
@@ -70,17 +73,44 @@ class Metacognition:
             return []
         return self.consolidator.detect_conflicts()
 
-    def knowledge_gaps(self, query: str, top_k: int = 8) -> list[str]:
-        """Query terms that no active memory can account for."""
+    def knowledge_gaps(
+        self,
+        query: str,
+        top_k: int = 8,
+        embedder: Embedder | None = None,
+    ) -> list[str]:
+        """Query terms that no active memory can account for.
+
+        With an embedder, a term is covered when it is semantically similar to
+        at least one memory (e.g. "preference" ~ "prefers").
+        """
         query_terms = set(tokenize(query))
         known: set[str] = set()
-        for item in self.store.all_active():
+        items = self.store.all_active()
+        for item in items:
             known |= set(tokenize(item.content))
             known |= set(item.cues)
-        return [term for term in sorted(query_terms) if term not in known][:top_k]
+        missing = [term for term in sorted(query_terms) if term not in known]
+        if not missing or embedder is None:
+            return missing[:top_k]
+        vectors = [(item, embedder.embed(item.content)) for item in items]
+        covered: set[str] = set()
+        for term in missing:
+            query_vector = embedder.embed(term)
+            if any(
+                embedder.cosine(query_vector, item_vector)
+                > self.semantic_gap_threshold
+                for _, item_vector in vectors
+            ):
+                covered.add(term)
+        return [term for term in missing if term not in covered][:top_k]
 
     def blocked_retrievals(
-        self, query: str, top_k: int = 3, now: datetime | None = None
+        self,
+        query: str,
+        top_k: int = 3,
+        now: datetime | None = None,
+        embedder: Embedder | None = None,
     ) -> list[MemoryItem]:
         """Schacter's "blocking" sin: cues match, but the memory was not recalled.
 
@@ -89,7 +119,9 @@ class Metacognition:
         should try alternative retrieval routes instead of giving up.
         """
         query_terms = set(tokenize(query))
-        results = self.store.recall(query, top_k=top_k, now=now)
+        results = self.store.recall(
+            query, top_k=top_k, now=now, embedder=embedder
+        )
         recalled = {r.item.id for r in results}
         return [
             item
@@ -105,17 +137,23 @@ class Metacognition:
         return item.source.origin is SourceType.INFERENCE and item.confidence < 0.8
 
     def check(
-        self, query: str, top_k: int = 3, now: datetime | None = None
+        self,
+        query: str,
+        top_k: int = 3,
+        now: datetime | None = None,
+        embedder: Embedder | None = None,
     ) -> MetacognitiveCheck:
         now = now or utcnow()
-        results = self.store.recall(query, top_k=top_k, now=now)
+        results = self.store.recall(
+            query, top_k=top_k, now=now, embedder=embedder
+        )
         items = [(r.item, *self.confidence(r.item, now)) for r in results]
         return MetacognitiveCheck(
             query=query,
             items=items,
             contradictions=self.contradictions(),
-            gaps=self.knowledge_gaps(query),
-            blocked=self.blocked_retrievals(query, top_k, now),
+            gaps=self.knowledge_gaps(query, embedder=embedder),
+            blocked=self.blocked_retrievals(query, top_k, now, embedder),
         )
 
 

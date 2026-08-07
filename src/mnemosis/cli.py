@@ -6,6 +6,7 @@ import argparse
 from typing import Sequence
 
 from .engine import MemoryEngine
+from .embedding import NGramEmbedder
 from .types import MemoryKind, SourceRecord, SourceType
 
 
@@ -45,6 +46,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--top-k", type=int, default=5)
     p.add_argument("--kind", choices=["episodic", "semantic"])
     p.add_argument("--context")
+    p.add_argument("--embedder", choices=["ngram"], default=None)
 
     sub.add_parser("sleep", help="run sleep consolidation")
     sub.add_parser("stats", help="show statistics")
@@ -52,6 +54,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("check", help="metacognitive check for a query")
     p.add_argument("query")
     p.add_argument("--top-k", type=int, default=3)
+    p.add_argument("--embedder", choices=["ngram"], default=None)
 
     p = sub.add_parser("update", help="revise a memory")
     p.add_argument("memory_id")
@@ -99,11 +102,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             print(f"saved {item.id} [{item.kind.value}] {item.content}")
         elif args.command == "recall":
+            embedder = NGramEmbedder() if getattr(args, "embedder", None) == "ngram" else None
             for r in engine.recall(
                 args.query,
                 kind=MemoryKind(args.kind) if args.kind else None,
                 top_k=args.top_k,
                 context=args.context,
+                embedder=embedder,
             ):
                 print(f"{r.score:.3f} [{r.item.kind.value}] {r.item.content}")
         elif args.command == "sleep":
@@ -112,7 +117,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             for key, value in engine.stats().items():
                 print(f"{key}: {value}")
         elif args.command == "check":
-            check = engine.check(args.query, top_k=args.top_k)
+            embedder = NGramEmbedder() if getattr(args, "embedder", None) == "ngram" else None
+            check = engine.check(args.query, top_k=args.top_k, embedder=embedder)
             print(f"gaps: {check.gaps or 'none'}")
             print(f"contradictions: {len(check.contradictions)}")
             print(f"blocked: {[b.content for b in check.blocked] or 'none'}")

@@ -12,6 +12,7 @@ from datetime import datetime
 from .backend import Backend
 from .forgetting import ForgettingCurve
 from .importance import ImportanceScorer
+from .embedding import Embedder
 from .types import (
     MemoryItem,
     MemoryKind,
@@ -84,10 +85,12 @@ class DualTrackStore:
         reinforce: bool = True,
         context: str | None = None,
         suppression_factor: float = 0.02,
+        embedder: Embedder | None = None,
     ) -> list[RecallResult]:
         now = now or utcnow()
         candidates = self.backend.list(kind=kind)
         query_terms = set(tokenize(query))
+        query_vector = embedder.embed(query) if embedder is not None else None
         scored: list[tuple[float, float, MemoryItem, list[str]]] = []
         for item in candidates:
             overlap = _overlap(query_terms, item)
@@ -97,15 +100,29 @@ class DualTrackStore:
                 and item.context is not None
                 and item.context.lower() == context.strip().lower()
             )
-            score = (
-                0.40 * overlap
-                + 0.25 * retrievability
-                + 0.20 * item.importance
-                + (0.15 if context_match else 0.0)
-            )
             reasons: list[str] = []
+            semantic = 0.0
+            if query_vector is not None:
+                item_vector = embedder.embed(item.content)
+                semantic = embedder.cosine(query_vector, item_vector)
+                score = (
+                    0.30 * overlap
+                    + 0.20 * retrievability
+                    + 0.15 * item.importance
+                    + (0.15 if context_match else 0.0)
+                    + 0.20 * semantic
+                )
+            else:
+                score = (
+                    0.40 * overlap
+                    + 0.25 * retrievability
+                    + 0.20 * item.importance
+                    + (0.15 if context_match else 0.0)
+                )
             if overlap > 0:
                 reasons.append(f"cue/keyword overlap {overlap:.2f}")
+            if semantic > 0.5:
+                reasons.append(f"semantic similarity {semantic:.2f}")
             if retrievability < 0.5:
                 reasons.append("partially forgotten")
             if item.importance >= 0.7:

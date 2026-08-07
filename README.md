@@ -39,6 +39,10 @@ reconciling — the way human memory actually works.
   destabilizes the trace before it re-stabilizes (Nader et al., 2000).
 - **Working set** — recently used memories are exposed for prompt injection
   (Atkinson & Shiffrin, 1968; CoALA).
+- **Synonym-tolerant semantic recall** — optional zero-dependency
+  `NGramEmbedder` (or any external embedding callable) blends semantic
+  similarity into scoring, so "preference" still matches "prefers" and
+  "color" matches "colour".
 - **Local-first, zero runtime dependencies** — pure Python `stdlib`, SQLite
   persistence, no server, no mandatory cloud embeddings (optional embedder
   hooks).
@@ -90,6 +94,18 @@ for r in results:
 report = engine.sleep()          # consolidate: promote, prune, find conflicts
 check = engine.check("sqlite")   # metacognition: confidence + gaps
 ```
+
+For synonym-tolerant recall, attach an embedder:
+
+```python
+from mnemosis.embedding import NGramEmbedder
+
+engine = MemoryEngine(embedder=NGramEmbedder())  # zero-dependency
+engine.recall("the user's preference")           # matches "prefers" too
+```
+
+External embeddings (e.g. an OpenAI-compatible API) work through
+`CallableEmbedder(fn)`; the core keeps working without one.
 
 ## CLI
 

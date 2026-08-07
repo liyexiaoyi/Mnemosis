@@ -14,6 +14,7 @@ import sys
 from typing import Any
 
 from .engine import MemoryEngine
+from .embedding import NGramEmbedder
 from .types import MemoryKind, SourceRecord, SourceType
 
 PROTOCOL_VERSION = "2025-03-26"
@@ -72,6 +73,7 @@ class MCPServer:
                             "enum": ["episodic", "semantic"],
                         },
                         "context": {"type": "string"},
+                        "embedder": {"type": "string", "enum": ["ngram"]},
                     },
                     "required": ["query"],
                 },
@@ -222,11 +224,17 @@ class MCPServer:
                 "importance": item.importance,
             }
         if name == "recall":
+            embedder = (
+                NGramEmbedder()
+                if args.get("embedder") == "ngram"
+                else None
+            )
             results = self.engine.recall(
                 args["query"],
                 kind=_kind(args.get("kind")),
                 top_k=int(args.get("top_k", 5)),
                 context=args.get("context"),
+                embedder=embedder,
             )
             return [
                 {
@@ -326,4 +334,3 @@ def run_stdio(db_path: str | None = None) -> None:
 
 
 __all__ = ["MCPServer", "run_stdio"]
-

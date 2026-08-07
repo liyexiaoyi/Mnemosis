@@ -4,8 +4,8 @@
 
 - [x] MCP server wrapper (memory tools: `remember`, `recall`, `sleep`, `check`)
 - [x] CLI (`mnemosis remember "..."`, `mnemosis recall "..."`)
-- [ ] Optional embedder backends: local (hash/char n-gram, tf-idf) and
-      OpenAI-compatible API
+- [x] Optional embedder backends: local `NGramEmbedder` (hash/char n-gram)
+      and OpenAI-compatible APIs via `CallableEmbedder`
 - [x] LLM-assisted consolidation summarizer (episodic -> semantic summaries)
 
 ## v0.3 — evaluation

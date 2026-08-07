@@ -8,6 +8,7 @@ from .association import AssociationIndex
 from .backend import Backend, make_backend
 from .consolidation import ConsolidationReport, Consolidator
 from .dual_track import DualTrackStore
+from .embedding import Embedder
 from .forgetting import ForgettingCurve, ReviewScheduler
 from .importance import ImportanceScorer
 from .metacognition import ConfidenceLabel, Metacognition, MetacognitiveCheck
@@ -45,11 +46,13 @@ class MemoryEngine:
         decay_rate: float = 0.002,
         base_interval_hours: float = 24.0,
         importance_scorer: ImportanceScorer | None = None,
+        embedder: Embedder | None = None,
     ) -> None:
         self.backend: Backend = make_backend(memory_file)
         self.curve = ForgettingCurve(decay_rate)
         self.scheduler = ReviewScheduler(self.curve, base_interval_hours)
         self.scorer = importance_scorer or ImportanceScorer()
+        self.embedder = embedder
         self.store = DualTrackStore(self.backend, self.curve, self.scorer)
         self.associations = AssociationIndex(self.backend)
         self.consolidator = Consolidator(self.store, self.backend)
@@ -147,7 +150,9 @@ class MemoryEngine:
         now: datetime | None = None,
         context: str | None = None,
         suppression_factor: float = 0.02,
+        embedder: Embedder | None = None,
     ) -> list[RecallResult]:
+        embedder = embedder or self.embedder
         return self.store.recall(
             query,
             kind=kind,
@@ -155,6 +160,7 @@ class MemoryEngine:
             now=now,
             context=context,
             suppression_factor=suppression_factor,
+            embedder=embedder,
         )
 
     # -- sleep cycle ----------------------------------------------------------
@@ -204,9 +210,15 @@ class MemoryEngine:
     # -- metacognition ----------------------------------------------------------
 
     def check(
-        self, query: str, top_k: int = 3, now: datetime | None = None
+        self,
+        query: str,
+        top_k: int = 3,
+        now: datetime | None = None,
+        embedder: Embedder | None = None,
     ) -> MetacognitiveCheck:
-        return self.meta.check(query, top_k=top_k, now=now)
+        return self.meta.check(
+            query, top_k=top_k, now=now, embedder=embedder or self.embedder
+        )
 
     def confidence(
         self, item: MemoryItem, now: datetime | None = None

@@ -23,6 +23,7 @@ the codebase and a test.
 | Multi-store / working memory | Atkinson & Shiffrin (1968), *The Psychology of Learning and Motivation*; Baddeley (2000) episodic buffer | `working_set()` exposes recently used memories for prompt injection | `engine.py` |
 | Memory stream + reflection | Park et al. (2023), Generative Agents | Importance/recency/relevance scoring; `sleep(summarizer=...)` reflects over evidence-backed facts | `metacognition.py`, `consolidation.py` |
 | OS-inspired memory hierarchy | Packer et al. (2023), MemGPT | Working set + long-term tiers; interrupts for control flow (roadmap) | `engine.py`, roadmap |
+| Distributional similarity | Harris (1954), *Word* | Character n-gram hashing embeddings for synonym-tolerant recall | `embedding.py` |
 | Long-conversation evaluation | Maharana et al. (2024), LoCoMo, ACL | Evaluation methodology for episodic memory over time (roadmap) | roadmap |
 
 ## Why these papers
