@@ -108,6 +108,10 @@ class DualTrackStore:
         pc_max_roots: int = 4,
         pc_max_neighbors: int = 8,
         pc_max_appended: int = 16,
+        separation: bool = True,
+        sep_shared_cues_min: int = 2,
+        sep_overlap_min: float = 0.35,
+        sep_penalty: float = 0.08,
     ) -> list[RecallResult]:
         now = now or utcnow()
         candidates = self.backend.list(kind=kind)
@@ -177,6 +181,13 @@ class DualTrackStore:
             matched = overlap > 0.0 or semantic >= 0.2
             scored.append((score, overlap, item, reasons, matched))
         scored.sort(key=lambda entry: entry[0], reverse=True)
+        if separation:
+            self._separate_near_duplicates(
+                scored,
+                min_shared_cues=sep_shared_cues_min,
+                overlap_min=sep_overlap_min,
+                penalty=sep_penalty,
+            )
         self._spread_activation(
             scored,
             query_terms,
@@ -245,6 +256,49 @@ class DualTrackStore:
                     query_terms,
                 )
         return results
+
+    def _separate_near_duplicates(
+        self,
+        scored: list[tuple[float, float, MemoryItem, list[str], bool]],
+        *,
+        min_shared_cues: int,
+        overlap_min: float,
+        penalty: float,
+    ) -> None:
+        """Hippocampal pattern separation (Bakker et al., 2008, Science).
+
+        The dentate gyrus / CA3 decorrelates similar-but-distinct memories so
+        overlapping experiences do not overwrite or crowd each other. We
+        emulate this with a small, bounded penalty: candidates that share at
+        least `min_shared_cues` cues AND high lexical overlap with the top
+        match, but are a different memory, lose a little score. Only the
+        top-10 window is considered, so large stores stay cheap.
+        """
+        if len(scored) < 2:
+            return
+        _, _, top_item, _, _ = scored[0]
+        top_cues = set(top_item.cues)
+        top_terms = self._terms(top_item)
+        for index in range(1, min(len(scored), 10)):
+            score, overlap, item, reasons, matched = scored[index]
+            if item.content_hash == top_item.content_hash:
+                continue
+            if len(top_cues & set(item.cues)) < min_shared_cues:
+                continue
+            intersection = top_terms & self._terms(item)
+            union = top_terms | self._terms(item)
+            if not union:
+                continue
+            jaccard = len(intersection) / len(union)
+            if jaccard < overlap_min:
+                continue
+            scored[index] = (
+                max(0.0, score - penalty),
+                overlap,
+                item,
+                reasons + ["\u6a21\u5f0f\u5206\u79bb(\u76f8\u4f3c\u4f46\u4e0d\u540c)"],
+                matched,
+            )
 
     def _pattern_completion(
         self,

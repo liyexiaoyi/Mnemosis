@@ -160,6 +160,7 @@ class MemoryEngine:
         expansion_discount: float = 0.95,
         temporal_boost: float = 1.0,
         pattern_completion: bool = True,
+        separation: bool = True,
     ) -> list[RecallResult]:
         embedder = embedder or self.embedder
         return self.store.recall(
@@ -176,6 +177,7 @@ class MemoryEngine:
             event_chain=self.event_chain,
             temporal_boost=temporal_boost,
             pattern_completion=pattern_completion,
+            separation=separation,
         )
 
     # -- sleep cycle ----------------------------------------------------------
