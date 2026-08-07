@@ -73,6 +73,22 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("working-set", help="recently used memories")
     p.add_argument("--limit", type=int, default=8)
 
+    p = sub.add_parser("review-due", help="list memories due for spaced review")
+    p.add_argument("--limit", type=int, default=10)
+    p = sub.add_parser("review", help="record a spaced-repetition outcome")
+    p.add_argument("memory_id")
+    p.add_argument(
+        "--success",
+        action="store_true",
+        default=True,
+        help="mark the review as successful (default)",
+    )
+    p.add_argument(
+        "--fail",
+        action="store_true",
+        help="mark the review as failed",
+    )
+
     p = sub.add_parser("mcp", help="run the MCP stdio server")
     p.add_argument("--db")
     return parser
@@ -147,6 +163,23 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif args.command == "working-set":
             for item in engine.working_set(limit=args.limit):
                 print(item.content)
+        elif args.command == "review-due":
+            for item in engine.review_due(limit=args.limit):
+                print(
+                    f"{item.id}  "
+                    f"retrievability={engine.curve.retrievability(item):.2f}  "
+                    f"{item.content}"
+                )
+        elif args.command == "review":
+            item = engine.review(args.memory_id, success=not args.fail)
+            if item is None:
+                print("memory not found")
+            else:
+                print(
+                    f"reviewed: streak={item.review_streak} "
+                    f"successes={item.retrieval_successes} "
+                    f"failures={item.retrieval_failures}"
+                )
     finally:
         engine.close()
     return 0

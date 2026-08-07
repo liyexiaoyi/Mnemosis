@@ -47,6 +47,22 @@ reconciling — the way human memory actually works.
   persistence, no server, no mandatory cloud embeddings (optional embedder
   hooks).
 
+- **Event-chain schema recall** ??episodes sharing a person + session are
+  ordered by date and linked to their successor, so "after X, what
+  happened?" is answered by following the chain (Gilboa & Marlatte, 2017).
+- **Action-cued episodic preference** ??temporal questions ("after/next/then")
+  give episodic memories a small preference, so the event anchor is not
+  outranked by a same-keyword fact.
+- **Spaced-repetition feedback loop** ??`review_due()` + `review()` let the
+  agent judge recall success; streaks grow intervals, failures reset them
+  (Smolen et al., 2016). Measured: after 4 weeks, reviewed memories 10/30
+  remain retrievable vs 0/30 without review.
+- **Sleep dedup** ??near-identical repeated episodes collapse into one trace
+  with accumulated evidence (complementary learning systems; McClelland et
+  al., 1995). Measured: 20 identical repeats -> 1 memory (-95% storage).
+- **Hallucination guard** ??metacognition reports knowledge gaps for
+  never-seen topics instead of confabulating.
+
 ## Why another memory project?
 
 The space is crowded (Mem0, Letta/MemGPT, Zep, Cognee, `cognitive-memory`,
