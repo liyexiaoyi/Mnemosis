@@ -170,10 +170,92 @@ def tenk_ab_chart() -> None:
     print("written", path)
 
 
+def unified_leaderboard_chart() -> None:
+    """6-system leaderboard from the real unified_compare.json."""
+    path = os.path.join(RESULTS_DIR, "unified_compare.json")
+    if not os.path.exists(path):
+        print("unified_compare.json missing, skipping")
+        return
+    data = json.load(open(path, encoding="utf-8"))
+    table = data["table"]
+    order = [
+        ("BM25", "#72b7b2"),
+        ("嵌入 kNN", "#4c78a8"),
+        ("Mem0-style", "#e45756"),
+        ("HippoRAG-style", "#f2cf5b"),
+        ("Mnemosis 词法", "#54a24b"),
+        ("Mnemosis ngram", "#f58518"),
+    ]
+    cats = [
+        ("fact@5", "事实回忆"),
+        ("event@5", "事件回忆"),
+        ("temporal@5", "时序·下一事件"),
+        ("distractor_pass", "干扰项拒答"),
+    ]
+    w, h = 860, 420
+    ml, mr, mt, mb = 70, 20, 70, 80
+    plot_w, plot_h = w - ml - mr, h - mt - mb
+    group_w = plot_w / len(cats)
+    bar_w = min(30.0, group_w / (len(order) + 1) * 0.9)
+    lines = _svg_open(
+        "真实测评总榜：6 个记忆系统（同一 88 题，命中率）",
+        "Mnemosis 是唯一能回答“之后发生了什么”并拒绝乱编的系统",
+        w, h,
+    )
+    x = ml
+    for label, _ in order:
+        lines.append(f'<rect x="{x}" y="58" width="12" height="12" fill="{_color(label)}"/>')
+        lines.append(f'<text x="{x + 16}" y="68" font-size="12" fill="#333">{label}</text>')
+        x += 26 + 13 * len(label) + 8
+    ymax = 1.1
+    for tick in range(0, 6):
+        v = ymax * tick / 5
+        y = h - mb - plot_h * tick / 5
+        lines.append(f'<line x1="{ml}" y1="{y:.0f}" x2="{w - mr}" y2="{y:.0f}" stroke="#eee"/>')
+        lines.append(f'<text x="{ml - 8}" y="{y + 4:.0f}" font-size="11" fill="#666" text-anchor="end">{v:.2f}</text>')
+    lines.append(f'<line x1="{ml}" y1="{h - mb}" x2="{w - mr}" y2="{h - mb}" stroke="#999"/>')
+    lines.append(f'<line x1="{ml}" y1="{mt}" x2="{ml}" y2="{h - mb}" stroke="#999"/>')
+    lines.append(
+        f'<text x="14" y="{(mt + h - mb) / 2}" font-size="12" fill="#666" '
+        f'transform="rotate(-90 14,{(mt + h - mb) / 2})" text-anchor="middle">命中率</text>'
+    )
+    for c_idx, (key, label) in enumerate(cats):
+        cx = ml + group_w * c_idx + group_w / 2
+        for s_idx, (sysname, _) in enumerate(order):
+            if key == "distractor_pass":
+                val = table[sysname]["distractor_pass"] / 16.0
+            else:
+                val = table[sysname][key]
+            bh = plot_h * val / ymax
+            x0 = cx - (len(order) * bar_w) / 2 + s_idx * bar_w
+            y0 = h - mb - bh
+            lines.append(f'<rect x="{x0:.1f}" y="{y0:.1f}" width="{bar_w - 3:.1f}" height="{max(0.5, bh):.1f}" fill="{_color(sysname)}" rx="1.5"/>')
+            lines.append(f'<text x="{x0 + (bar_w - 3) / 2:.1f}" y="{y0 - 3:.1f}" font-size="9" fill="#444" text-anchor="middle">{val:.0f}</text>')
+        lines.append(f'<text x="{cx:.1f}" y="{h - mb + 18}" font-size="11" fill="#333" text-anchor="middle">{label}</text>')
+    lines.append("</svg>")
+    out = os.path.join(OUT_DIR, "iteration_leaderboard_zh.svg")
+    with open(out, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines))
+    print("written", out)
+
+
+def _color(label: str) -> str:
+    palette = {
+        "BM25": "#72b7b2",
+        "嵌入 kNN": "#4c78a8",
+        "Mem0-style": "#e45756",
+        "HippoRAG-style": "#f2cf5b",
+        "Mnemosis 词法": "#54a24b",
+        "Mnemosis ngram": "#f58518",
+    }
+    return palette.get(label, "#999999")
+
+
 def main() -> int:
     os.makedirs(OUT_DIR, exist_ok=True)
     retrieval_chart()
     tenk_ab_chart()
+    unified_leaderboard_chart()
     return 0
 
 

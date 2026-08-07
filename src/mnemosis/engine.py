@@ -158,7 +158,7 @@ class MemoryEngine:
         suppression_floor: float = 0.7,
         embedder: Embedder | None = None,
         expansion_discount: float = 0.95,
-        temporal_boost: float = 0.8,
+        temporal_boost: float = 1.0,
     ) -> list[RecallResult]:
         embedder = embedder or self.embedder
         return self.store.recall(

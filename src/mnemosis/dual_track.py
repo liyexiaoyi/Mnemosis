@@ -97,7 +97,7 @@ class DualTrackStore:
         max_expansion_roots: int = 5,
         max_expansion_neighbors: int = 50,
         event_chain: EventChainIndex | None = None,
-        temporal_boost: float = 0.8,
+        temporal_boost: float = 1.0,
     ) -> list[RecallResult]:
         now = now or utcnow()
         candidates = self.backend.list(kind=kind)
