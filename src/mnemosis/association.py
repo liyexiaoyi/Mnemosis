@@ -18,23 +18,30 @@ class AssociationIndex:
         self.backend.add_cues(item.id, item.cues)
 
     def link_related(
-        self, item: MemoryItem, weight: float = 1.0
+        self,
+        item: MemoryItem,
+        weight: float = 1.0,
+        max_links: int = 64,
     ) -> list[MemoryItem]:
-        """Link a new memory to existing active memories sharing at least one cue."""
+        """Link a new memory to existing memories sharing at least one cue.
+
+        The per-item link budget is capped (sparse graph) so large stores do
+        not explode into all-pairs edges; the most recent neighbors win.
+        """
         related_ids: set[str] = set()
         for cue in item.cues:
             for other in self.backend.find_by_cue(cue):
                 if other.id != item.id:
                     related_ids.add(other.id)
-        related: list[MemoryItem] = []
-        for rid in related_ids:
-            other = self.backend.get(rid)
-            if other is None:
-                continue
+        related = [
+            self.backend.get(rid) for rid in related_ids
+        ]
+        related = [other for other in related if other is not None]
+        related.sort(key=lambda other: other.created_at, reverse=True)
+        for other in related[:max_links]:
             self.backend.add_link(item.id, other.id, weight)
             self.backend.add_link(other.id, item.id, weight)
-            related.append(other)
-        return related
+        return related[:max_links]
 
     def related(
         self, memory_id: str, depth: int = 1, max_nodes: int = 20
@@ -43,4 +50,3 @@ class AssociationIndex:
 
 
 __all__ = ["AssociationIndex"]
-

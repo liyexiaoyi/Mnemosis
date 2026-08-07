@@ -442,6 +442,17 @@ def main() -> int:
     parser.add_argument("--events-per-session", type=int, default=5)
     parser.add_argument("--with-llm", action="store_true")
     parser.add_argument(
+        "--mode",
+        choices=["both", "keyword", "ngram"],
+        default="both",
+        help="which Mnemosis retrieval modes to evaluate",
+    )
+    parser.add_argument(
+        "--no-baselines",
+        action="store_true",
+        help="skip BM25 and embedding-kNN baselines (large-scale runs)",
+    )
+    parser.add_argument(
         "--sleep",
         action="store_true",
         help="run engine.sleep() after ingestion, before evaluation",
@@ -474,7 +485,12 @@ def main() -> int:
     )
 
     reports = {}
-    for label, embedder in (("keyword", None), ("ngram", NGramEmbedder())):
+    modes = [("keyword", None), ("ngram", NGramEmbedder())]
+    if args.mode == "keyword":
+        modes = modes[:1]
+    elif args.mode == "ngram":
+        modes = modes[1:]
+    for label, embedder in modes:
         engine = build_engine(dataset, embedder=embedder)
         if args.sleep:
             engine.sleep()
@@ -501,23 +517,26 @@ def main() -> int:
         llm_engine.close()
     print_report(reports["keyword"], llm_rows)
 
-    print("\n== BM25 baseline (hippo-memory-style retrieval) ==")
-    bm25 = eval_bm25(dataset, dataset["questions"])
-    print("\n== embedding kNN baseline (naive vector store) ==")
-    embedding = eval_embedding(dataset, dataset["questions"])
-    print(
-        f"{'category':12s} {'n':>4s} {'hit@1':>7s} {'hit@5':>7s} {'pass':>6s}"
-    )
-    for label, report in (("bm25", bm25), ("embedding", embedding)):
-        print(f"-- {label} --")
-        for kind, values in sorted(report["stats"].items()):
-            n = values["n"]
-            print(
-                f"{kind:12s} {n:>4d} "
-                f"{values['hit1'] / n if n else 0.0:>7.3f} "
-                f"{values['hit5'] / n if n else 0.0:>7.3f} "
-                f"{values['pass']:>6d}"
-            )
+    bm25 = None
+    embedding = None
+    if not args.no_baselines:
+        print("\n== BM25 baseline (hippo-memory-style retrieval) ==")
+        bm25 = eval_bm25(dataset, dataset["questions"])
+        print("\n== embedding kNN baseline (naive vector store) ==")
+        embedding = eval_embedding(dataset, dataset["questions"])
+        print(
+            f"{'category':12s} {'n':>4s} {'hit@1':>7s} {'hit@5':>7s} {'pass':>6s}"
+        )
+        for label, report in (("bm25", bm25), ("embedding", embedding)):
+            print(f"-- {label} --")
+            for kind, values in sorted(report["stats"].items()):
+                n = values["n"]
+                print(
+                    f"{kind:12s} {n:>4d} "
+                    f"{values['hit1'] / n if n else 0.0:>7.3f} "
+                    f"{values['hit5'] / n if n else 0.0:>7.3f} "
+                    f"{values['pass']:>6d}"
+                )
 
     os.makedirs(os.path.dirname(args.out), exist_ok=True)
     with open(args.out, "w", encoding="utf-8") as handle:
@@ -535,8 +554,14 @@ def main() -> int:
                     label: {"stats": reports[label]["stats"]}
                     for label in reports
                 },
-                "bm25": {"stats": bm25["stats"]},
-                "embedding_knn": {"stats": embedding["stats"]},
+                "bm25": (
+                    {"stats": bm25["stats"]} if bm25 is not None else None
+                ),
+                "embedding_knn": (
+                    {"stats": embedding["stats"]}
+                    if embedding is not None
+                    else None
+                ),
                 "llm": llm_rows,
             },
             handle,
