@@ -21,7 +21,7 @@ the codebase and a test.
 | Reconsolidation | Nader, Schafe & LeDoux (2000), *Nature* | `update()` makes a trace labile, records the revision, and re-stabilizes on future access | `engine.py` |
 | Sleep prioritizes salient memories | Rasch & Born (2013), *Physiological Reviews*, [link](https://pubmed.ncbi.nlm.nih.gov/23589831/) | Emotionally tagged episodes promote with lower access/age thresholds | `consolidation.py` |
 | Multi-store / working memory | Atkinson & Shiffrin (1968), *The Psychology of Learning and Motivation*; Baddeley (2000) episodic buffer | `working_set()` exposes recently used memories for prompt injection | `engine.py` |
-| Memory stream + reflection | Park et al. (2023), Generative Agents | Importance/recency/relevance scoring (implemented); reflection summarizer (roadmap) | `metacognition.py`, roadmap |
+| Memory stream + reflection | Park et al. (2023), Generative Agents | Importance/recency/relevance scoring; `sleep(summarizer=...)` reflects over evidence-backed facts | `metacognition.py`, `consolidation.py` |
 | OS-inspired memory hierarchy | Packer et al. (2023), MemGPT | Working set + long-term tiers; interrupts for control flow (roadmap) | `engine.py`, roadmap |
 | Long-conversation evaluation | Maharana et al. (2024), LoCoMo, ACL | Evaluation methodology for episodic memory over time (roadmap) | roadmap |
 

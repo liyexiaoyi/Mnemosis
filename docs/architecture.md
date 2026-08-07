@@ -17,6 +17,8 @@ Mnemosis is a small, dependency-free Python library. The public entry point is
 | `metacognition.py` | Confidence labels, contradiction reports, knowledge gaps |
 | `recycle.py` | Soft-delete recycle bin with restore and purge |
 | `engine.py` | Facade wiring everything together: `remember`, `recall`, `sleep`, `forget`, `restore`, `check` |
+| `cli.py` | `argparse` command-line interface over `MemoryEngine` |
+| `mcp_server.py` | Stdlib-only stdio MCP server (JSON-RPC 2.0) exposing the engine as tools |
 
 ## Data flow
 
@@ -37,6 +39,8 @@ sleep()
        promote episodic -> semantic (access >= 2, age >= threshold, importance)
        prune low-value stale episodic memories into RecycleBin
        detect contradictions among confident semantic memories
+       reflect(): rewrite evidence-backed semantic facts as abstractions
+                  of their supporting episodes (optional LLM summarizer)
 
 check(query)
   -> Metacognition: confidence labels on recalled items,
@@ -65,4 +69,3 @@ are deduplicated on write.
    the core works without them.
 4. **Nothing is deleted silently.** All forgetting flows through the recycle
    bin.
-

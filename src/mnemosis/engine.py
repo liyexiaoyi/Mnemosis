@@ -159,8 +159,17 @@ class MemoryEngine:
 
     # -- sleep cycle ----------------------------------------------------------
 
-    def sleep(self, now: datetime | None = None) -> ConsolidationReport:
-        return self.consolidator.sleep(now)
+    def sleep(
+        self,
+        now: datetime | None = None,
+        summarizer=None,
+    ) -> ConsolidationReport:
+        return self.consolidator.sleep(now, summarizer=summarizer)
+
+    def reflect(self, summarizer=None, now: datetime | None = None) -> list[MemoryItem]:
+        """Rewrite evidence-backed semantic facts as an abstraction of their
+        supporting episodes (reflection; Park et al., 2023)."""
+        return self.consolidator.reflect(summarizer, now)
 
     # -- active forgetting ----------------------------------------------------
 

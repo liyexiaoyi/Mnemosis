@@ -91,6 +91,30 @@ report = engine.sleep()          # consolidate: promote, prune, find conflicts
 check = engine.check("sqlite")   # metacognition: confidence + gaps
 ```
 
+## CLI
+
+The same engine is available from the command line (pass `--db` to persist):
+
+```bash
+mnemosis --db memory.db remember "The user prefers Chinese." --kind semantic --importance 0.9
+mnemosis --db memory.db recall "what language?"
+mnemosis --db memory.db check "sqlite debug"
+mnemosis --db memory.db sleep
+mnemosis --db memory.db stats
+```
+
+## MCP server
+
+Zero-dependency stdio MCP server, usable from Claude Code, Codex, or any MCP
+client:
+
+```bash
+mnemosis mcp --db memory.db
+```
+
+Tools exposed: `remember`, `recall`, `sleep`, `check`, `update`, `forget`,
+`restore`, `stats`, `working_set`.
+
 ## Architecture
 
 ```mermaid

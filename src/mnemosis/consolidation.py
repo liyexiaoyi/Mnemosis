@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from typing import Callable
 
 from .backend import Backend
 from .dual_track import DualTrackStore
@@ -29,13 +30,14 @@ class ConsolidationReport:
     promoted: list[MemoryItem] = field(default_factory=list)
     recycled: list[str] = field(default_factory=list)
     conflicts: list[Conflict] = field(default_factory=list)
+    reflected: list[MemoryItem] = field(default_factory=list)
     total_before: int = 0
     total_after: int = 0
 
     def summary(self) -> str:
         return (
             f"promoted {len(self.promoted)}, pruned {len(self.recycled)}, "
-            f"conflicts {len(self.conflicts)} "
+            f"reflected {len(self.reflected)}, conflicts {len(self.conflicts)} "
             f"({self.total_before} -> {self.total_after} active memories)"
         )
 
@@ -52,6 +54,7 @@ class Consolidator:
         prune_importance: float = 0.2,
         prune_age_days: float = 30.0,
         conflict_min_confidence: float = 0.6,
+        llm_summarizer: Callable[[list[str]], str] | None = None,
     ) -> None:
         self.store = store
         self.backend = backend
@@ -61,21 +64,69 @@ class Consolidator:
         self.prune_importance = prune_importance
         self.prune_age_days = prune_age_days
         self.conflict_min_confidence = conflict_min_confidence
+        self.llm_summarizer = llm_summarizer
 
-    def sleep(self, now: datetime | None = None) -> ConsolidationReport:
+    def sleep(
+        self,
+        now: datetime | None = None,
+        summarizer: Callable[[list[str]], str] | None = None,
+    ) -> ConsolidationReport:
         now = now or utcnow()
         total_before = len(self.store.all_active())
         promoted = self._promote_episodic(now)
         recycled = self._prune_noise(now)
         conflicts = self.detect_conflicts()
+        reflected = self.reflect(summarizer or self.llm_summarizer, now)
         total_after = len(self.store.all_active())
         return ConsolidationReport(
             promoted=promoted,
             recycled=recycled,
             conflicts=conflicts,
+            reflected=reflected,
             total_before=total_before,
             total_after=total_after,
         )
+
+    def reflect(
+        self,
+        summarizer: Callable[[list[str]], str] | None,
+        now: datetime | None = None,
+    ) -> list[MemoryItem]:
+        """Reflection over supporting episodes (Park et al., 2023).
+
+        Semantic facts backed by >= 2 linked episodes are re-written as an
+        abstraction of those episodes. Without a summarizer this is a no-op.
+        """
+        if summarizer is None:
+            return []
+        now = now or utcnow()
+        reflected: list[MemoryItem] = []
+        for semantic in self.store.all_active(MemoryKind.SEMANTIC):
+            if semantic.evidence_count < 2:
+                continue
+            episodes = [
+                item
+                for item in self.backend.related(
+                    semantic.id, depth=1, max_nodes=20
+                )
+                if item.kind is MemoryKind.EPISODIC
+                and item.status is MemoryStatus.ACTIVE
+            ]
+            if len(episodes) < 2:
+                continue
+            episodes.sort(key=lambda e: (e.created_at, e.content))
+            try:
+                summary = (summarizer([e.content for e in episodes]) or "").strip()
+            except Exception:
+                continue
+            if not summary or summary == semantic.content:
+                continue
+            semantic.content = summary
+            semantic.content_hash = hash_content(summary)
+            semantic.updated_at = now
+            self.backend.update(semantic)
+            reflected.append(semantic)
+        return reflected
 
     def _promote_episodic(self, now: datetime) -> list[MemoryItem]:
         promoted: list[MemoryItem] = []

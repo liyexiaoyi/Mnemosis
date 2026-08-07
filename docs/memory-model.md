@@ -25,6 +25,7 @@ the core.
 | 17 | Reconsolidation | Nader et al. (2000): retrieved memories become labile and can be revised | `update()` destabilizes, records `revision_count`/`updated_at`, re-stabilizes on access | `engine.py` |
 | 18 | Sleep prioritizes salient memories | Rasch & Born (2013): sleep optimizes consolidation of what matters | Emotionally tagged episodes promote with lower access/age thresholds | `consolidation.py` |
 | 19 | Working memory | Atkinson & Shiffrin (1968); Baddeley (2000); CoALA working memory | `working_set()` returns recently used memories for prompt injection | `engine.py` |
+| 20 | Reflection | Park et al. (2023), Generative Agents: agents periodically abstract over their memories | `sleep(summarizer=...)` rewrites evidence-backed semantic facts as abstractions of supporting episodes | `consolidation.py` |
 
 ## Wake / sleep lifecycle
 

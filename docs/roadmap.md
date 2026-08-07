@@ -2,11 +2,11 @@
 
 ## v0.2 — integrate with real agents
 
-- [ ] MCP server wrapper (memory tools: `remember`, `recall`, `sleep`, `check`)
-- [ ] CLI (`mnemosis remember "..."`, `mnemosis recall "..."`)
+- [x] MCP server wrapper (memory tools: `remember`, `recall`, `sleep`, `check`)
+- [x] CLI (`mnemosis remember "..."`, `mnemosis recall "..."`)
 - [ ] Optional embedder backends: local (hash/char n-gram, tf-idf) and
       OpenAI-compatible API
-- [ ] LLM-assisted consolidation summarizer (episodic -> semantic summaries)
+- [x] LLM-assisted consolidation summarizer (episodic -> semantic summaries)
 
 ## v0.3 — evaluation
 
@@ -28,4 +28,3 @@
 - Agent-managed memory hierarchy  with Mnemosis as the
   consolidation/metacognition layer
 - Distributed backends (PostgreSQL adapter)
-
