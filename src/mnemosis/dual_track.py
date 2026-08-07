@@ -102,6 +102,15 @@ class DualTrackStore:
         now = now or utcnow()
         candidates = self.backend.list(kind=kind)
         query_terms = set(tokenize(query))
+        # Temporal questions ("after X, what did Y do next?") cue the event
+        # *sequence*, so episodic memories get a small preference; ordinary
+        # event queries ("what did Y buy on date?") are left untouched so the
+        # lexical match stays authoritative.
+        lowered_query = query.lower()
+        action_cued = any(
+            word in lowered_query
+            for word in ("after", "next", "then")
+        )
         if query_terms:
             term_index = self._term_index(kind)
             hit_ids: set[str] = set()
@@ -144,6 +153,9 @@ class DualTrackStore:
                 )
             if overlap > 0:
                 reasons.append(f"cue/keyword overlap {overlap:.2f}")
+            if action_cued and item.kind is MemoryKind.EPISODIC:
+                score += 0.05
+                reasons.append("action-cued episodic preference")
             if semantic > 0.5:
                 reasons.append(f"semantic similarity {semantic:.2f}")
             if retrievability < 0.5:
