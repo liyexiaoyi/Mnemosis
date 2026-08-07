@@ -538,6 +538,48 @@ def stress_scale_chart() -> None:
     print("written", path)
 
 
+def llm_grounding_chart() -> None:
+    """LLM answer accuracy: bare model vs model + Mnemosis (real, 2 rounds)."""
+    w, h = 760, 340
+    ml, mr, mt, mb = 70, 20, 70, 80
+    plot_w, plot_h = w - ml - mr, h - mt - mb
+    group_w = plot_w / 2
+    bar_w = 60
+    palette = ["#b0b0b0", "#54a24b"]
+    lines = _svg_open(
+        "给大模型装上记忆：答对率对比（gemma3:12b，12 题，两轮一致）",
+        "模型裸答只有 25% 答对；接上 Mnemosis 检索到的记忆后升到 91.7%",
+        w, h,
+    )
+    ymax = 1.0
+    for tick in range(0, 6):
+        v = ymax * tick / 5
+        y = h - mb - plot_h * tick / 5
+        lines.append(f'<line x1="{ml}" y1="{y:.0f}" x2="{w - mr}" y2="{y:.0f}" stroke="#eee"/>')
+        lines.append(f'<text x="{ml - 8}" y="{y + 4:.0f}" font-size="11" fill="#666" text-anchor="end">{v:.2f}</text>')
+    lines.append(f'<line x1="{ml}" y1="{h - mb}" x2="{w - mr}" y2="{h - mb}" stroke="#999"/>')
+    lines.append(f'<line x1="{ml}" y1="{mt}" x2="{ml}" y2="{h - mb}" stroke="#999"/>')
+    lines.append(
+        f'<text x="14" y="{(mt + h - mb) / 2}" font-size="12" fill="#666" '
+        f'transform="rotate(-90 14,{(mt + h - mb) / 2})" text-anchor="middle">答对率</text>'
+    )
+    for i, (label, val, color) in enumerate(
+        [("模型裸答", 0.250, palette[0]), ("+ Mnemosis 记忆", 0.917, palette[1])]
+    ):
+        cx = ml + group_w * i + group_w / 2
+        bh = plot_h * val / ymax
+        x = cx - bar_w / 2
+        y = h - mb - bh
+        lines.append(f'<rect x="{x:.0f}" y="{y:.0f}" width="{bar_w}" height="{bh:.0f}" fill="{color}" rx="2"/>')
+        lines.append(f'<text x="{cx:.0f}" y="{y - 4:.0f}" font-size="12" fill="#333" text-anchor="middle">{val:.3f}</text>')
+        lines.append(f'<text x="{cx:.0f}" y="{h - mb + 18}" font-size="11" fill="#333" text-anchor="middle">{label}</text>')
+    lines.append("</svg>")
+    path = os.path.join(OUT_DIR, "iteration_llm_grounding_zh.svg")
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("\n".join(lines))
+    print("written", path)
+
+
 def _color(label: str) -> str:
     palette = {
         "BM25": "#72b7b2",
@@ -561,6 +603,7 @@ def main() -> int:
     spaced_review_chart()
     metacognition_chart()
     stress_scale_chart()
+    llm_grounding_chart()
     return 0
 
 
