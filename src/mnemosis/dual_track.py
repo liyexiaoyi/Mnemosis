@@ -93,6 +93,7 @@ class DualTrackStore:
         now: datetime | None = None,
         reinforce: bool = True,
         context: str | None = None,
+        context_boost: bool = True,
         suppression_factor: float = 0.01,
         suppression_min_cues: int = 2,
         suppression_floor: float = 0.7,
@@ -167,11 +168,19 @@ class DualTrackStore:
             retrievability = min(
                 1.0, self.curve.retrievability(item, now)
             )
-            context_match = (
-                context is not None
+            context_overlap = 0.0
+            if (
+                context_boost
+                and context is not None
                 and item.context is not None
-                and item.context.lower() == context.strip().lower()
-            )
+            ):
+                ctx_terms = set(tokenize(item.context))
+                cur_terms = set(tokenize(context))
+                if ctx_terms and cur_terms:
+                    context_overlap = _overlap(
+                        cur_terms, frozenset(ctx_terms)
+                    )
+            context_match = context_overlap >= 1.0
             reasons: list[str] = []
             semantic = 0.0
             if query_vector is not None:
@@ -181,7 +190,7 @@ class DualTrackStore:
                     0.30 * overlap
                     + 0.20 * retrievability
                     + 0.15 * item.importance
-                    + (0.15 if context_match else 0.0)
+                    + 0.15 * context_overlap
                     + 0.20 * semantic
                 )
             else:
@@ -189,7 +198,7 @@ class DualTrackStore:
                     0.40 * overlap
                     + 0.25 * retrievability
                     + 0.20 * item.importance
-                    + (0.15 if context_match else 0.0)
+                    + 0.15 * context_overlap
                 )
             if overlap > 0:
                 reasons.append(f"cue/keyword overlap {overlap:.2f}")
@@ -225,6 +234,8 @@ class DualTrackStore:
                 reasons.append("high importance")
             if context_match:
                 reasons.append("context match")
+            elif context_overlap > 0.0:
+                reasons.append(f"context overlap {context_overlap:.2f}")
             matched = overlap > 0.0 or semantic >= 0.2
             scored.append((score, overlap, item, reasons, matched))
         scored.sort(key=lambda entry: entry[0], reverse=True)

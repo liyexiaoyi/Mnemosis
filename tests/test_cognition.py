@@ -42,6 +42,49 @@ class CognitionTest(unittest.TestCase):
         self.assertGreater(score_a, score_b)
         self.assertIn("context match", results[0].reasons)
 
+    def test_context_partial_overlap_boost(self):
+        a = self.remember(
+            "We reviewed the alpha module design.",
+            kind=MemoryKind.EPISODIC,
+            context="会议室",
+            cues=["alpha"],
+            importance=0.5,
+            strength=0.5,
+        )
+        b = self.remember(
+            "We reviewed the alpha module design.",
+            kind=MemoryKind.EPISODIC,
+            context="办公室",
+            cues=["alpha"],
+            importance=0.5,
+            strength=0.5,
+        )
+        # partial context "正在会议室开会" shares "会议室" with A only
+        boosted = self.engine.recall(
+            "alpha module design", context="正在会议室开会", top_k=5
+        )
+        self.assertEqual(boosted[0].item.id, a.id)
+        self.assertTrue(
+            any("context overlap" in r for r in boosted[0].reasons)
+        )
+        # without the boost the two memories are tied
+        plain = self.engine.recall(
+            "alpha module design",
+            context="正在会议室开会",
+            top_k=5,
+            context_boost=False,
+        )
+        plain_a = next(r.score for r in plain if r.item.id == a.id)
+        plain_b = next(r.score for r in plain if r.item.id == b.id)
+        self.assertAlmostEqual(plain_a, plain_b, places=4)
+        # with the boost, the partially-matching context item pulls ahead
+        boosted_a = next(r.score for r in boosted if r.item.id == a.id)
+        boosted_b = next(r.score for r in boosted if r.item.id == b.id)
+        self.assertGreater(
+            boosted_a - boosted_b,
+            plain_a - plain_b,
+        )
+
     def test_emotional_memory_decays_slower(self):
         now = utcnow()
         self.engine.curve.decay_rate = 0.01
