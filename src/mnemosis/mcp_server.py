@@ -1770,6 +1770,23 @@ class MCPServer:
                 },
             },
             {
+                "name": "math_ladder",
+                "description": (
+                    "Climb the math abstraction ladder (concrete -> "
+                    "symbolic -> general rule), using formulas already "
+                    "stored in memory (Amalric & Dehaene, 2019; "
+                    "concreteness fading)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "problem": {"type": "string"},
+                        "top_k": {"type": "integer"},
+                    },
+                    "required": ["problem"],
+                },
+            },
+            {
                 "name": "retrieval_snapshot",
                 "description": (
                     "Capture a compact memory-state snapshot (knowledge "
@@ -2565,6 +2582,11 @@ class MCPServer:
             return self.engine.plan_rehearsal(
                 goal=str(args.get("goal", "")),
                 top_k=args.get("top_k"),
+            )
+        if name == "math_ladder":
+            return self.engine.math_ladder(
+                problem=str(args.get("problem", "")),
+                top_k=int(args.get("top_k", 4)),
             )
         if name == "retrieval_snapshot":
             return self.engine.retrieval_snapshot(

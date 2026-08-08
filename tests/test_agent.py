@@ -4231,6 +4231,50 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertGreater(via_mcp["step_count"], 0)
         self.assertIsNotNone(via_mcp["weakest_step"])
 
+    def test_math_ladder(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        engine.remember(
+            "速度公式：速度=路程÷时间",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["公式", "速度"],
+            importance=0.9,
+            auto_cues=False,
+        )
+        report = engine.math_ladder(
+            "汽车以60千米每小时行驶2小时，路程是多少？"
+        )
+        self.assertIn("速度", report["types"])
+        self.assertEqual(len(report["concrete"]["numbers"]), 2)
+        self.assertIn("速度 = 路程 ÷ 时间", report["symbolic"]["templates"])
+        self.assertIsNotNone(report["general"])
+        self.assertEqual(report["general"]["source"], "memory")
+        self.assertIn("速度公式", report["general"]["rule"])
+        self.assertEqual(report["verdict"], "ready")
+        self.assertEqual(len(report["ladder"]), 3)
+        self.assertEqual(
+            [r["rung"] for r in report["ladder"]],
+            ["具体", "符号", "一般"],
+        )
+        self.assertIn("公式", report["advice"])
+        # no formula in memory: falls back to the symbolic template
+        plain = MemoryEngine().math_ladder("把3和5加起来是多少？")
+        self.assertIn("加法", plain["types"])
+        self.assertIsNotNone(plain["general"])
+        self.assertEqual(plain["general"]["source"], "symbolic")
+        self.assertEqual(plain["verdict"], "ready")
+        # no numbers and no type: review needed
+        weak = MemoryEngine().math_ladder("这道题该怎么做？")
+        self.assertEqual(weak["verdict"], "review_needed")
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "math_ladder",
+            {"problem": "汽车以60千米每小时行驶2小时，路程是多少？"},
+        )
+        self.assertEqual(via_mcp["verdict"], "ready")
+        self.assertIsNotNone(via_mcp["general"])
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

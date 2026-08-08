@@ -5515,6 +5515,170 @@ class MemoryEngine:
             return item.content[:48]
         return None
 
+    _MATH_TYPES = (
+        ("加", "加法"),
+        ("减", "减法"),
+        ("乘", "乘法"),
+        ("除", "除法"),
+        ("每小时", "速度"),
+        ("速度", "速度"),
+        ("平均", "平均数"),
+        ("比例", "比例"),
+        ("概率", "概率"),
+        ("方程", "方程"),
+        ("百分", "百分数"),
+    )
+    _MATH_SYMBOLS = {
+        "加法": "a + b = c",
+        "减法": "a - b = c",
+        "乘法": "a × b = c",
+        "除法": "a ÷ b = c",
+        "速度": "速度 = 路程 ÷ 时间",
+        "平均数": "平均数 = 总和 ÷ 个数",
+        "比例": "a : b = c : d",
+        "概率": "概率 = 有利结果 ÷ 全部结果",
+        "方程": "未知数 = x，等式两边同时变化求解",
+        "百分数": "百分数 = 部分 ÷ 整体 × 100%",
+    }
+
+    def math_ladder(
+        self,
+        problem: str,
+        *,
+        top_k: int = 4,
+    ) -> dict:
+        """Climb the math abstraction ladder: concrete -> symbolic -> general.
+
+        Mathematical knowledge forms a distinct semantic subspace in the
+        human brain (Amalric & Dehaene, 2019) and learning is helped by
+        moving from concrete examples to symbols to general rules
+        (concreteness fading; Fyfe, McNeil & Borriello, 2014). This
+        read-only tool detects the problem type, extracts concrete
+        numbers, builds the symbolic template, then looks for the
+        matching formula already stored in memory (or falls back to the
+        template as a general rule).
+        """
+        import re
+
+        detected = [
+            label
+            for keyword, label in self._MATH_TYPES
+            if keyword in problem
+        ]
+        numbers = [
+            {
+                "value": float(raw),
+                "raw": raw,
+            }
+            for raw in re.findall(r"\d+(?:\.\d+)?", problem)
+        ]
+        results = self.recall(problem, top_k=max(1, int(top_k)))
+        evidence = [
+            {
+                "id": result.item.id,
+                "preview": result.item.content[:48],
+                "score": round(result.score, 3),
+            }
+            for result in results
+            if result.score >= 0.05
+        ]
+        formula_memories = []
+        for item in self.backend.list(kind=MemoryKind.SEMANTIC):
+            text = item.content
+            cue_text = " ".join(item.cues)
+            if "公式" not in cue_text and "公式" not in text:
+                continue
+            if "=" not in text and "÷" not in text and "×" not in text:
+                continue
+            formula_memories.append(
+                {
+                    "id": item.id,
+                    "rule": text[:80],
+                    "cues": item.cues[:3],
+                }
+            )
+        matched_formula = None
+        if detected:
+            head = detected[0]
+            for formula in formula_memories:
+                if head in formula["rule"] or head in " ".join(
+                    formula["cues"]
+                ):
+                    matched_formula = formula
+                    break
+        templates = [self._MATH_SYMBOLS[label] for label in detected]
+        if matched_formula:
+            general = {
+                "rule": matched_formula["rule"],
+                "source": "memory",
+                "formula_memory_id": matched_formula["id"],
+            }
+        elif templates:
+            general = {
+                "rule": templates[0],
+                "source": "symbolic",
+                "formula_memory_id": None,
+            }
+        else:
+            general = None
+        concrete_desc = (
+            f"题目里的具体数字：{'、'.join(n['raw'] for n in numbers)}。"
+            if numbers
+            else "题目里没找到阿拉伯数字，先补全条件。"
+        )
+        symbolic_desc = (
+            f"用符号表示关系：{'；'.join(templates)}。"
+            if templates
+            else "还没识别出题型，无法给出符号模板。"
+        )
+        general_desc = (
+            f"一般规则（来自记忆）：{general['rule']}。"
+            if general and general["source"] == "memory"
+            else (
+                f"一般规则（通用模板）：{general['rule']}。"
+                if general
+                else "记忆里没有对应公式，先补充数学知识。"
+            )
+        )
+        ladder = [
+            {"rung": "具体", "description": concrete_desc},
+            {"rung": "符号", "description": symbolic_desc},
+            {"rung": "一般", "description": general_desc},
+        ]
+        if numbers and general:
+            verdict = "ready"
+        else:
+            verdict = "review_needed"
+        if general and general["source"] == "memory":
+            advice = (
+                f"已从记忆中找到公式“{general['rule']}”，"
+                "把题目数字代入就能算。"
+            )
+        elif general:
+            advice = (
+                f"记忆里没有这个公式，先按通用模板“{general['rule']}”算；"
+                "建议把算过的例子存进记忆，下次直接用。"
+            )
+        else:
+            advice = "缺少公式或具体数字，先补充相关数学记忆再解题。"
+        return {
+            "problem": problem,
+            "types": detected,
+            "concrete": {
+                "numbers": numbers,
+                "description": concrete_desc,
+            },
+            "symbolic": {
+                "templates": templates,
+                "description": symbolic_desc,
+            },
+            "general": general,
+            "ladder": ladder,
+            "evidence": evidence,
+            "verdict": verdict,
+            "advice": advice,
+        }
+
     def sleep_replay(self, now: datetime | None = None) -> dict:
         """Sleep replay: strengthen surprising events, consolidate experience.
 
