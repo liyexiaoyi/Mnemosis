@@ -2165,6 +2165,54 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["total_memories"], 6)
         self.assertEqual(via_mcp["sources"][0]["origin"], "user")
 
+    def test_forgetting_risk(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        now = utcnow()
+        for i in range(2):
+            engine.remember(
+                f"old important {i}",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=[f"fr-oi{i}"],
+                importance=0.9,
+                created_at=now - timedelta(days=30),
+                auto_cues=False,
+            )
+        for i in range(2):
+            engine.remember(
+                f"new trivial {i}",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=[f"fr-nt{i}"],
+                importance=0.2,
+                created_at=now - timedelta(days=1),
+                auto_cues=False,
+            )
+        report = engine.forgetting_risk(now=now)
+        self.assertEqual(report["total"], 4)
+        self.assertTrue(
+            all(
+                report["riskiest"][i]["risk"]
+                >= report["riskiest"][i + 1]["risk"]
+                for i in range(len(report["riskiest"]) - 1)
+            )
+        )
+        first = report["riskiest"][0]
+        self.assertEqual(first["importance"], 0.9)
+        self.assertLess(first["retrievability"], 0.9)
+        self.assertAlmostEqual(
+            first["risk"],
+            round(first["importance"] * (1 - first["retrievability"]), 3),
+        )
+        self.assertGreater(report["avg_risk"], 0.0)
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("forgetting_risk", {"limit": 5})
+        self.assertEqual(via_mcp["total"], 4)
+        self.assertEqual(via_mcp["riskiest"][0]["importance"], 0.9)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

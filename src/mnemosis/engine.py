@@ -1295,6 +1295,41 @@ class MemoryEngine:
             "total_memories": sum(s["memory_count"] for s in sources),
         }
 
+    def forgetting_risk(
+        self,
+        now: datetime | None = None,
+        limit: int = 20,
+    ) -> dict:
+        """Rank memories by forgetting risk.
+
+        The riskiest memories are the most important ones closest to
+        being forgotten (importance x forgetting); agents should review
+        those first.
+        """
+        scored = []
+        for item in self.store.all_active():
+            retrievability = self.curve.retrievability(item, now)
+            risk = item.importance * (1.0 - retrievability)
+            scored.append(
+                {
+                    "id": item.id,
+                    "preview": item.content[:40],
+                    "importance": round(item.importance, 3),
+                    "retrievability": round(retrievability, 3),
+                    "risk": round(risk, 3),
+                }
+            )
+        scored.sort(key=lambda entry: (-entry["risk"], entry["id"]))
+        riskiest = scored[: max(1, int(limit))]
+        return {
+            "total": len(scored),
+            "avg_risk": round(
+                sum(entry["risk"] for entry in scored) / max(1, len(scored)),
+                3,
+            ),
+            "riskiest": riskiest,
+        }
+
     def retrieval_assist(
         self,
         query: str,

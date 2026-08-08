@@ -978,6 +978,20 @@ class MCPServer:
                 "inputSchema": {"type": "object", "properties": {}},
             },
             {
+                "name": "forgetting_risk",
+                "description": (
+                    "Rank memories by forgetting risk (importance x "
+                    "forgetting): the riskiest ones should be reviewed "
+                    "first."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1545,6 +1559,10 @@ class MCPServer:
             )
         if name == "source_calibration":
             return self.engine.source_calibration()
+        if name == "forgetting_risk":
+            return self.engine.forgetting_risk(
+                limit=int(args.get("limit", 20)),
+            )
         if name == "practice_due":
             kind_value = args.get("kind")
             from .types import MemoryKind
