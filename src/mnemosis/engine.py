@@ -1651,6 +1651,51 @@ class MemoryEngine:
             "verdict": verdict,
         }
 
+    def plan_support(
+        self,
+        plan: list,
+        top_k: int = 3,
+    ) -> dict:
+        """Retrieve supporting memories for each plan step.
+
+        Working memory continuously pulls task-relevant information from
+        long-term memory while executing a plan (Baddeley & Hitch, 1974):
+        this returns per-step evidence so the agent acts with context.
+        """
+        steps = []
+        for item in plan:
+            if isinstance(item, str):
+                text = item
+            else:
+                text = item.get("step") or item.get("action") or ""
+            text = str(text).strip()
+            if text:
+                steps.append(text)
+        out = []
+        for step in steps:
+            results = self.recall(step, top_k=max(1, int(top_k)))
+            support = [
+                {
+                    "id": result.item.id,
+                    "preview": result.item.content[:40],
+                    "score": round(result.score, 3),
+                }
+                for result in results
+            ]
+            out.append(
+                {
+                    "step": step,
+                    "support_count": len(support),
+                    "support": support,
+                }
+            )
+        return {
+            "steps": out,
+            "total_supported": sum(
+                1 for entry in out if entry["support_count"] > 0
+            ),
+        }
+
     def retrieval_assist(
         self,
         query: str,

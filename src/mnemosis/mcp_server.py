@@ -1076,6 +1076,30 @@ class MCPServer:
                 },
             },
             {
+                "name": "plan_support",
+                "description": (
+                    "Retrieve supporting memories for each plan step so "
+                    "the agent executes with context (working memory pulls "
+                    "from long-term memory; Baddeley & Hitch 1974)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "plan": {
+                            "type": "array",
+                            "items": {
+                                "oneOf": [
+                                    {"type": "string"},
+                                    {"type": "object"},
+                                ]
+                            },
+                        },
+                        "top_k": {"type": "integer"},
+                    },
+                    "required": ["plan"],
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1666,6 +1690,11 @@ class MCPServer:
             return self.engine.numeric_reasoning(
                 args["problem"],
                 context_memory_ids=args.get("context_memory_ids"),
+            )
+        if name == "plan_support":
+            return self.engine.plan_support(
+                args["plan"],
+                top_k=int(args.get("top_k", 3)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")

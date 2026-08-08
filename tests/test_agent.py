@@ -2394,6 +2394,43 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         )
         self.assertEqual(via_mcp["verdict"], "consistent")
 
+    def test_plan_support(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        m1 = engine.remember(
+            "需求文档已确认", kind=MemoryKind.SEMANTIC, source=user,
+            cues=["需求"], auto_cues=False,
+        )
+        m2 = engine.remember(
+            "上线检查清单", kind=MemoryKind.SEMANTIC, source=user,
+            cues=["上线"], auto_cues=False,
+        )
+        report = engine.plan_support(["调研需求", "部署上线"], top_k=3)
+        self.assertEqual(len(report["steps"]), 2)
+        self.assertGreaterEqual(report["steps"][0]["support_count"], 1)
+        self.assertGreaterEqual(report["steps"][1]["support_count"], 1)
+        self.assertIn(
+            "需求", report["steps"][0]["support"][0]["preview"]
+        )
+        self.assertIn(
+            "上线", report["steps"][1]["support"][0]["preview"]
+        )
+        self.assertEqual(report["total_supported"], 2)
+        self.assertTrue(
+            all(
+                entry["support"][i]["score"]
+                >= entry["support"][i + 1]["score"]
+                for entry in report["steps"]
+                for i in range(len(entry["support"]) - 1)
+            )
+        )
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "plan_support", {"plan": ["调研需求", "部署上线"]}
+        )
+        self.assertEqual(via_mcp["total_supported"], 2)
+        self.assertEqual(len(via_mcp["steps"]), 2)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(
