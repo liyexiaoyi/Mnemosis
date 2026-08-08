@@ -1330,6 +1330,46 @@ class MemoryEngine:
             "riskiest": riskiest,
         }
 
+    def bridge_suggestions(
+        self,
+        limit: int = 20,
+    ) -> dict:
+        """Suggest missing links between memories sharing cues.
+
+        Spreading activation works through links (Collins & Loftus, 1975):
+        memories that share a cue but have no link are a gap in the
+        network. This lists those pairs so the agent can add bridges.
+        """
+        from itertools import combinations
+
+        items = self.store.all_active()
+        existing: set[frozenset[str]] = set()
+        for src, dst, _weight in self.backend.all_links():
+            existing.add(frozenset((src, dst)))
+        suggestions = []
+        compare_items = items[: max(2, int(limit) * 3)]
+        for a, b in combinations(compare_items, 2):
+            if len(suggestions) >= max(1, int(limit)):
+                break
+            shared = sorted(set(a.cues) & set(b.cues))
+            if not shared:
+                continue
+            if frozenset((a.id, b.id)) in existing:
+                continue
+            suggestions.append(
+                {
+                    "id_a": a.id,
+                    "id_b": b.id,
+                    "a_preview": a.content[:24],
+                    "b_preview": b.content[:24],
+                    "shared_cues": shared[:4],
+                }
+            )
+        return {
+            "total": len(suggestions),
+            "suggestions": suggestions,
+        }
+
     def retrieval_assist(
         self,
         query: str,

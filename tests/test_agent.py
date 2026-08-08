@@ -2213,6 +2213,59 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["total"], 4)
         self.assertEqual(via_mcp["riskiest"][0]["importance"], 0.9)
 
+    def test_bridge_suggestions(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        a = engine.remember(
+            "bridge alpha", kind=MemoryKind.SEMANTIC, source=user,
+            cues=["共同"], auto_cues=False,
+        )
+        b = engine.remember(
+            "bridge beta", kind=MemoryKind.SEMANTIC, source=user,
+            cues=["temp-b"], auto_cues=False,
+        )
+        b.cues = ["共同"]
+        engine.backend.update(b)
+        c = engine.remember(
+            "bridge gamma", kind=MemoryKind.SEMANTIC, source=user,
+            cues=["也共同"], auto_cues=False,
+        )
+        d = engine.remember(
+            "bridge delta", kind=MemoryKind.SEMANTIC, source=user,
+            cues=["temp-d"], auto_cues=False,
+        )
+        d.cues = ["也共同"]
+        engine.backend.update(d)
+        e = engine.remember(
+            "bridge epsilon", kind=MemoryKind.SEMANTIC, source=user,
+            cues=["已有"], auto_cues=False,
+        )
+        f = engine.remember(
+            "bridge zeta", kind=MemoryKind.SEMANTIC, source=user,
+            cues=["temp-f"], auto_cues=False,
+        )
+        f.cues = ["已有"]
+        engine.backend.update(f)
+        engine.backend.add_link(e.id, f.id)
+        engine.backend.add_link(f.id, e.id)
+        report = engine.bridge_suggestions(limit=10)
+        self.assertEqual(report["total"], 2)
+        pairs = {
+            frozenset((s["id_a"], s["id_b"]))
+            for s in report["suggestions"]
+        }
+        self.assertIn(frozenset((a.id, b.id)), pairs)
+        self.assertIn(frozenset((c.id, d.id)), pairs)
+        self.assertNotIn(frozenset((e.id, f.id)), pairs)
+        ab = next(
+            s for s in report["suggestions"]
+            if {s["id_a"], s["id_b"]} == {a.id, b.id}
+        )
+        self.assertEqual(ab["shared_cues"], ["共同"])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("bridge_suggestions", {"limit": 10})
+        self.assertEqual(via_mcp["total"], 2)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

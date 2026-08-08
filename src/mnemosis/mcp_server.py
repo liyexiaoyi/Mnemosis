@@ -992,6 +992,20 @@ class MCPServer:
                 },
             },
             {
+                "name": "bridge_suggestions",
+                "description": (
+                    "Suggest missing links between memories that share "
+                    "cues (network gap in spreading activation; Collins & "
+                    "Loftus 1975)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1561,6 +1575,10 @@ class MCPServer:
             return self.engine.source_calibration()
         if name == "forgetting_risk":
             return self.engine.forgetting_risk(
+                limit=int(args.get("limit", 20)),
+            )
+        if name == "bridge_suggestions":
+            return self.engine.bridge_suggestions(
                 limit=int(args.get("limit", 20)),
             )
         if name == "practice_due":
