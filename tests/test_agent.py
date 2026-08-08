@@ -931,6 +931,24 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         )
         self.assertEqual(via_mcp["updated"], 2)
 
+    def test_recall_log(self) -> None:
+        engine = MemoryEngine()
+        item = engine.remember(
+            "日志记忆：内容甲。",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["日志a"],
+        )
+        engine.recall("日志a", top_k=3)
+        log = engine.get_recall_log(limit=10)
+        self.assertGreaterEqual(len(log), 1)
+        self.assertEqual(log[-1]["query"], "日志a")
+        self.assertEqual(log[-1]["top_id"], item.id)
+        self.assertIn("confident", log[-1])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("recall_log", {"limit": 5})
+        self.assertGreaterEqual(len(via_mcp), 1)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from datetime import datetime
 
 from .association import AssociationIndex
@@ -61,6 +62,7 @@ class MemoryEngine:
         self.consolidator = Consolidator(self.store, self.backend)
         self.meta = Metacognition(self.store, self.curve, self.consolidator)
         self.recycle = RecycleBin(self.backend)
+        self._recall_log: deque[dict] = deque(maxlen=100)
 
     # -- wake cycle ---------------------------------------------------------
 
@@ -220,7 +222,7 @@ class MemoryEngine:
         kind_preference: bool = True,
     ) -> list[RecallResult]:
         embedder = embedder or self.embedder
-        return self.store.recall(
+        results = self.store.recall(
             query,
             kind=kind,
             top_k=top_k,
@@ -259,6 +261,22 @@ class MemoryEngine:
             separation=separation,
             kind_preference=kind_preference,
         )
+        self._recall_log.append(
+            {
+                "query": query,
+                "top_id": results[0].item.id if results else None,
+                "top_preview": (
+                    results[0].item.content[:40] if results else None
+                ),
+                "confident": results[0].confident if results else None,
+                "ts": utcnow().isoformat(),
+            }
+        )
+        return results
+
+    def get_recall_log(self, limit: int = 50) -> list[dict]:
+        """Return the most recent recall entries (bounded audit log)."""
+        return list(self._recall_log)[-max(1, int(limit)):]
 
     def recall_reasoning(
         self,

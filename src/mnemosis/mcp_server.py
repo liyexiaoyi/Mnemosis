@@ -450,6 +450,19 @@ class MCPServer:
                 },
             },
             {
+                "name": "recall_log",
+                "description": (
+                    "Return the most recent recall entries (query, top "
+                    "result, confidence, timestamp) as a bounded audit log."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -860,6 +873,10 @@ class MCPServer:
                 args["memory_ids"],
                 args["tags"],
                 action=args.get("action", "add"),
+            )
+        if name == "recall_log":
+            return self.engine.get_recall_log(
+                limit=int(args.get("limit", 50))
             )
         if name == "practice_due":
             kind_value = args.get("kind")
