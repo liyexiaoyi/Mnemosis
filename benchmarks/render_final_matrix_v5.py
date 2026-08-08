@@ -1,4 +1,4 @@
-"""Final matrix v4 chart: 14 dimensions x 4 projects x 3 models."""
+"""Final matrix v5 chart: 19 dimensions x 4 projects x 3 models."""
 
 from __future__ import annotations
 
@@ -25,16 +25,40 @@ def _pct(v) -> str:
 
 def chart() -> str:
     matrix = json.load(
-        open(os.path.join(_BENCH, "results", "final_matrix_v4.json"),
+        open(os.path.join(_BENCH, "results", "final_matrix_v5.json"),
              encoding="utf-8")
     )
     retr = matrix["retrieval"]
     models = matrix["models"]
     projects = ["mnemosis", "mem0", "tencent", "cognitive"]
-    dims = ["en12", "zh16", "v2", "conflict", "process", "plan",
-            "plan_effort", "replan", "prediction", "unexpected_10k",
-            "sleep_replay", "desirable_difficulty",
-            "testing_effect", "spacing"]
+    dims = [
+        "en12", "zh16", "v2", "conflict", "process", "plan",
+        "plan_effort", "replan", "prediction", "unexpected_10k",
+        "sleep_replay", "desirable_difficulty", "testing_effect",
+        "spacing", "interleaving", "competitor_suppression",
+        "context_matching", "generation_effect", "associative_linking",
+    ]
+    dim_labels = {
+        "en12": "英文12题",
+        "zh16": "中文推理16",
+        "v2": "推理v2·4",
+        "conflict": "冲突消解8",
+        "process": "过程步骤6",
+        "plan": "计划选择1",
+        "plan_effort": "规划深度",
+        "replan": "重规划",
+        "prediction": "预测误差",
+        "unexpected_10k": "意外事件10k",
+        "sleep_replay": "睡眠重放",
+        "desirable_difficulty": "期望难度",
+        "testing_effect": "测试效应",
+        "spacing": "间隔练习",
+        "interleaving": "交错练习(新)",
+        "competitor_suppression": "竞争压制(新)",
+        "context_matching": "情境匹配(新)",
+        "generation_effect": "生成效应(新)",
+        "associative_linking": "联想建链(新)",
+    }
     retr_keys = {
         "en12": "en12",
         "zh16": "zh16_premises",
@@ -50,22 +74,11 @@ def chart() -> str:
         "desirable_difficulty": "desirable_difficulty",
         "testing_effect": "testing_effect",
         "spacing": "spacing",
-    }
-    dim_labels = {
-        "en12": "英文12题",
-        "zh16": "中文推理16",
-        "v2": "推理v2·4",
-        "conflict": "冲突消解8",
-        "process": "过程步骤6",
-        "plan": "计划选择1",
-        "plan_effort": "规划深度(新)",
-        "replan": "重规划(新)",
-        "prediction": "预测误差(新)",
-        "unexpected_10k": "意外事件10k(新)",
-        "sleep_replay": "睡眠重放(新)",
-        "desirable_difficulty": "期望难度(新)",
-        "testing_effect": "测试效应(新)",
-        "spacing": "间隔练习(新)",
+        "interleaving": "interleaving",
+        "competitor_suppression": "competitor_suppression",
+        "context_matching": "context_matching",
+        "generation_effect": "generation_effect",
+        "associative_linking": "associative_linking",
     }
     project_labels = {
         "mnemosis": "Mnemosis",
@@ -79,7 +92,7 @@ def chart() -> str:
         "DeepSeek V4 Flash(我)",
     ]
 
-    W, H = 1560, 2320
+    W, H = 1560, 2120
     img = Image.new("RGB", (W, H), "white")
     draw = ImageDraw.Draw(img)
     f_title = _font(30)
@@ -87,11 +100,11 @@ def chart() -> str:
     f_h = _font(18)
     f_txt = _font(15)
     y = 28
-    draw.text((42, y), "第 4 期全方位测评：Mnemosis vs GitHub 同类项目（14 维度）",
+    draw.text((42, y), "第 5 期全方位测评：Mnemosis vs GitHub 同类项目（19 维度）",
               fill="#111", font=f_title)
     y += 48
     draw.text((42, y),
-              "覆盖第 54-57 轮新增能力（测试效应/期望难度/间隔练习/自适应间隔）；"
+              "覆盖第 58-62 轮新增能力（交错练习/竞争压制/情境匹配/生成效应/联想建链）；"
               "作答 = 云端千问 / 本地 qwen2.5:3b / DeepSeek V4 Flash（我）。",
               fill="#555", font=f_sub)
     y += 44
@@ -118,7 +131,7 @@ def chart() -> str:
         y += 26
     y += 12
 
-    # Section B: model answer averages (dims with answers)
+    # Section B: model answer averages
     draw.text((42, y), "B. 作答准确率平均（有作答的维度，越前面越好）",
               fill="#111", font=f_h)
     y += 38
@@ -142,7 +155,7 @@ def chart() -> str:
     y = base_y + 40
 
     # Section C: per-dimension answer table
-    draw.text((42, y), "C. 分维度作答准确率（格内 = 云端 / 本地 / 我）",
+    draw.text((42, y), "C. 分维度作答准确率（格内 = 云端 / 本地 / 我；机制维度无作答=—）",
               fill="#111", font=f_h)
     y += 34
     headers = ["维度", "Mnemosis", "mem0官方", "腾讯Agent", "cognitive"]
@@ -159,11 +172,15 @@ def chart() -> str:
         y += 26
 
     draw.text((42, y + 8),
-              "读法：A 检索矩阵含 6 个新能力维度（Mnemosis 独有，第三方项目不支持）；"
+              "读法：A 检索矩阵含 13 个新能力维度（Mnemosis 独有，第三方项目不支持）；"
               "B/C 显示三模型作答——换强模型能缩小差距，但检索短板的项目上限仍低。",
               fill="#555", font=f_sub)
+    draw.text((42, y + 42),
+              "说明：基础 6 维沿用第 4 期真实安装测评；59-62 轮改动已跑统一回归"
+              "（en88/zh200/zh10k 及 10k 系列）零差异，故基础行不变。",
+              fill="#555", font=f_sub)
 
-    path = os.path.join(_OUT, "final_full_matrix_v4.png")
+    path = os.path.join(_OUT, "final_full_matrix_v5.png")
     img.save(path)
     return path
 
