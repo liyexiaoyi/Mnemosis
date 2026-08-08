@@ -780,6 +780,60 @@ class MemoryEngine:
             ),
         }
 
+    def compare_memories(self, id_a: str, id_b: str) -> dict | None:
+        """Compare two memories: overlap, differences and verdict.
+
+        Source monitoring and schema integration (Johnson, Hashtroudi &
+        Lindsay, 1993): agents holding two records of the same event must
+        know whether they duplicate, conflict or are simply distinct. This
+        reports token overlap, shared cues and a verdict.
+        """
+        from .types import tokenize
+
+        a = self.backend.get(id_a)
+        b = self.backend.get(id_b)
+        if a is None or b is None:
+            return None
+        a_terms = set(tokenize(a.content))
+        b_terms = set(tokenize(b.content))
+        common_terms = sorted(a_terms & b_terms)
+        overlap = (
+            len(common_terms) / max(1, min(len(a_terms), len(b_terms)))
+            if a_terms and b_terms
+            else 0.0
+        )
+        shared_cues = sorted(set(a.cues) & set(b.cues))
+        if overlap >= 0.6:
+            verdict = "duplicate"
+        elif shared_cues and a.content != b.content:
+            verdict = "conflict"
+        else:
+            verdict = "distinct"
+        return {
+            "a": {
+                "id": a.id,
+                "preview": a.content[:40],
+                "kind": a.kind.value,
+                "importance": round(a.importance, 3),
+                "confidence": round(a.confidence, 3),
+                "evidence_count": a.evidence_count,
+                "created_at": a.created_at.isoformat(),
+            },
+            "b": {
+                "id": b.id,
+                "preview": b.content[:40],
+                "kind": b.kind.value,
+                "importance": round(b.importance, 3),
+                "confidence": round(b.confidence, 3),
+                "evidence_count": b.evidence_count,
+                "created_at": b.created_at.isoformat(),
+            },
+            "overlap": round(overlap, 3),
+            "common_terms": common_terms[:5],
+            "shared_cues": shared_cues[:5],
+            "verdict": verdict,
+        }
+
     def retrieval_assist(
         self,
         query: str,

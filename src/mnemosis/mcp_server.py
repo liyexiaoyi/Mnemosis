@@ -816,6 +816,23 @@ class MCPServer:
                 },
             },
             {
+                "name": "compare_memories",
+                "description": (
+                    "Compare two memories: token overlap, shared cues and "
+                    "a verdict (duplicate / conflict / distinct) for "
+                    "source monitoring and schema integration (Johnson et "
+                    "al. 1993)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "id_a": {"type": "string"},
+                        "id_b": {"type": "string"},
+                    },
+                    "required": ["id_a", "id_b"],
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1336,6 +1353,10 @@ class MCPServer:
             return self.engine.encoding_quality(args["memory_id"])
         if name == "explain_memory":
             return self.engine.explain_memory(args["memory_id"])
+        if name == "compare_memories":
+            return self.engine.compare_memories(
+                args["id_a"], args["id_b"]
+            )
         if name == "practice_due":
             kind_value = args.get("kind")
             from .types import MemoryKind

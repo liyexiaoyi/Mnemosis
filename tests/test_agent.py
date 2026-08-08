@@ -1746,6 +1746,62 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         )
         self.assertEqual(via_mcp["access_count"], 3)
 
+    def test_compare_memories(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        dup_a = engine.remember(
+            "alpha shared beta value",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["dup-key"],
+            auto_cues=False,
+        )
+        dup_b = engine.remember(
+            "alpha shared beta values",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["dup-key"],
+            auto_cues=False,
+        )
+        con_a = engine.remember(
+            "aaa conflict one",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["conflict-key"],
+            auto_cues=False,
+        )
+        con_b = engine.remember(
+            "bbb conflict two",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["conflict-key"],
+            auto_cues=False,
+        )
+        dis_a = engine.remember(
+            "zzz alpha m", kind=MemoryKind.SEMANTIC, source=user,
+            cues=["dis-a"], auto_cues=False,
+        )
+        dis_b = engine.remember(
+            "qqq beta n", kind=MemoryKind.SEMANTIC, source=user,
+            cues=["dis-b"], auto_cues=False,
+        )
+        dup = engine.compare_memories(dup_a.id, dup_b.id)
+        self.assertEqual(dup["verdict"], "duplicate")
+        self.assertGreaterEqual(dup["overlap"], 0.6)
+        con = engine.compare_memories(con_a.id, con_b.id)
+        self.assertEqual(con["verdict"], "conflict")
+        self.assertIn("conflict-key", con["shared_cues"])
+        dis = engine.compare_memories(dis_a.id, dis_b.id)
+        self.assertEqual(dis["verdict"], "distinct")
+        self.assertEqual(dis["overlap"], 0.0)
+        self.assertIn("common_terms", dup)
+        self.assertIsNone(engine.compare_memories(dup_a.id, "missing"))
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "compare_memories", {"id_a": dup_a.id, "id_b": dup_b.id}
+        )
+        self.assertEqual(via_mcp["verdict"], "duplicate")
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(
