@@ -123,6 +123,12 @@ class DualTrackStore:
         now = now or utcnow()
         candidates = self.backend.list(kind=kind)
         query_terms = set(tokenize(query))
+        if any("\u4e00" <= ch <= "\u9fff" for ch in query):
+            # Chinese synonym expansion: questions often use different words
+            # than the stored memory ("筹备/旅游" vs "准备/旅行").
+            from .zh_nlp import expand_synonyms
+
+            query_terms = expand_synonyms(query_terms)
         # Temporal questions ("after X, what did Y do next?") cue the event
         # *sequence*, so episodic memories get a small preference; ordinary
         # event queries ("what did Y buy on date?") are left untouched so the

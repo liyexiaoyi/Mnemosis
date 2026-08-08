@@ -44,3 +44,17 @@ jobs:
         run: python benchmarks/e2e_cli_workflow.py
         env:
           PYTHONPATH: src
+      - name: Chinese reasoning smoke (16 questions, retrieval only)
+        run: python benchmarks/reasoning_zh_bench.py --out /tmp/reasoning_smoke.json
+        env:
+          PYTHONPATH: src
+      - name: Conflict resolution smoke (8 scenarios, retrieval only)
+        run: python benchmarks/conflict_evidence_bench.py --out /tmp/conflict_smoke.json
+        env:
+          PYTHONPATH: src
+      - name: Process/CoT steps smoke (6 scenarios, retrieval only)
+        run: >
+          python benchmarks/process_zh_bench.py --project mnemosis_steps
+          --retrieval-only --out /tmp/process_smoke.json
+        env:
+          PYTHONPATH: src

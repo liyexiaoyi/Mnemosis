@@ -209,6 +209,71 @@ class MemoryEngine:
             reasoning_pack=True,
         )
 
+    def recall_steps(
+        self,
+        query: str,
+        *,
+        top_k: int = 10,
+        now: datetime | None = None,
+    ) -> list[RecallResult]:
+        """Chain-of-thought step retrieval for process questions.
+
+        "怎么 / 如何 / 为什么" questions need the ordered intermediate
+        steps, not a keyword soup: mental time travel (Tulving, 1985) and
+        event schemas (Gilboa & Marlatte, 2017) organize episodes into a
+        chronological script, and chain-of-thought reasoning (Wei et al.,
+        2022) consumes those steps in order. Episodic results are sorted by
+        event date; non-process questions behave exactly like
+        ``recall_reasoning``.
+        """
+        import re
+
+        from .types import MemoryKind
+
+        results = self.recall(
+            query,
+            top_k=max(top_k, 12),
+            now=now,
+            reasoning_pack=True,
+        )
+        if not any(marker in query for marker in (
+            "怎么", "如何", "为什么", "过程", "步骤", "准备", "计划", "安排",
+            "how", "why",
+        )):
+            return results[:top_k]
+
+        def _event_date(result) -> str:
+            content = result.item.content
+            match = re.search(r"\d{4}-\d{2}-\d{2}", content)
+            if match:
+                return match.group(0)
+            match = re.search(
+                r"(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日",
+                content,
+            )
+            if match:
+                return (
+                    f"{int(match.group(1)):04d}-"
+                    f"{int(match.group(2)):02d}-"
+                    f"{int(match.group(3)):02d}"
+                )
+            return "9999-12-31"
+
+        episodic = [
+            r for r in results if r.item.kind is MemoryKind.EPISODIC
+        ]
+        others = [
+            r for r in results if r.item.kind is not MemoryKind.EPISODIC
+        ]
+        episodic.sort(key=_event_date)
+        ordered = episodic + others
+        for result in episodic:
+            if not any("步骤" in reason for reason in result.reasons):
+                result.reasons.append(
+                    "\u601d\u7ef4\u94fe\u6b65\u9aa4(\u6309\u65f6\u95f4\u6392\u5e8f)"
+                )
+        return ordered[:top_k]
+
     # -- sleep cycle ----------------------------------------------------------
 
     def sleep(
