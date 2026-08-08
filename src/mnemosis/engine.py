@@ -278,6 +278,42 @@ class MemoryEngine:
         """Return the most recent recall entries (bounded audit log)."""
         return list(self._recall_log)[-max(1, int(limit)):]
 
+    def search_batch(
+        self,
+        queries: list[str],
+        *,
+        top_k: int = 3,
+        kind: MemoryKind | None = None,
+        now: datetime | None = None,
+    ) -> list[dict]:
+        """Run several recall queries in one call.
+
+        Returns one result group per query in the input order, so agents
+        can fan out a whole question list through a single MCP round trip
+        (working-memory chunking; Miller, 1956).
+        """
+        out: list[dict] = []
+        for query in queries:
+            results = self.recall(
+                query, kind=kind, top_k=top_k, now=now
+            )
+            out.append(
+                {
+                    "query": query,
+                    "count": len(results),
+                    "results": [
+                        {
+                            "id": r.item.id,
+                            "preview": r.item.content[:40],
+                            "score": round(r.score, 4),
+                            "confident": r.confident,
+                        }
+                        for r in results
+                    ],
+                }
+            )
+        return out
+
     def recall_reasoning(
         self,
         query: str,

@@ -79,6 +79,29 @@ class MCPServer:
                 },
             },
             {
+                "name": "search_batch",
+                "description": (
+                    "Run several recall queries in one call; returns one "
+                    "result group per query in input order (single MCP "
+                    "round trip for a whole question list)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "queries": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                        "top_k": {"type": "integer"},
+                        "kind": {
+                            "type": "string",
+                            "enum": ["episodic", "semantic"],
+                        },
+                    },
+                    "required": ["queries"],
+                },
+            },
+            {
                 "name": "sleep",
                 "description": "Run sleep consolidation (promote, prune, reflect, conflicts).",
                 "inputSchema": {"type": "object", "properties": {}},
@@ -701,6 +724,12 @@ class MCPServer:
                 }
                 for r in results
             ]
+        if name == "search_batch":
+            return self.engine.search_batch(
+                args["queries"],
+                kind=_kind(args.get("kind")),
+                top_k=int(args.get("top_k", 3)),
+            )
         if name == "sleep":
             report = self.engine.sleep()
             return {

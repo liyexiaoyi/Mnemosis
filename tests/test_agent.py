@@ -1056,6 +1056,41 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["directed_links"], 7)
         self.assertEqual(len(via_mcp["top_connected"]), 2)
 
+    def test_search_batch(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        a = engine.remember(
+            "alpha batch memory.", kind=MemoryKind.SEMANTIC, source=user,
+            cues=["alpha-key"],
+        )
+        b = engine.remember(
+            "beta batch memory.", kind=MemoryKind.SEMANTIC, source=user,
+            cues=["beta-key"],
+        )
+        groups = engine.search_batch(
+            ["alpha-key", "beta-key", "missing-key"], top_k=2
+        )
+        self.assertEqual(len(groups), 3)
+        self.assertEqual([g["query"] for g in groups], [
+            "alpha-key", "beta-key", "missing-key"
+        ])
+        self.assertEqual([g["count"] for g in groups], [2, 2, 2])
+        self.assertEqual(groups[0]["results"][0]["id"], a.id)
+        self.assertEqual(groups[1]["results"][0]["id"], b.id)
+        self.assertLess(
+            groups[2]["results"][0]["score"],
+            groups[0]["results"][0]["score"],
+        )
+        self.assertIn("score", groups[0]["results"][0])
+        self.assertIn("confident", groups[0]["results"][0])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "search_batch", {"queries": ["alpha-key", "missing-key"]}
+        )
+        self.assertEqual(len(via_mcp), 2)
+        self.assertEqual(via_mcp[0]["count"], 2)
+        self.assertEqual(via_mcp[1]["count"], 2)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(
