@@ -1192,6 +1192,24 @@ class MCPServer:
                 },
             },
             {
+                "name": "lesson_learned",
+                "description": (
+                    "Extract lessons learned from project memories: "
+                    "successes, failures and lessons as reusable schemas "
+                    "(schema reuse, Bartlett 1932)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "memory_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                        "limit": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1802,6 +1820,11 @@ class MCPServer:
             )
         if name == "plan_rewrite":
             return self.engine.plan_rewrite(args["plan"])
+        if name == "lesson_learned":
+            return self.engine.lesson_learned(
+                memory_ids=args.get("memory_ids"),
+                limit=int(args.get("limit", 10)),
+            )
         if name == "practice_due":
             kind_value = args.get("kind")
             from .types import MemoryKind

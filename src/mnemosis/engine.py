@@ -2008,6 +2008,64 @@ class MemoryEngine:
             "changes": changes[:8],
         }
 
+    def lesson_learned(
+        self,
+        memory_ids: list[str] | None = None,
+        limit: int = 10,
+    ) -> dict:
+        """Extract lessons learned from project memories.
+
+        Experience is consolidated into reusable schemas (Bartlett,
+        1932): successes, failures and lessons become templates for
+        future projects. This scans memories and tags the ones that carry
+        experience.
+        """
+        if memory_ids:
+            items = []
+            for memory_id in memory_ids:
+                item = self.backend.get(memory_id)
+                if item is not None:
+                    items.append(item)
+        else:
+            items = self.store.all_active()
+        lessons = []
+        for item in items:
+            content = item.content
+            if any(
+                keyword in content
+                for keyword in ("成功", "完成", "搞定")
+            ):
+                tag = "success"
+            elif any(
+                keyword in content
+                for keyword in ("失败", "出错", "坑", "教训")
+            ):
+                tag = "failure"
+            elif any(
+                keyword in content
+                for keyword in ("经验", "学到", "注意", "建议")
+            ):
+                tag = "lesson"
+            else:
+                continue
+            lessons.append(
+                {
+                    "id": item.id,
+                    "preview": content[:48],
+                    "tag": tag,
+                }
+            )
+        tags = {
+            "success": sum(1 for item in lessons if item["tag"] == "success"),
+            "failure": sum(1 for item in lessons if item["tag"] == "failure"),
+            "lesson": sum(1 for item in lessons if item["tag"] == "lesson"),
+        }
+        return {
+            "total": len(lessons),
+            "tags": tags,
+            "lessons": lessons[: max(1, int(limit))],
+        }
+
     def retrieval_assist(
         self,
         query: str,

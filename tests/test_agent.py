@@ -2580,6 +2580,43 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
             ["调研需求", "开发功能", "部署上线"],
         )
 
+    def test_lesson_learned(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        ids = []
+        for text, cue in (
+            ("上线成功，客户满意", "ll-1"),
+            ("测试失败，超时严重", "ll-2"),
+            ("经验：先做原型再开发", "ll-3"),
+            ("记录了会议纪要", "ll-4"),
+        ):
+            item = engine.remember(
+                text,
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=[cue],
+                auto_cues=False,
+            )
+            ids.append(item.id)
+        report = engine.lesson_learned(memory_ids=ids)
+        self.assertEqual(report["total"], 3)
+        self.assertEqual(
+            report["tags"],
+            {"success": 1, "failure": 1, "lesson": 1},
+        )
+        self.assertTrue(all(item["preview"] for item in report["lessons"]))
+        lesson_ids = {item["id"] for item in report["lessons"]}
+        self.assertNotIn(ids[3], lesson_ids)
+        self.assertEqual(
+            MemoryEngine().lesson_learned()["total"], 0
+        )
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "lesson_learned", {"memory_ids": ids}
+        )
+        self.assertEqual(via_mcp["total"], 3)
+        self.assertEqual(via_mcp["tags"]["success"], 1)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(
