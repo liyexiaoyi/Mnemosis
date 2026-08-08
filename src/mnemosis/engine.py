@@ -754,6 +754,85 @@ class MemoryEngine:
             ),
         }
 
+    def life_story(
+        self,
+        period_days: int = 30,
+        limit: int = 20,
+    ) -> dict:
+        """Summarize the memory store as life periods.
+
+        Autobiographical memory is organized into lifetime periods that
+        contain events (Conway & Pleydell-Pearce, 2000). This tool groups
+        episodic traces into time buckets (default 30 days) and reports
+        each period's event count, top themes, average importance and
+        highlights.
+        """
+        from collections import defaultdict
+        from datetime import date, timedelta
+
+        epoch = date(1970, 1, 1)
+        items = [
+            item
+            for item in self.store.all_active(MemoryKind.EPISODIC)
+            if item.status is MemoryStatus.ACTIVE
+        ]
+        items.sort(key=lambda item: item.created_at)
+        buckets: dict[date, list] = defaultdict(list)
+        for item in items:
+            day = item.created_at.date()
+            bucket = epoch + timedelta(
+                days=(day - epoch).days // max(1, int(period_days))
+                * max(1, int(period_days))
+            )
+            buckets[bucket].append(item)
+        periods = []
+        for bucket in sorted(buckets):
+            members = buckets[bucket]
+            theme_counts: dict[str, int] = defaultdict(int)
+            importance_sum = 0.0
+            for item in members:
+                topic = item.cues[0] if item.cues else "（无标签）"
+                theme_counts[topic] += 1
+                importance_sum += item.importance
+            highlights = sorted(
+                members,
+                key=lambda it: (it.importance, it.seq),
+                reverse=True,
+            )[:3]
+            periods.append(
+                {
+                    "period_start": bucket.isoformat(),
+                    "period_end": (
+                        bucket + timedelta(days=max(1, int(period_days)) - 1)
+                    ).isoformat(),
+                    "event_count": len(members),
+                    "top_themes": [
+                        {"cue": cue, "count": count}
+                        for cue, count in sorted(
+                            theme_counts.items(),
+                            key=lambda kv: (-kv[1], kv[0]),
+                        )[:5]
+                    ],
+                    "avg_importance": round(
+                        importance_sum / len(members), 3
+                    ),
+                    "highlights": [
+                        {
+                            "id": item.id,
+                            "preview": item.content[:32],
+                            "importance": round(item.importance, 3),
+                        }
+                        for item in highlights
+                    ],
+                }
+            )
+        periods = periods[: max(1, int(limit))]
+        return {
+            "period_days": max(1, int(period_days)),
+            "total_events": len(items),
+            "periods": periods,
+        }
+
     def recall_reasoning(
         self,
         query: str,

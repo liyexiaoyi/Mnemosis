@@ -704,6 +704,22 @@ class MCPServer:
                 },
             },
             {
+                "name": "life_story",
+                "description": (
+                    "Summarize the store as lifetime periods: group "
+                    "episodic traces into time buckets with event counts, "
+                    "top themes, average importance and highlights "
+                    "(Conway & Pleydell-Pearce 2000)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "period_days": {"type": "integer"},
+                        "limit": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1195,6 +1211,11 @@ class MCPServer:
         if name == "interference_report":
             return self.engine.interference_report(
                 shared_cue_min=int(args.get("shared_cue_min", 3)),
+                limit=int(args.get("limit", 20)),
+            )
+        if name == "life_story":
+            return self.engine.life_story(
+                period_days=int(args.get("period_days", 30)),
                 limit=int(args.get("limit", 20)),
             )
         if name == "practice_due":

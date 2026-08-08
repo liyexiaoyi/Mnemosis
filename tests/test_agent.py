@@ -1404,6 +1404,45 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
             {"会议", "项目"},
         )
 
+    def test_life_story(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        now = utcnow()
+        themes = ["工作", "生活", "旅行"]
+        for offset in (75, 40, 8):
+            for slot, theme in enumerate(themes):
+                engine.remember(
+                    f"story {theme} {slot}",
+                    kind=MemoryKind.EPISODIC,
+                    source=user,
+                    cues=[theme],
+                    importance=0.5 + 0.1 * slot,
+                    created_at=now - timedelta(days=offset, hours=slot),
+                    auto_cues=False,
+                )
+        story = engine.life_story(period_days=30)
+        self.assertEqual(story["total_events"], 9)
+        self.assertEqual(len(story["periods"]), 3)
+        self.assertTrue(all(p["event_count"] == 3 for p in story["periods"]))
+        self.assertTrue(
+            all(
+                {t["cue"] for t in p["top_themes"]} == set(themes)
+                and all(t["count"] == 1 for t in p["top_themes"])
+                for p in story["periods"]
+            )
+        )
+        self.assertTrue(all(p["highlights"] for p in story["periods"]))
+        self.assertGreater(
+            story["periods"][0]["highlights"][0]["importance"],
+            story["periods"][0]["highlights"][-1]["importance"],
+        )
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("life_story", {"period_days": 30})
+        self.assertEqual(via_mcp["total_events"], 9)
+        self.assertEqual(len(via_mcp["periods"]), 3)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(
