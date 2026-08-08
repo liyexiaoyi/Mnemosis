@@ -3406,6 +3406,79 @@ class MemoryEngine:
             ),
         }
 
+    def forgetting_balance(
+        self,
+        *,
+        imbalance_ratio: float = 3.0,
+        limit: int = 10,
+    ) -> dict:
+        """Detect within-topic access imbalance (retrieval-induced forgetting).
+
+        Retrieving one memory strengthens it and suppresses its
+        competitors in the same category (Anderson, Bjork & Bjork, 1994).
+        If one memory in a topic is retrieved far more often than its
+        siblings, the siblings may be losing retrievability silently.
+        """
+        from collections import defaultdict
+
+        ratio = max(1.0, float(imbalance_ratio))
+        items = self.store.all_active()
+        topic_groups: defaultdict[str, list] = defaultdict(list)
+        for item in items:
+            topic = item.cues[0] if item.cues else item.content[:10]
+            topic_groups[topic].append(item)
+        topics: list[dict] = []
+        for topic, members in topic_groups.items():
+            if len(members) < 2:
+                continue
+            total_access = sum(item.access_count for item in members)
+            rows = []
+            for item in members:
+                rows.append(
+                    {
+                        "id": item.id,
+                        "preview": item.content[:32],
+                        "access_count": item.access_count,
+                        "share": round(
+                            item.access_count / max(1, total_access), 3
+                        ),
+                    }
+                )
+            rows.sort(key=lambda row: -row["access_count"])
+            max_access = rows[0]["access_count"]
+            min_access = rows[-1]["access_count"]
+            imbalanced = bool(
+                max_access >= ratio * max(1, min_access)
+                and max_access >= 3
+            )
+            topics.append(
+                {
+                    "topic": topic,
+                    "memories": rows,
+                    "imbalanced": imbalanced,
+                    "suggestion": (
+                        "热门记忆被反复提取，兄弟记忆可能被压制："
+                        "补练低频记忆，平衡提取（RIF，Anderson 1994）。"
+                        if imbalanced
+                        else "提取较均衡，无需调整。"
+                    ),
+                }
+            )
+        flagged = [topic for topic in topics if topic["imbalanced"]]
+        if flagged:
+            advice = (
+                "发现提取失衡：同一主题里热门记忆反复被想起，"
+                "低频记忆可能被偷偷压制，优先补练它们。"
+            )
+        else:
+            advice = "各主题提取较均衡，无提取诱发遗忘风险。"
+        return {
+            "total_topics": len(topics),
+            "flagged_count": len(flagged),
+            "topics": topics[: max(1, int(limit))],
+            "advice": advice,
+        }
+
     def retrieval_assist(
         self,
         query: str,

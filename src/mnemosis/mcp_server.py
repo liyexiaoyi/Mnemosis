@@ -1544,6 +1544,22 @@ class MCPServer:
                 },
             },
             {
+                "name": "forgetting_balance",
+                "description": (
+                    "Detect within-topic access imbalance: repeated "
+                    "retrieval of one memory may suppress its siblings "
+                    "(retrieval-induced forgetting; Anderson, Bjork & "
+                    "Bjork, 1994)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "imbalance_ratio": {"type": "number"},
+                        "limit": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -2249,6 +2265,13 @@ class MCPServer:
         if name == "consolidation_forecast":
             return self.engine.consolidation_forecast(
                 limit=int(args.get("limit", 5)),
+            )
+        if name == "forgetting_balance":
+            return self.engine.forgetting_balance(
+                imbalance_ratio=float(
+                    args.get("imbalance_ratio", 3.0)
+                ),
+                limit=int(args.get("limit", 10)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")

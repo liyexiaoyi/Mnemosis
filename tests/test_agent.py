@@ -3484,6 +3484,59 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(len(via_mcp["tonight_candidates"]), 4)
         self.assertEqual(via_mcp["tonight_candidates"][0]["id"], key.id)
 
+    def test_forgetting_balance(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        hot = engine.remember(
+            "热门物理题",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["物理"],
+            auto_cues=False,
+        )
+        hot.access_count = 10
+        engine.backend.update(hot)
+        cold = engine.remember(
+            "冷门物理题",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["物理"],
+            auto_cues=False,
+        )
+        cold.access_count = 1
+        engine.backend.update(cold)
+        for i in range(2):
+            item = engine.remember(
+                f"音乐曲目 {i}",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["音乐"],
+                auto_cues=False,
+            )
+            item.access_count = 2
+            engine.backend.update(item)
+        report = engine.forgetting_balance()
+        self.assertEqual(report["total_topics"], 2)
+        self.assertEqual(report["flagged_count"], 1)
+        physics = next(
+            topic for topic in report["topics"] if topic["topic"] == "物理"
+        )
+        self.assertTrue(physics["imbalanced"])
+        music = next(
+            topic for topic in report["topics"] if topic["topic"] == "音乐"
+        )
+        self.assertFalse(music["imbalanced"])
+        self.assertIn("失衡", report["advice"])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("forgetting_balance", {})
+        self.assertEqual(via_mcp["flagged_count"], 1)
+        self.assertTrue(
+            next(
+                topic for topic in via_mcp["topics"]
+                if topic["topic"] == "物理"
+            )["imbalanced"]
+        )
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(
