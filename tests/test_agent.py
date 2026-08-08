@@ -8,6 +8,7 @@ accumulation (Smolen et al., 2016).
 from __future__ import annotations
 
 import unittest
+from datetime import timedelta
 
 from mnemosis import MemoryEngine
 from mnemosis.mcp_server import MCPServer
@@ -425,6 +426,49 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
             [r["content"] for r in plain],
             [r["content"] for r in desirable],
         )
+
+    def test_practice_loop(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        now = utcnow()
+        item = engine.remember(
+            "阿丽最喜欢的颜色是琥珀色。",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["阿丽", "颜色"],
+            importance=0.8,
+            strength=0.5,
+            created_at=now - timedelta(days=20),
+        )
+        due = engine.practice_due(limit=5, now=now)
+        self.assertTrue(any(d["id"] == item.id for d in due))
+        self.assertNotIn("琥珀色", str([d["cue"] for d in due]))
+        wrong = engine.practice_answer(item.id, "红色", now=now)
+        self.assertFalse(wrong["success"])
+        right = engine.practice_answer(item.id, "琥珀色", now=now)
+        self.assertTrue(right["success"])
+        self.assertEqual(right["content"], item.content)
+
+    def test_mcp_practice_tools(self) -> None:
+        engine = MemoryEngine()
+        engine.remember(
+            "阿丽喜欢的食物是饺子。",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["阿丽", "食物"],
+            importance=0.8,
+            strength=0.5,
+            created_at=utcnow() - timedelta(days=20),
+        )
+        server = MCPServer(engine=engine)
+        due = server._call_tool("practice_due", {"limit": 5})
+        self.assertTrue(due)
+        result = server._call_tool(
+            "practice_answer",
+            {"memory_id": due[0]["id"], "attempt": "饺子"},
+        )
+        self.assertTrue(result["success"])
 
 
 if __name__ == "__main__":

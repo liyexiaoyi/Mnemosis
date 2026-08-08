@@ -263,6 +263,36 @@ class MCPServer:
                 ),
                 "inputSchema": {"type": "object", "properties": {}},
             },
+            {
+                "name": "practice_due",
+                "description": (
+                    "Active retrieval practice: list due memories as cues "
+                    "only (no answer), for testing-effect self-quizzing."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer"},
+                        "desirable_difficulty": {"type": "boolean"},
+                    },
+                },
+            },
+            {
+                "name": "practice_answer",
+                "description": (
+                    "Score a retrieval attempt, apply testing-effect "
+                    "reinforcement, and return the correct content as "
+                    "feedback."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "memory_id": {"type": "string"},
+                        "attempt": {"type": "string"},
+                    },
+                    "required": ["memory_id", "attempt"],
+                },
+            },
         ]
 
     def handle_line(self, line: str) -> str | None:
@@ -522,6 +552,17 @@ class MCPServer:
             return self.engine.predict_step(args["step"])
         if name == "sleep_replay":
             return self.engine.sleep_replay()
+        if name == "practice_due":
+            return self.engine.practice_due(
+                limit=int(args.get("limit", 5)),
+                desirable_difficulty=bool(
+                    args.get("desirable_difficulty", True)
+                ),
+            )
+        if name == "practice_answer":
+            return self.engine.practice_answer(
+                args["memory_id"], args["attempt"]
+            )
         raise ValueError(f"unknown tool: {name}")
 
     def _result(self, message_id: Any, result: Any) -> str:

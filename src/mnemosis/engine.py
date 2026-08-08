@@ -774,6 +774,88 @@ class MemoryEngine:
             "consolidated_steps": consolidated,
         }
 
+    def practice_due(
+        self,
+        limit: int = 5,
+        now: datetime | None = None,
+        *,
+        desirable_difficulty: bool = True,
+    ) -> list[dict]:
+        """Active retrieval practice: due memories shown as cues only.
+
+        Testing effect (Roediger & Karpicke, 2006): attempting retrieval
+        and then receiving feedback strengthens a memory more than passive
+        re-reading. The agent sees only the cues (no content) and must
+        recall the answer before it is revealed.
+        """
+        items = self.review_due(
+            limit=limit,
+            now=now,
+            desirable_difficulty=desirable_difficulty,
+        )
+        return [
+            {
+                "id": item.id,
+                "cue": " / ".join(item.cues[:2]) if item.cues else item.content[:12],
+            }
+            for item in items
+        ]
+
+    def practice_answer(
+        self,
+        memory_id: str,
+        attempt: str,
+        now: datetime | None = None,
+    ) -> dict:
+        """Score a retrieval attempt and apply testing-effect reinforcement.
+
+        A successful recall applies effort-scaled reinforcement (the harder
+        the retrieval, the stronger the gain); a failure resets the review
+        streak so the item is practised again soon. The correct content is
+        returned as feedback.
+        """
+        item = self.backend.get(memory_id)
+        if item is None:
+            raise ValueError(f"no memory with id {memory_id}")
+        now = now or utcnow()
+        norm_attempt = "".join(str(attempt or "").split())
+        norm_content = "".join(str(item.content).split())
+        attempt_chars = set(norm_attempt)
+        shared = len(attempt_chars & set(norm_content))
+        success = bool(
+            norm_attempt
+            and (
+                norm_attempt in norm_content
+                or norm_content in norm_attempt
+                or (
+                    len(norm_attempt) >= 2
+                    and shared >= 2
+                    and shared / max(len(attempt_chars), 1) >= 0.6
+                )
+            )
+        )
+        if success:
+            retrievability = self.curve.retrievability(item, now)
+            effort = max(0.0, min(1.0, 1.0 - retrievability))
+            self.curve.reinforce_review(
+                item, delta=0.12, now=now, effort=effort
+            )
+            self.scheduler.record_outcome(item, True, now)
+        else:
+            # Feedback effect: even a failed retrieval attempt with feedback
+            # produces a small, plain reinforcement (no effort gain).
+            self.curve.reinforce(item, delta=0.05, now=now)
+            self.scheduler.record_outcome(item, False, now)
+        self.backend.update(item)
+        return {
+            "id": item.id,
+            "success": success,
+            "content": item.content,
+            "retrievability": round(
+                self.curve.retrievability(item, now), 3
+            ),
+        }
+
     # -- sleep cycle ----------------------------------------------------------
 
     def sleep(
