@@ -780,19 +780,30 @@ class MemoryEngine:
         now: datetime | None = None,
         *,
         desirable_difficulty: bool = True,
+        min_gap_hours: float = 24.0,
     ) -> list[dict]:
         """Active retrieval practice: due memories shown as cues only.
 
         Testing effect (Roediger & Karpicke, 2006): attempting retrieval
         and then receiving feedback strengthens a memory more than passive
-        re-reading. The agent sees only the cues (no content) and must
-        recall the answer before it is revealed.
+        re-reading. Spacing effect (Cepeda et al., 2006): practice must be
+        spaced - ``min_gap_hours`` prevents massed re-practice of the same
+        item. The agent sees only the cues (no content) and must recall the
+        answer before it is revealed.
         """
         items = self.review_due(
-            limit=limit,
+            limit=max(limit * 2, 12),
             now=now,
             desirable_difficulty=desirable_difficulty,
         )
+        if min_gap_hours > 0:
+            items = [
+                item for item in items
+                if self.curve.hours_since_last_access(item, now)
+                >= min_gap_hours
+            ][:limit]
+        else:
+            items = items[:limit]
         return [
             {
                 "id": item.id,

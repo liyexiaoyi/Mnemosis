@@ -509,6 +509,26 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         )
         self.assertEqual(result["successes"], 1)
 
+    def test_practice_due_spacing_gap(self) -> None:
+        engine = MemoryEngine()
+        now = utcnow()
+        item = engine.remember(
+            "阿丽喜欢的季节是春天。",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["阿丽", "季节"],
+            importance=0.8,
+            strength=0.4,
+            created_at=now - timedelta(days=20),
+        )
+        engine.practice_answer(item.id, "夏天", now=now)  # failure -> still due
+        # with a large gap, the just-practiced item is excluded
+        spaced = engine.practice_due(limit=5, now=now, min_gap_hours=48)
+        self.assertFalse(any(d["id"] == item.id for d in spaced))
+        # with no gap, it can be re-practiced if still due
+        massed = engine.practice_due(limit=5, now=now, min_gap_hours=0)
+        self.assertTrue(any(d["id"] == item.id for d in massed))
+
 
 if __name__ == "__main__":
     unittest.main()
