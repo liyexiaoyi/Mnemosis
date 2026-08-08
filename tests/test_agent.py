@@ -2555,6 +2555,31 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["completion_ratio"], 0.25)
         self.assertEqual(via_mcp["total"], 4)
 
+    def test_plan_rewrite(self) -> None:
+        engine = MemoryEngine()
+        report = engine.plan_rewrite(["功能", "部署", "功能", "需求"])
+        self.assertEqual(len(report["original"]), 4)
+        self.assertEqual(
+            report["rewritten"],
+            ["调研需求", "开发功能", "部署上线"],
+        )
+        self.assertTrue(
+            all(
+                any(verb in step for verb in engine._PLAN_VERBS)
+                for step in report["rewritten"]
+            )
+        )
+        self.assertTrue(report["changes"])
+        self.assertEqual(engine.plan_rewrite([])["rewritten"], [])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "plan_rewrite", {"plan": ["功能", "部署", "功能", "需求"]}
+        )
+        self.assertEqual(
+            via_mcp["rewritten"],
+            ["调研需求", "开发功能", "部署上线"],
+        )
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

@@ -1168,6 +1168,30 @@ class MCPServer:
                 },
             },
             {
+                "name": "plan_rewrite",
+                "description": (
+                    "Rewrite a weak Chinese plan into an executable one: "
+                    "normalize steps to action verbs, remove duplicates "
+                    "and order along the standard build flow (executive "
+                    "planning, Miller & Cohen 2001)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "plan": {
+                            "type": "array",
+                            "items": {
+                                "oneOf": [
+                                    {"type": "string"},
+                                    {"type": "object"},
+                                ]
+                            },
+                        },
+                    },
+                    "required": ["plan"],
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1776,6 +1800,8 @@ class MCPServer:
                 args["plan"],
                 statuses=args.get("statuses"),
             )
+        if name == "plan_rewrite":
+            return self.engine.plan_rewrite(args["plan"])
         if name == "practice_due":
             kind_value = args.get("kind")
             from .types import MemoryKind

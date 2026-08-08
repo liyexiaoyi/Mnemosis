@@ -1917,6 +1917,97 @@ class MemoryEngine:
             ),
         }
 
+    def plan_rewrite(self, plan: list) -> dict:
+        """Rewrite a weak Chinese plan into an executable one.
+
+        Planning under executive control (Miller & Cohen, 2001) turns
+        vague intents into ordered action verbs. This normalizes each
+        step to a standard verb phrase, removes duplicates and orders
+        steps along the standard build flow.
+        """
+        raw = []
+        for item in plan:
+            if isinstance(item, str):
+                text = item
+            else:
+                text = item.get("step") or item.get("action") or ""
+            text = str(text).strip()
+            if text:
+                raw.append(text)
+        flow = {
+            "需求": "调研需求",
+            "设计": "设计架构",
+            "架构": "设计架构",
+            "开发": "开发功能",
+            "功能": "开发功能",
+            "实现": "开发功能",
+            "测试": "测试功能",
+            "部署": "部署上线",
+            "上线": "部署上线",
+            "文档": "写文档",
+            "写": "写文档",
+            "复盘": "项目复盘",
+            "总结": "项目复盘",
+        }
+        rewritten = []
+        changes = []
+        seen = set()
+        for i, step in enumerate(raw):
+            new_step = None
+            for keyword, template in flow.items():
+                if keyword in step:
+                    new_step = template
+                    break
+            if new_step is None:
+                new_step = f"完成{step}"
+            if new_step in seen:
+                changes.append(
+                    {
+                        "index": i,
+                        "original": step,
+                        "rewritten": None,
+                        "reason": "重复步骤已删除",
+                    }
+                )
+                continue
+            seen.add(new_step)
+            if new_step != step:
+                changes.append(
+                    {
+                        "index": i,
+                        "original": step,
+                        "rewritten": new_step,
+                        "reason": "补动词并规范化",
+                    }
+                )
+            rewritten.append(new_step)
+        order = {
+            "调研需求": 1,
+            "设计架构": 2,
+            "开发功能": 3,
+            "测试功能": 4,
+            "部署上线": 5,
+            "写文档": 6,
+            "项目复盘": 7,
+        }
+        reordered = sorted(
+            rewritten, key=lambda step: order.get(step, 8)
+        )
+        if reordered != rewritten and rewritten:
+            changes.append(
+                {
+                    "index": None,
+                    "original": list(rewritten),
+                    "rewritten": list(reordered),
+                    "reason": "按标准流程排序",
+                }
+            )
+        return {
+            "original": raw,
+            "rewritten": reordered,
+            "changes": changes[:8],
+        }
+
     def retrieval_assist(
         self,
         query: str,
