@@ -134,6 +134,8 @@ class DualTrackStore:
         emotional_salience_weight: float = 0.05,
         second_look: bool = False,
         conflict_flag: bool = True,
+        corroboration_boost: bool = True,
+        corroboration_weight: float = 0.03,
         suppression_factor: float = 0.01,
         suppression_min_cues: int = 2,
         suppression_floor: float = 0.7,
@@ -288,6 +290,14 @@ class DualTrackStore:
                 # emotional trace ranks first.
                 salience_bonus = emotional_salience_weight
                 reasons.append("情绪显著")
+            corroboration_bonus = 0.0
+            if corroboration_boost and item.evidence_count >= 3:
+                # Source corroboration (Johnson et al., 1993): facts
+                # confirmed multiple times are more trustworthy; among
+                # otherwise-equal matches the corroborated trace ranks
+                # first.
+                corroboration_bonus = corroboration_weight
+                reasons.append("多来源印证")
             if query_vector is not None:
                 item_vector = self._embedding(item, embedder)
                 semantic = embedder.cosine(query_vector, item_vector)
@@ -303,6 +313,7 @@ class DualTrackStore:
                     + confidence_bonus
                     + gist_bonus
                     + salience_bonus
+                    + corroboration_bonus
                 )
             else:
                 score = (
@@ -316,6 +327,7 @@ class DualTrackStore:
                     + confidence_bonus
                     + gist_bonus
                     + salience_bonus
+                    + corroboration_bonus
                 )
             if overlap > 0:
                 reasons.append(f"cue/keyword overlap {overlap:.2f}")

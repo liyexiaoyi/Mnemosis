@@ -262,12 +262,17 @@ class CognitionTest(unittest.TestCase):
             return engine, weak.id, strong.id
 
         engine_s, w_s, _ = _build()
-        single = engine_s.recall("alpha", top_k=3)
+        single = engine_s.recall(
+            "alpha", top_k=3, corroboration_boost=False
+        )
         self.assertEqual(single[0].item.id, w_s)
         self.assertFalse(single[0].confident)
         engine_l, _, s_l = _build()
         looked = engine_l.recall(
-            "alpha", top_k=3, second_look=True
+            "alpha",
+            top_k=3,
+            second_look=True,
+            corroboration_boost=False,
         )
         self.assertEqual(looked[0].item.id, s_l)
         self.assertTrue(
@@ -312,10 +317,54 @@ class CognitionTest(unittest.TestCase):
         )
         engine_n, w_n, _ = _build()
         plain = engine_n.recall(
-            "alpha", top_k=3, conflict_flag=False
+            "alpha",
+            top_k=3,
+            conflict_flag=False,
+            corroboration_boost=False,
         )
         self.assertEqual(plain[0].item.id, w_n)
         self.assertTrue(plain[0].confident)
+
+    def test_corroboration_boost(self):
+        def _build():
+            engine = MemoryEngine()
+            user = SourceRecord(origin=SourceType.USER)
+            now = utcnow() - timedelta(days=10)
+            weak = engine.remember(
+                "alpha single",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["alpha"],
+                importance=0.77,
+                strength=0.5,
+                evidence_count=1,
+                created_at=now,
+                auto_cues=False,
+            )
+            strong = engine.remember(
+                "alpha confirmed",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["alpha"],
+                importance=0.5,
+                strength=0.5,
+                evidence_count=3,
+                created_at=now,
+                auto_cues=False,
+            )
+            return engine, weak.id, strong.id
+
+        engine_b, _, s_b = _build()
+        boosted = engine_b.recall("alpha", top_k=3)
+        self.assertEqual(boosted[0].item.id, s_b)
+        self.assertTrue(
+            any("多来源印证" in r for r in boosted[0].reasons)
+        )
+        engine_p, w_p, _ = _build()
+        plain = engine_p.recall(
+            "alpha", top_k=3, corroboration_boost=False
+        )
+        self.assertEqual(plain[0].item.id, w_p)
 
     def test_weak_important_replay(self):
         now = utcnow()
