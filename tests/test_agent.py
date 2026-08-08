@@ -2822,6 +2822,57 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["largest_size"], 4)
         self.assertEqual(via_mcp["total_communities"], 4)
 
+    def test_sleep_advice(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        now = utcnow()
+        engine.remember(
+            "sleep weak important",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["sw-1"],
+            importance=0.8,
+            created_at=now - timedelta(days=30),
+            auto_cues=False,
+        )
+        engine.remember(
+            "zzz conflict one", kind=MemoryKind.SEMANTIC, source=user,
+            cues=["sleep-conflict"], confidence=0.8, auto_cues=False,
+        )
+        engine.remember(
+            "zzz conflict two", kind=MemoryKind.SEMANTIC, source=user,
+            cues=["sleep-conflict"], confidence=0.8, auto_cues=False,
+        )
+        for i in range(2):
+            engine.remember(
+                f"blind topic {i}",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["盲区主题"],
+                auto_cues=False,
+            )
+        engine.remember_intent(
+            "sleep overdue", due_at=now - timedelta(hours=1)
+        )
+        report = engine.sleep_advice(now=now)
+        self.assertGreaterEqual(len(report["pre_sleep_review"]), 1)
+        self.assertGreaterEqual(report["conflicts_to_resolve"], 1)
+        self.assertGreaterEqual(report["overdue_intents"], 1)
+        self.assertTrue(report["tomorrow_priorities"])
+        self.assertTrue(
+            any(
+                topic["topic"] == "盲区主题"
+                for topic in report["tomorrow_priorities"]
+            )
+        )
+        self.assertTrue(report["advice"])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("sleep_advice", {})
+        self.assertGreaterEqual(len(via_mcp["pre_sleep_review"]), 1)
+        self.assertGreaterEqual(via_mcp["conflicts_to_resolve"], 1)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

@@ -2431,6 +2431,56 @@ class MemoryEngine:
             "communities": communities[: max(1, int(limit))],
         }
 
+    def sleep_advice(self, now: datetime | None = None) -> dict:
+        """Advise what to review before sleep for better consolidation.
+
+        Sleep consolidates memories, and pre-sleep rehearsal of important
+        material strengthens it (Rasch & Born, 2013). This tool collects
+        weak-but-important memories to review before sleep, plus conflicts,
+        overdue intentions and tomorrow's unreviewed topics.
+        """
+        items = self.store.all_active()
+        weak_important = [
+            item for item in items
+            if item.importance >= 0.6
+            and self.curve.retrievability(item, now) < 0.5
+        ]
+        weak_important.sort(key=lambda item: -item.importance)
+        pre_sleep_review = [
+            {
+                "id": item.id,
+                "preview": item.content[:40],
+                "importance": round(item.importance, 3),
+                "retrievability": round(
+                    self.curve.retrievability(item, now), 3
+                ),
+            }
+            for item in weak_important[:5]
+        ]
+        conflicts = len(self.consolidator.detect_conflicts())
+        queue = self.action_queue(now=now)
+        coverage = self.coverage_report(now=now)
+        tomorrow_priorities = [
+            {
+                "topic": topic["topic"],
+                "memory_count": topic["memory_count"],
+                "coverage": topic["coverage"],
+            }
+            for topic in coverage["topics"]
+            if topic["status"] == "unreviewed"
+        ][:3]
+        advice = (
+            "睡前先过一遍“重要但快忘”的记忆，"
+            "冲突留到明天集中处理，过期待办尽快收尾"
+        )
+        return {
+            "pre_sleep_review": pre_sleep_review,
+            "conflicts_to_resolve": conflicts,
+            "overdue_intents": queue["overdue"],
+            "tomorrow_priorities": tomorrow_priorities,
+            "advice": advice,
+        }
+
     def retrieval_assist(
         self,
         query: str,

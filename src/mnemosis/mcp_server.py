@@ -1336,6 +1336,16 @@ class MCPServer:
                 },
             },
             {
+                "name": "sleep_advice",
+                "description": (
+                    "Advise what to review before sleep for better "
+                    "consolidation: weak-but-important memories, conflicts, "
+                    "overdue intentions and tomorrow's unreviewed topics "
+                    "(sleep consolidation, Rasch & Born 2013)."
+                ),
+                "inputSchema": {"type": "object", "properties": {}},
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1981,6 +1991,8 @@ class MCPServer:
             return self.engine.community_report(
                 limit=int(args.get("limit", 10)),
             )
+        if name == "sleep_advice":
+            return self.engine.sleep_advice()
         if name == "practice_due":
             kind_value = args.get("kind")
             from .types import MemoryKind
