@@ -1234,6 +1234,31 @@ class MCPServer:
                 },
             },
             {
+                "name": "decision_review",
+                "description": (
+                    "Review a finished plan against its results: success "
+                    "rate, score, verdict, patterns and distilled lessons "
+                    "(post-task metacognitive monitoring, Koriat & "
+                    "Goldsmith 1996)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "plan": {
+                            "type": "array",
+                            "items": {
+                                "oneOf": [
+                                    {"type": "string"},
+                                    {"type": "object"},
+                                ]
+                            },
+                        },
+                        "results": {"type": "object"},
+                    },
+                    "required": ["plan", "results"],
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1853,6 +1878,11 @@ class MCPServer:
             return self.engine.effort_estimate(
                 args["plan"],
                 base_hours=float(args.get("base_hours", 2.0)),
+            )
+        if name == "decision_review":
+            return self.engine.decision_review(
+                args["plan"],
+                args["results"],
             )
         if name == "practice_due":
             kind_value = args.get("kind")

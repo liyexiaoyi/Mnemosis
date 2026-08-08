@@ -2640,6 +2640,37 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["total_hours"], 26.0)
         self.assertEqual(via_mcp["buffered_total_hours"], 31.2)
 
+    def test_decision_review(self) -> None:
+        engine = MemoryEngine()
+        plan = ["调研需求", "设计架构", "开发功能", "测试功能"]
+        results = {
+            "0": {"status": "success"},
+            "1": {"status": "success"},
+            "2": {"status": "failure", "note": "超时"},
+            "3": {"status": "unknown"},
+        }
+        report = engine.decision_review(plan, results)
+        self.assertEqual(report["total_steps"], 4)
+        self.assertEqual(report["success_rate"], 0.5)
+        self.assertEqual(report["score"], 50)
+        self.assertEqual(report["verdict"], "fair")
+        self.assertEqual(
+            report["patterns"]["success_steps"],
+            ["调研需求", "设计架构"],
+        )
+        self.assertEqual(
+            report["patterns"]["failure_steps"], ["开发功能"]
+        )
+        self.assertTrue(
+            any("开发功能" in lesson["text"] for lesson in report["lessons"])
+        )
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "decision_review", {"plan": plan, "results": results}
+        )
+        self.assertEqual(via_mcp["score"], 50)
+        self.assertEqual(via_mcp["verdict"], "fair")
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

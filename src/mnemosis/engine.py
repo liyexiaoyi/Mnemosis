@@ -2127,6 +2127,81 @@ class MemoryEngine:
             "note": "按规划谬误加 20% 缓冲（Buehler et al. 1994）",
         }
 
+    def decision_review(
+        self,
+        plan: list,
+        results: dict,
+    ) -> dict:
+        """Review a finished plan against its results.
+
+        Post-task metacognitive monitoring (Koriat & Goldsmith, 1996)
+        compares intended vs actual outcomes and distills reusable
+        lessons: success rate, score, patterns and failure notes.
+        """
+        steps = []
+        for item in plan:
+            if isinstance(item, str):
+                text = item
+            else:
+                text = item.get("step") or item.get("action") or ""
+            text = str(text).strip()
+            if text:
+                steps.append(text)
+        per_step = []
+        for i, step in enumerate(steps):
+            entry = results.get(str(i), results.get(i, {}))
+            if isinstance(entry, str):
+                status = entry
+                note = ""
+            else:
+                status = entry.get("status", "unknown")
+                note = entry.get("note", "")
+            per_step.append(
+                {
+                    "index": i,
+                    "step": step,
+                    "status": status,
+                    "note": note,
+                }
+            )
+        successes = [p for p in per_step if p["status"] == "success"]
+        failures = [p for p in per_step if p["status"] == "failure"]
+        success_rate = round(len(successes) / max(1, len(per_step)), 3)
+        score = int(round(success_rate * 100))
+        verdict = (
+            "good" if score >= 80 else (
+                "fair" if score >= 50 else "poor"
+            )
+        )
+        lessons = [
+            {
+                "type": "failure",
+                "text": (
+                    f"注意：{p['step']} 失败"
+                    + (f"——{p['note']}" if p["note"] else "")
+                ),
+            }
+            for p in failures
+        ] + [
+            {
+                "type": "success",
+                "text": f"可复用：{p['step']} 顺利通过",
+            }
+            for p in successes
+        ]
+        return {
+            "total_steps": len(per_step),
+            "per_step": per_step,
+            "success_rate": success_rate,
+            "score": score,
+            "verdict": verdict,
+            "patterns": {
+                "success_steps": [p["step"] for p in successes],
+                "failure_steps": [p["step"] for p in failures],
+            },
+            "lessons": lessons[:6],
+        }
+
     def retrieval_assist(
         self,
         query: str,
