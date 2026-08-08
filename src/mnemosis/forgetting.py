@@ -142,10 +142,13 @@ class ReviewScheduler:
         ``review_streak`` counts consecutive *successful* reviews, which is
         the variable spaced repetition actually optimizes (Smolen et al.,
         2016). Failures reset the streak, so a struggling memory gets short
-        intervals again instead of an ever-growing one.
+        intervals again instead of an ever-growing one. The next review is
+        anchored to the last actual review time, so overdue traces are
+        detectable.
         """
         now = now or utcnow()
-        return now + timedelta(
+        anchor = item.last_review_at or now
+        return anchor + timedelta(
             hours=self.next_interval_hours(item.review_streak)
         )
 

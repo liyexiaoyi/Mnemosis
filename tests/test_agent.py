@@ -626,6 +626,45 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         )
         self.assertEqual(len(via_mcp), len(forecast))
 
+    def test_overdue_flags(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        now = utcnow()
+        overdue = engine.remember(
+            "逾期记忆：很久没复习。",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["逾期"],
+            importance=0.8,
+            strength=0.3,
+            created_at=now - timedelta(days=20),
+        )
+        overdue.last_review_at = now - timedelta(days=3)
+        engine.backend.update(overdue)
+        future = engine.remember(
+            "未来记忆：刚复习过。",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["未来"],
+            importance=0.8,
+            strength=0.3,
+            created_at=now - timedelta(days=20),
+        )
+        future.last_review_at = now
+        engine.backend.update(future)
+        plan = engine.practice_plan(limit=5, now=now)
+        by_id = {entry["id"]: entry for entry in plan}
+        self.assertTrue(by_id[overdue.id]["overdue"])
+        self.assertFalse(by_id[future.id]["overdue"])
+        forecast = engine.practice_forecast(days=7, now=now)
+        f_by_id = {entry["id"]: entry for entry in forecast}
+        self.assertTrue(f_by_id[overdue.id]["overdue"])
+        self.assertLess(
+            forecast.index(f_by_id[overdue.id]),
+            forecast.index(f_by_id[future.id]),
+        )
+
     def test_mcp_practice_report_tool(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

@@ -1199,13 +1199,13 @@ class MemoryEngine:
             item = self.backend.get(card["id"])
             if item is None:
                 continue
+            next_review = self.scheduler.next_review_at(item, now)
             plan.append(
                 {
                     "id": item.id,
                     "cue": card["cue"],
-                    "next_review_at": self.scheduler.next_review_at(
-                        item, now
-                    ).isoformat(),
+                    "next_review_at": next_review.isoformat(),
+                    "overdue": next_review < now,
                     "retrievability": round(
                         self.curve.retrievability(item, now), 3
                     ),
@@ -1236,7 +1236,7 @@ class MemoryEngine:
         forecast = []
         for item in self.store.all_active():
             next_review = self.scheduler.next_review_at(item, now)
-            if not (now <= next_review <= horizon):
+            if not (next_review <= horizon):
                 continue
             forecast.append(
                 {
@@ -1247,6 +1247,7 @@ class MemoryEngine:
                         else item.content[:12]
                     ),
                     "due_at": next_review.isoformat(),
+                    "overdue": next_review < now,
                     "retrievability": round(
                         self.curve.retrievability(item, now), 3
                     ),
