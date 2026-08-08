@@ -142,6 +142,47 @@ class CognitionTest(unittest.TestCase):
             any("低置信" in r for r in ambiguous.reasons)
         )
 
+    def test_gist_preference_for_summary_questions(self):
+        def _build():
+            engine = MemoryEngine()
+            user = SourceRecord(origin=SourceType.USER)
+            now = utcnow()
+            gist = engine.remember(
+                "要点：阿丽喜欢红色。",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["红色"],
+                importance=0.5,
+                strength=0.5,
+                created_at=now - timedelta(days=60),
+            )
+            verbatim = engine.remember(
+                "阿丽说：我最喜欢红色。",
+                kind=MemoryKind.EPISODIC,
+                source=user,
+                cues=["红色"],
+                importance=0.5,
+                strength=0.5,
+                created_at=now - timedelta(days=2),
+            )
+            return engine, gist.id, verbatim.id
+
+        engine_g, g_id, _ = _build()
+        boosted = engine_g.recall(
+            "总结一下阿丽喜欢什么颜色？", top_k=3
+        )
+        self.assertEqual(boosted[0].item.id, g_id)
+        self.assertTrue(
+            any("图式要点" in r for r in boosted[0].reasons)
+        )
+        engine_p, _, v_id = _build()
+        plain = engine_p.recall(
+            "总结一下阿丽喜欢什么颜色？",
+            top_k=3,
+            gist_preference=False,
+        )
+        self.assertEqual(plain[0].item.id, v_id)
+
     def test_elaborate_co_retrieval_links(self):
         def _build():
             engine = MemoryEngine()

@@ -127,6 +127,8 @@ class DualTrackStore:
         mood_boost_weight: float = 0.05,
         confidence_boost: bool = True,
         confidence_weight: float = 0.05,
+        gist_preference: bool = True,
+        gist_boost: float = 0.20,
         suppression_factor: float = 0.01,
         suppression_min_cues: int = 2,
         suppression_floor: float = 0.7,
@@ -196,6 +198,16 @@ class DualTrackStore:
                 ]
         query_vector = embedder.embed(query) if embedder is not None else None
         query_mood = _query_mood(query) if mood_congruent_boost else None
+        lowered_query = query.lower()
+        summary_cued = (
+            "总结" in query
+            or "要点" in query
+            or "主旨" in query
+            or "概括" in query
+            or "大意" in query
+            or "summary" in lowered_query
+            or "main point" in lowered_query
+        )
         scored: list[tuple[float, float, MemoryItem, list[str], bool]] = []
         for item in candidates:
             overlap = _overlap(query_terms, self._terms(item))
@@ -249,6 +261,18 @@ class DualTrackStore:
                 if confidence_boost
                 else 0.0
             )
+            gist_bonus = 0.0
+            if (
+                gist_preference
+                and summary_cued
+                and item.kind is MemoryKind.SEMANTIC
+                and (now - item.created_at).total_seconds() > 30 * 86400
+            ):
+                # Fuzzy-trace theory (Brainerd & Reyna, 1990): for summary
+                # questions the consolidated gist is the right answer, and
+                # it survives better than verbatim details over time.
+                gist_bonus = gist_boost
+                reasons.append("图式要点(旧)")
             if query_vector is not None:
                 item_vector = self._embedding(item, embedder)
                 semantic = embedder.cosine(query_vector, item_vector)
@@ -262,6 +286,7 @@ class DualTrackStore:
                     + trust_bonus
                     + mood_bonus
                     + confidence_bonus
+                    + gist_bonus
                 )
             else:
                 score = (
@@ -273,6 +298,7 @@ class DualTrackStore:
                     + trust_bonus
                     + mood_bonus
                     + confidence_bonus
+                    + gist_bonus
                 )
             if overlap > 0:
                 reasons.append(f"cue/keyword overlap {overlap:.2f}")
