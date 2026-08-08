@@ -1157,6 +1157,16 @@ class MemoryEngine:
             self.practice_answer(a["id"], a.get("attempt", ""), now=now)
             for a in answers
         ]
+        now = now or utcnow()
+        for detail in details:
+            item = self.backend.get(detail["id"])
+            if item is None:
+                continue
+            next_review = self.scheduler.next_review_at(item, now)
+            detail["next_review_at"] = next_review.isoformat()
+            detail["retry_hours"] = round(
+                (next_review - now).total_seconds() / 3600.0, 1
+            )
         successes = sum(1 for d in details if d["success"])
         return {
             "n": len(details),

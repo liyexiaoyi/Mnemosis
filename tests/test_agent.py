@@ -491,6 +491,41 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(report["failures"], 1)
         self.assertEqual(report["success_rate"], 0.5)
 
+    def test_practice_report_review_suggestions(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        now = utcnow()
+        good = engine.remember(
+            "阿丽喜欢的城市是成都。",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["阿丽", "城市"],
+            importance=0.8,
+            strength=0.5,
+            created_at=now - timedelta(days=20),
+        )
+        bad = engine.remember(
+            "阿丽喜欢的食物是饺子。",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["阿丽", "食物"],
+            importance=0.8,
+            strength=0.5,
+            created_at=now - timedelta(days=20),
+        )
+        report = engine.practice_report(
+            [
+                {"id": good.id, "attempt": "阿丽喜欢的城市是成都。"},
+                {"id": bad.id, "attempt": "完全错误"},
+            ],
+            now=now,
+        )
+        by_id = {d["id"]: d for d in report["details"]}
+        self.assertIn("next_review_at", by_id[good.id])
+        self.assertAlmostEqual(by_id[good.id]["retry_hours"], 24.0)
+        self.assertAlmostEqual(by_id[bad.id]["retry_hours"], 12.0)
+
     def test_practice_plan(self) -> None:
         from datetime import datetime, timedelta
 
