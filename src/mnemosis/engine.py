@@ -1104,6 +1104,43 @@ class MemoryEngine:
             "details": details,
         }
 
+    def practice_plan(
+        self,
+        limit: int = 5,
+        now: datetime | None = None,
+    ) -> list[dict]:
+        """Return the next practice session as a review plan.
+
+        The agent gets, for every card in the coming session, the scheduled
+        next review time (Smolen et al., 2016 adaptive spacing), current
+        retrievability, and historical success rate - so it can plan around
+        the memory system instead of treating practice as a black box.
+        """
+        now = now or utcnow()
+        cards = self.practice_due(limit=limit, now=now)
+        plan = []
+        for card in cards:
+            item = self.backend.get(card["id"])
+            if item is None:
+                continue
+            plan.append(
+                {
+                    "id": item.id,
+                    "cue": card["cue"],
+                    "next_review_at": self.scheduler.next_review_at(
+                        item, now
+                    ).isoformat(),
+                    "retrievability": round(
+                        self.curve.retrievability(item, now), 3
+                    ),
+                    "success_rate": round(
+                        self._success_rate(item), 3
+                    ),
+                    "kind": item.kind.value,
+                }
+            )
+        return plan
+
     # -- sleep cycle ----------------------------------------------------------
 
     def sleep(

@@ -326,6 +326,20 @@ class MCPServer:
                     "required": ["answers"],
                 },
             },
+            {
+                "name": "practice_plan",
+                "description": (
+                    "Return the next practice session as a review plan: "
+                    "each card with its scheduled next review time, current "
+                    "retrievability, and historical success rate."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer"},
+                    },
+                },
+            },
         ]
 
     def handle_line(self, line: str) -> str | None:
@@ -618,6 +632,10 @@ class MCPServer:
             )
         if name == "practice_report":
             return self.engine.practice_report(args["answers"])
+        if name == "practice_plan":
+            return self.engine.practice_plan(
+                limit=int(args.get("limit", 5))
+            )
         raise ValueError(f"unknown tool: {name}")
 
     def _result(self, message_id: Any, result: Any) -> str:

@@ -491,6 +491,47 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(report["failures"], 1)
         self.assertEqual(report["success_rate"], 0.5)
 
+    def test_practice_plan(self) -> None:
+        from datetime import datetime, timedelta
+
+        engine = MemoryEngine()
+        now = utcnow()
+        items = []
+        for i in range(3):
+            item = engine.remember(
+                f"计划记忆{i}：条目{i}。",
+                kind=MemoryKind.SEMANTIC,
+                source=SourceRecord(origin=SourceType.USER),
+                cues=[f"计划{i}"],
+                importance=0.8,
+                strength=0.3,
+                created_at=now - timedelta(days=20),
+            )
+            items.append(item)
+        items[0].review_streak = 0
+        items[1].review_streak = 1
+        items[2].review_streak = 2
+        for item in items:
+            engine.backend.update(item)
+        plan = engine.practice_plan(limit=5, now=now)
+        by_id = {entry["id"]: entry for entry in plan}
+        for item in items:
+            self.assertIn(item.id, by_id)
+        self.assertIn("next_review_at", by_id[items[0].id])
+        self.assertIn("success_rate", by_id[items[0].id])
+
+        def _hours(entry) -> float:
+            return (
+                datetime.fromisoformat(entry["next_review_at"]) - now
+            ).total_seconds() / 3600.0
+
+        self.assertAlmostEqual(_hours(by_id[items[0].id]), 12.0)
+        self.assertAlmostEqual(_hours(by_id[items[1].id]), 24.0)
+        self.assertAlmostEqual(_hours(by_id[items[2].id]), 48.0)
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("practice_plan", {"limit": 5})
+        self.assertEqual(len(via_mcp), 3)
+
     def test_mcp_practice_report_tool(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(
