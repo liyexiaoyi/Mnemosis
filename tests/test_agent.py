@@ -574,6 +574,88 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(len(cats), 4)
         self.assertTrue(all(a != b for a, b in zip(cats, cats[1:])))
 
+    def test_practice_suppress_competitors(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        now = utcnow()
+        target = engine.remember(
+            "阿丽最喜欢的颜色是琥珀色。",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["阿丽", "颜色"],
+            importance=0.8,
+            strength=0.5,
+            created_at=now - timedelta(days=20),
+        )
+        rival = engine.remember(
+            "阿丽以前喜欢的颜色是红色。",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["阿丽", "颜色"],
+            importance=0.8,
+            strength=0.5,
+            created_at=now - timedelta(days=20),
+        )
+        # suppression ON: a successful recall lowers the rival's strength
+        rival_strength_before = rival.strength
+        ok = engine.practice_answer(target.id, "琥珀色", now=now)
+        self.assertTrue(ok["success"])
+        self.assertGreaterEqual(ok["suppressed"], 1)
+        rival_after = engine.backend.get(rival.id)
+        self.assertLess(rival_after.strength, rival_strength_before)
+        # suppression OFF: rival strength untouched
+        ok2 = engine.practice_answer(
+            target.id,
+            "琥珀色",
+            now=now + timedelta(hours=1),
+            suppress_competitors=False,
+        )
+        self.assertTrue(ok2["success"])
+        self.assertEqual(ok2["suppressed"], 0)
+        rival_after2 = engine.backend.get(rival.id)
+        self.assertAlmostEqual(rival_after2.strength, rival_after.strength)
+
+    def test_mcp_interleave_and_suppress_params(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        now = utcnow()
+        target = engine.remember(
+            "阿丽最喜欢的食物是饺子。",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["阿丽", "食物"],
+            importance=0.8,
+            strength=0.5,
+            created_at=now - timedelta(days=20),
+        )
+        rival = engine.remember(
+            "阿丽以前喜欢的食物是面条。",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["阿丽", "食物"],
+            importance=0.8,
+            strength=0.5,
+            created_at=now - timedelta(days=20),
+        )
+        server = MCPServer(engine=engine)
+        cards = server._call_tool(
+            "practice_due",
+            {"limit": 5, "min_gap_hours": 0, "adaptive_gap": False,
+             "interleave": True},
+        )
+        self.assertTrue(any(c["id"] == target.id for c in cards))
+        result = server._call_tool(
+            "practice_answer",
+            {"memory_id": target.id, "attempt": "饺子",
+             "suppress_competitors": False},
+        )
+        self.assertTrue(result["success"])
+        self.assertEqual(result["suppressed"], 0)
+        rival_after = engine.backend.get(rival.id)
+        self.assertAlmostEqual(rival_after.strength, rival.strength)
+
 
 if __name__ == "__main__":
     unittest.main()

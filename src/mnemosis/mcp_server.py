@@ -276,6 +276,7 @@ class MCPServer:
                         "desirable_difficulty": {"type": "boolean"},
                         "min_gap_hours": {"type": "number"},
                         "adaptive_gap": {"type": "boolean"},
+                        "interleave": {"type": "boolean"},
                     },
                 },
             },
@@ -291,6 +292,7 @@ class MCPServer:
                     "properties": {
                         "memory_id": {"type": "string"},
                         "attempt": {"type": "string"},
+                        "suppress_competitors": {"type": "boolean"},
                     },
                     "required": ["memory_id", "attempt"],
                 },
@@ -586,10 +588,15 @@ class MCPServer:
                 ),
                 min_gap_hours=float(args.get("min_gap_hours", 24.0)),
                 adaptive_gap=bool(args.get("adaptive_gap", True)),
+                interleave=bool(args.get("interleave", True)),
             )
         if name == "practice_answer":
             return self.engine.practice_answer(
-                args["memory_id"], args["attempt"]
+                args["memory_id"],
+                args["attempt"],
+                suppress_competitors=bool(
+                    args.get("suppress_competitors", True)
+                ),
             )
         if name == "practice_report":
             return self.engine.practice_report(args["answers"])

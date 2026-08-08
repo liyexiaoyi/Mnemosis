@@ -17,6 +17,7 @@ from .schema import EventChainIndex
 from .types import (
     MemoryItem,
     MemoryKind,
+    MemoryStatus,
     RecallResult,
     SourceRecord,
     SourceType,
@@ -862,13 +863,19 @@ class MemoryEngine:
         memory_id: str,
         attempt: str,
         now: datetime | None = None,
+        *,
+        suppress_competitors: bool = True,
+        suppression_factor: float = 0.97,
     ) -> dict:
         """Score a retrieval attempt and apply testing-effect reinforcement.
 
         A successful recall applies effort-scaled reinforcement (the harder
         the retrieval, the stronger the gain); a failure resets the review
-        streak so the item is practised again soon. The correct content is
-        returned as feedback.
+        streak so the item is practised again soon. On success, competing
+        memories that share a cue are gently suppressed (Anderson, Bjork &
+        Bjork, 1994 retrieval-induced forgetting): lowering the competing
+        items' accessibility makes the practised target easier to
+        discriminate later. The correct content is returned as feedback.
         """
         item = self.backend.get(memory_id)
         if item is None:
@@ -897,13 +904,29 @@ class MemoryEngine:
                 item, delta=0.12, now=now, effort=effort
             )
             self.scheduler.record_outcome(item, True, now)
+            suppressed = 0
+            if suppress_competitors:
+                seen = {item.id}
+                for cue in item.cues:
+                    for rival in self.backend.find_by_cue(cue):
+                        if (
+                            rival.id in seen
+                            or rival.status is not MemoryStatus.ACTIVE
+                        ):
+                            continue
+                        seen.add(rival.id)
+                        rival.strength = max(
+                            0.05, rival.strength * suppression_factor
+                        )
+                        self.backend.update(rival)
+                        suppressed += 1
         else:
             # Feedback effect: even a failed retrieval attempt with feedback
             # produces a small, plain reinforcement (no effort gain).
             self.curve.reinforce(item, delta=0.05, now=now)
             self.scheduler.record_outcome(item, False, now)
         self.backend.update(item)
-        return {
+        result = {
             "id": item.id,
             "success": success,
             "content": item.content,
@@ -911,6 +934,9 @@ class MemoryEngine:
                 self.curve.retrievability(item, now), 3
             ),
         }
+        if success:
+            result["suppressed"] = suppressed
+        return result
 
     def practice_report(
         self,
