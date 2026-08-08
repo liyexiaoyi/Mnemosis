@@ -617,6 +617,45 @@ class MCPServer:
                 },
             },
             {
+                "name": "suppress_memories",
+                "description": (
+                    "Temporarily block memories from retrieval (directed "
+                    "forgetting): traces stay in the store but stop "
+                    "surfacing in recall until unsuppressed."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "memory_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                    },
+                    "required": ["memory_ids"],
+                },
+            },
+            {
+                "name": "unsuppress_memories",
+                "description": "Restore suppressed memories to retrieval.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "memory_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                    },
+                    "required": ["memory_ids"],
+                },
+            },
+            {
+                "name": "suppressed_report",
+                "description": (
+                    "List currently suppressed memories with previews."
+                ),
+                "inputSchema": {"type": "object", "properties": {}},
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1079,6 +1118,12 @@ class MCPServer:
             return self.engine.schema_report(
                 limit=int(args.get("limit", 20)),
             )
+        if name == "suppress_memories":
+            return self.engine.suppress_memories(args["memory_ids"])
+        if name == "unsuppress_memories":
+            return self.engine.unsuppress_memories(args["memory_ids"])
+        if name == "suppressed_report":
+            return self.engine.suppressed_report()
         if name == "practice_due":
             kind_value = args.get("kind")
             from .types import MemoryKind

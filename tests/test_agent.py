@@ -1229,6 +1229,59 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["group_count"], 3)
         self.assertEqual(via_mcp["top_groups"][0]["topic"], "工作")
 
+    def test_suppress_memories(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        a = engine.remember(
+            "aaa suppress me", kind=MemoryKind.SEMANTIC, source=user,
+            cues=["sup-a"], auto_cues=False,
+        )
+        b = engine.remember(
+            "bbb keep me", kind=MemoryKind.SEMANTIC, source=user,
+            cues=["sup-b"], auto_cues=False,
+        )
+        c = engine.remember(
+            "ccc keep me too", kind=MemoryKind.SEMANTIC, source=user,
+            cues=["sup-c"], auto_cues=False,
+        )
+        result = engine.suppress_memories([a.id])
+        self.assertEqual(result["suppressed"], 1)
+        self.assertEqual(engine.suppress_memories([a.id])["suppressed"], 0)
+        recalled_a = engine.recall("sup-a", top_k=3)
+        self.assertNotIn(a.id, {r.item.id for r in recalled_a})
+        self.assertIn(b.id, {r.item.id for r in engine.recall("sup-b")})
+        self.assertEqual(
+            len(engine.store.all_active()), 3
+        )
+        report = engine.suppressed_report()
+        self.assertEqual(report["count"], 1)
+        self.assertEqual(report["memories"][0]["id"], a.id)
+        self.assertEqual(
+            engine.unsuppress_memories([a.id])["unsuppressed"], 1
+        )
+        self.assertIn(
+            a.id, {r.item.id for r in engine.recall("sup-a", top_k=3)}
+        )
+        engine.suppress_memories([b.id])
+        payload = engine.export_memories()
+        fresh = MemoryEngine()
+        fresh.import_memories(payload)
+        self.assertEqual(fresh.suppressed_report()["count"], 1)
+        self.assertNotIn(
+            b.id, {r.item.id for r in fresh.recall("sup-b", top_k=3)}
+        )
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "suppressed_report", {}
+        )
+        self.assertEqual(via_mcp["count"], 1)
+        self.assertEqual(
+            server._call_tool(
+                "unsuppress_memories", {"memory_ids": [b.id]}
+            )["unsuppressed"],
+            1,
+        )
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

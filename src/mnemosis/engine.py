@@ -64,6 +64,7 @@ class MemoryEngine:
         self.recycle = RecycleBin(self.backend)
         self._recall_log: deque[dict] = deque(maxlen=100)
         self._intents: dict[str, dict] = {}
+        self._suppressed_ids: dict[str, str] = {}
 
     # -- wake cycle ---------------------------------------------------------
 
@@ -221,8 +222,10 @@ class MemoryEngine:
         pattern_completion: bool = True,
         separation: bool = True,
         kind_preference: bool = True,
+        exclude_ids: set[str] | None = None,
     ) -> list[RecallResult]:
         embedder = embedder or self.embedder
+        exclude_ids = set(exclude_ids or ()) | set(self._suppressed_ids)
         results = self.store.recall(
             query,
             kind=kind,
@@ -261,6 +264,7 @@ class MemoryEngine:
             pattern_completion=pattern_completion,
             separation=separation,
             kind_preference=kind_preference,
+            exclude_ids=exclude_ids,
         )
         self._recall_log.append(
             {
@@ -533,6 +537,54 @@ class MemoryEngine:
             "group_count": len(out),
             "top_groups": out[: max(1, int(limit))],
         }
+
+    def suppress_memories(
+        self,
+        memory_ids: list[str],
+        now: datetime | None = None,
+    ) -> dict:
+        """Temporarily suppress memories from retrieval (directed
+        forgetting; Anderson & Green, 2001).
+
+        Unlike deletion, suppression keeps the trace intact but blocks it
+        from recall - the agent can deliberately stop being reminded of
+        something, then unsuppress it later.
+        """
+        now = now or utcnow()
+        suppressed = 0
+        for memory_id in memory_ids:
+            if self.backend.get(memory_id) is None:
+                continue
+            if memory_id not in self._suppressed_ids:
+                self._suppressed_ids[memory_id] = now.isoformat()
+                suppressed += 1
+        return {"suppressed": suppressed}
+
+    def unsuppress_memories(self, memory_ids: list[str]) -> dict:
+        """Restore suppressed memories to normal retrieval."""
+        unsuppressed = 0
+        for memory_id in memory_ids:
+            if memory_id in self._suppressed_ids:
+                del self._suppressed_ids[memory_id]
+                unsuppressed += 1
+        return {"unsuppressed": unsuppressed}
+
+    def suppressed_report(self) -> dict:
+        """List currently suppressed memories with their previews."""
+        out = []
+        for memory_id, suppressed_at in self._suppressed_ids.items():
+            item = self.backend.get(memory_id)
+            if item is None:
+                continue
+            out.append(
+                {
+                    "id": memory_id,
+                    "preview": item.content[:40],
+                    "suppressed_at": suppressed_at,
+                }
+            )
+        out.sort(key=lambda r: r["suppressed_at"])
+        return {"count": len(out), "memories": out}
 
     def recall_reasoning(
         self,
@@ -1665,6 +1717,7 @@ class MemoryEngine:
             "exported_at": utcnow().isoformat(),
             "memories": [item.to_dict() for item in items],
             "intents": [dict(r) for r in self._intents.values()],
+            "suppressed_ids": dict(self._suppressed_ids),
         }
 
     def import_memories(self, payload: dict) -> int:
@@ -1688,6 +1741,11 @@ class MemoryEngine:
             record = dict(record)
             if record.get("id"):
                 self._intents[record["id"]] = record
+        for memory_id, suppressed_at in payload.get(
+            "suppressed_ids", {}
+        ).items():
+            if self.backend.get(memory_id) is not None:
+                self._suppressed_ids[memory_id] = suppressed_at
         return imported
 
     def practice_session(

@@ -165,9 +165,14 @@ class DualTrackStore:
         sep_penalty: float = 0.08,
         kind_preference: bool = True,
         kind_pref: float = 0.03,
+        exclude_ids: set[str] | None = None,
     ) -> list[RecallResult]:
         now = now or utcnow()
         candidates = self.backend.list(kind=kind)
+        if exclude_ids:
+            candidates = [
+                item for item in candidates if item.id not in exclude_ids
+            ]
         query_terms = set(tokenize(query))
         if zh_synonyms and any("\u4e00" <= ch <= "\u9fff" for ch in query):
             # Chinese synonym expansion: questions often use different words
