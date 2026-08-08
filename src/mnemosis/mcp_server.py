@@ -937,6 +937,23 @@ class MCPServer:
                 },
             },
             {
+                "name": "forgetting_export",
+                "description": (
+                    "Export a memory's predicted forgetting curve: "
+                    "retrievability at regular intervals (forgetting "
+                    "curve, Ebbinghaus 1885)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "memory_id": {"type": "string"},
+                        "days": {"type": "integer"},
+                        "step_days": {"type": "integer"},
+                    },
+                    "required": ["memory_id"],
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1491,6 +1508,12 @@ class MCPServer:
             return self.engine.topic_drift_report(
                 period_days=int(args.get("period_days", 30)),
                 limit=int(args.get("limit", 20)),
+            )
+        if name == "forgetting_export":
+            return self.engine.forgetting_export(
+                args["memory_id"],
+                days=int(args.get("days", 30)),
+                step_days=int(args.get("step_days", 1)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")

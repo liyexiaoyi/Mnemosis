@@ -1147,6 +1147,49 @@ class MemoryEngine:
             "total_drift": total_drift,
         }
 
+    def forgetting_export(
+        self,
+        memory_id: str,
+        days: int = 30,
+        step_days: int = 1,
+    ) -> dict | None:
+        """Export a memory's predicted forgetting curve.
+
+        The forgetting curve (Ebbinghaus, 1885) predicts retrievability
+        over time; this returns the forecast at regular intervals so
+        agents or dashboards can plot it.
+        """
+        from datetime import timedelta
+
+        item = self.backend.get(memory_id)
+        if item is None:
+            return None
+        now = utcnow()
+        points = []
+        for offset in range(
+            0,
+            max(1, int(days)) + 1,
+            max(1, int(step_days)),
+        ):
+            points.append(
+                {
+                    "days_from_now": offset,
+                    "retrievability": round(
+                        self.curve.retrievability(
+                            item, now + timedelta(days=offset)
+                        ),
+                        3,
+                    ),
+                }
+            )
+        return {
+            "memory_id": memory_id,
+            "content": item.content[:40],
+            "initial": points[0]["retrievability"],
+            "final": points[-1]["retrievability"],
+            "points": points,
+        }
+
     def retrieval_assist(
         self,
         query: str,

@@ -2056,6 +2056,39 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         )
         self.assertEqual(via_mcp["total_drift"], 3)
 
+    def test_forgetting_export(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        m1 = engine.remember(
+            "forget strong", kind=MemoryKind.SEMANTIC, source=user,
+            cues=["fg-1"], strength=1.0, auto_cues=False,
+        )
+        m2 = engine.remember(
+            "forget weak", kind=MemoryKind.SEMANTIC, source=user,
+            cues=["fg-2"], strength=0.3, auto_cues=False,
+        )
+        curve1 = engine.forgetting_export(m1.id, days=30)
+        self.assertEqual(len(curve1["points"]), 31)
+        self.assertEqual(curve1["points"][0]["days_from_now"], 0)
+        self.assertEqual(curve1["points"][-1]["days_from_now"], 30)
+        self.assertLess(curve1["final"], curve1["initial"])
+        self.assertTrue(
+            all(
+                curve1["points"][i]["retrievability"]
+                >= curve1["points"][i + 1]["retrievability"]
+                for i in range(len(curve1["points"]) - 1)
+            )
+        )
+        curve2 = engine.forgetting_export(m2.id, days=30)
+        self.assertLess(curve2["final"], curve1["final"])
+        self.assertIsNone(engine.forgetting_export("missing-id"))
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "forgetting_export", {"memory_id": m1.id, "days": 30}
+        )
+        self.assertEqual(len(via_mcp["points"]), 31)
+        self.assertIn("initial", via_mcp)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(
