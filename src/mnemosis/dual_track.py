@@ -15,6 +15,7 @@ from .forgetting import ForgettingCurve
 from .importance import ImportanceScorer
 from .embedding import Embedder
 from .schema import EventChainIndex
+from .temporal_reason import apply_time_cell_reasoning
 from .types import (
     MemoryItem,
     MemoryKind,
@@ -100,6 +101,7 @@ class DualTrackStore:
         max_expansion_neighbors: int = 50,
         event_chain: EventChainIndex | None = None,
         temporal_boost: float = 1.0,
+        temporal_reason: bool = True,
         pattern_completion: bool = True,
         pc_min_overlap: float = 0.25,
         pc_max_overlap: float = 0.95,
@@ -221,6 +223,13 @@ class DualTrackStore:
         if event_chain is not None:
             self._follow_event_chain(
                 scored, event_chain, temporal_boost
+            )
+        if temporal_reason:
+            apply_time_cell_reasoning(
+                scored,
+                candidates,
+                query,
+                query_terms,
             )
         if pattern_completion:
             self._pattern_completion(
@@ -579,6 +588,7 @@ class DualTrackStore:
             return
 
         activated_ids = set(activated)
+        existing_ids = {entry[2].id for entry in scored}
         for index, (score, overlap, item, reasons, matched) in enumerate(scored):
             if item.id not in activated_ids:
                 continue
@@ -587,11 +597,12 @@ class DualTrackStore:
                 reason = f"linked to '{root.content[:40]}'"
                 scored[index] = (boost, overlap, item, reasons + [reason], matched)
         for linked_id, (boost, root) in activated.items():
-            if any(entry[2].id == linked_id for entry in scored):
+            if linked_id in existing_ids:
                 continue
             linked = self.backend.get(linked_id)
             if linked is None:
                 continue
+            existing_ids.add(linked_id)
             scored.append(
                 (
                     boost,

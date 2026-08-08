@@ -63,6 +63,12 @@ reconciling — the way human memory actually works.
 - **Event-chain schema recall** ??episodes sharing a person + session are
   ordered by date and linked to their successor, so "after X, what
   happened?" is answered by following the chain (Gilboa & Marlatte, 2017).
+- **Time-cell anchored temporal reasoning** ??for queries with an explicit
+  ordering marker + anchor date + person ("after X on D", "两件事之后",
+  "之前"), the nearest future/past event and the transitive two-hop event
+  are decisively boosted, so same-word events on other dates cannot crowd
+  them out at 10k scale (Eichenbaum, 2014; Cao/Bright/Howard, 2024; Zhang
+  et al., 2022).
 - **Action-cued episodic preference** ??temporal questions ("after/next/then")
   give episodic memories a small preference, so the event anchor is not
   outranked by a same-keyword fact.

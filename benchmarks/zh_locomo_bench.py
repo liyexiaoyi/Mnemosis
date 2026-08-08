@@ -113,7 +113,11 @@ def generate(sessions: int = 4) -> dict:
     return {"facts": facts, "events": events, "questions": questions}
 
 
-def evaluate(dataset: dict, filter_stopwords: bool) -> dict:
+def evaluate(
+    dataset: dict,
+    filter_stopwords: bool,
+    temporal_reason: bool = True,
+) -> dict:
     types.CJK_STOPWORDS = (
         _ORIGINAL if filter_stopwords else frozenset()
     )
@@ -141,7 +145,7 @@ def evaluate(dataset: dict, filter_stopwords: bool) -> dict:
             continue
         query_tokens += len(types.tokenize(q["q"]))
         q_count += 1
-        results = engine.recall(q["q"], top_k=5)
+        results = engine.recall(q["q"], top_k=5, temporal_reason=temporal_reason)
         contents = [r.item.content for r in results]
         stats[kind][0] += int(
             all(e in contents for e in q["expected"])

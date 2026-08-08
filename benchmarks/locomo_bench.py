@@ -224,6 +224,7 @@ def eval_retrieval(
     now=None,
     pattern_completion: bool = True,
     kind_preference: bool = True,
+    temporal_reason: bool = True,
 ) -> dict:
     stats: dict[str, dict] = defaultdict(
         lambda: {"n": 0, "hit1": 0, "hit5": 0, "pass": 0, "anchor5": 0, "mrr": 0.0}
@@ -244,6 +245,7 @@ def eval_retrieval(
             now=now,
             pattern_completion=pattern_completion,
             kind_preference=kind_preference,
+            temporal_reason=temporal_reason,
         )
         contents = [r.item.content for r in results]
         expected = question["expected"]
@@ -502,6 +504,11 @@ def main() -> int:
         help="disable precise event/fact kind preference (A/B control)",
     )
     parser.add_argument(
+        "--no-temporal-reason",
+        action="store_true",
+        help="disable time-cell anchored temporal reasoning (A/B control)",
+    )
+    parser.add_argument(
         "--llm-embedder",
         choices=["keyword", "ngram"],
         default="ngram",
@@ -538,6 +545,7 @@ def main() -> int:
             dataset["questions"],
             pattern_completion=not args.no_pattern_completion,
             kind_preference=not args.no_kind_preference,
+            temporal_reason=not args.no_temporal_reason,
         )
         print(f"\n-- retrieval with {label} --")
         print_report(reports[label], [])
