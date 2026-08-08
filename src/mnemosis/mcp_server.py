@@ -1143,6 +1143,31 @@ class MCPServer:
                 },
             },
             {
+                "name": "plan_tracker",
+                "description": (
+                    "Track execution status of each plan step "
+                    "(pending / in_progress / done / blocked) with a "
+                    "completion ratio (goal monitoring, Miller & Cohen "
+                    "2001)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "plan": {
+                            "type": "array",
+                            "items": {
+                                "oneOf": [
+                                    {"type": "string"},
+                                    {"type": "object"},
+                                ]
+                            },
+                        },
+                        "statuses": {"type": "object"},
+                    },
+                    "required": ["plan"],
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1745,6 +1770,11 @@ class MCPServer:
             return self.engine.project_risk(
                 memory_ids=args.get("memory_ids"),
                 compare_limit=int(args.get("compare_limit", 20)),
+            )
+        if name == "plan_tracker":
+            return self.engine.plan_tracker(
+                args["plan"],
+                statuses=args.get("statuses"),
             )
         if name == "practice_due":
             kind_value = args.get("kind")

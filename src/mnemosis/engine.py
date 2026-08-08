@@ -1864,6 +1864,59 @@ class MemoryEngine:
             "suggestions": suggestions[:4],
         }
 
+    _PLAN_STATUSES = ("pending", "in_progress", "done", "blocked")
+
+    def plan_tracker(
+        self,
+        plan: list,
+        statuses: dict | None = None,
+    ) -> dict:
+        """Track execution status of each plan step.
+
+        Executing a plan requires monitoring progress toward goals
+        (Miller & Cohen, 2001). Statuses are keyed by step index
+        (pending / in_progress / done / blocked); a completion ratio is
+        computed.
+        """
+        steps = []
+        for item in plan:
+            if isinstance(item, str):
+                text = item
+            else:
+                text = item.get("step") or item.get("action") or ""
+            text = str(text).strip()
+            if text:
+                steps.append(text)
+        statuses = statuses or {}
+        counts = {
+            "pending": 0,
+            "in_progress": 0,
+            "done": 0,
+            "blocked": 0,
+        }
+        tracked = []
+        for i, step in enumerate(steps):
+            status = statuses.get(str(i), statuses.get(i, "pending"))
+            if status not in self._PLAN_STATUSES:
+                status = "pending"
+            counts[status] += 1
+            tracked.append(
+                {
+                    "index": i,
+                    "step": step,
+                    "status": status,
+                }
+            )
+        total = len(tracked)
+        return {
+            "total": total,
+            "steps": tracked,
+            "progress": counts,
+            "completion_ratio": round(
+                counts["done"] / max(1, total), 3
+            ),
+        }
+
     def retrieval_assist(
         self,
         query: str,

@@ -2523,6 +2523,38 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["verdict"], "high")
         self.assertEqual(via_mcp["risk_score"], 70)
 
+    def test_plan_tracker(self) -> None:
+        engine = MemoryEngine()
+        plan = ["调研需求", "设计架构", "开发功能", "测试功能"]
+        statuses = {
+            "0": "done",
+            "1": "in_progress",
+            "2": "blocked",
+            "3": "pending",
+        }
+        report = engine.plan_tracker(plan, statuses=statuses)
+        self.assertEqual(report["total"], 4)
+        self.assertEqual(
+            [s["status"] for s in report["steps"]],
+            ["done", "in_progress", "blocked", "pending"],
+        )
+        self.assertEqual(
+            report["progress"],
+            {"pending": 1, "in_progress": 1, "done": 1, "blocked": 1},
+        )
+        self.assertEqual(report["completion_ratio"], 0.25)
+        default = engine.plan_tracker(plan)
+        self.assertEqual(
+            set(s["status"] for s in default["steps"]),
+            {"pending"},
+        )
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "plan_tracker", {"plan": plan, "statuses": statuses}
+        )
+        self.assertEqual(via_mcp["completion_ratio"], 0.25)
+        self.assertEqual(via_mcp["total"], 4)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(
