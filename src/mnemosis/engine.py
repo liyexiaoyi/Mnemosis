@@ -4352,6 +4352,75 @@ class MemoryEngine:
             ),
         }
 
+    def retrieval_snapshot(
+        self,
+        *,
+        previous: dict | None = None,
+        now: datetime | None = None,
+    ) -> dict:
+        """Capture a compact memory-state snapshot (longitudinal tracking).
+
+        Knowledge tracing monitors how a learner's knowledge state
+        evolves over time (knowledge-tracing literature). This captures
+        key indicators; passing a previous snapshot adds a progress diff.
+        """
+        stats = self.stats()
+        items = self.store.all_active()
+        avg_r = round(
+            sum(self.curve.retrievability(item, now) for item in items)
+            / max(1, len(items)),
+            3,
+        )
+        reviewed = sum(
+            1
+            for item in items
+            if item.retrieval_successes + item.retrieval_failures > 0
+        )
+        risk = self.forgetting_risk(now=now)
+        meta = self.metacog_report()
+        snapshot = {
+            "total_memories": stats["active"],
+            "avg_retrievability": avg_r,
+            "reviewed_ratio": round(reviewed / max(1, len(items)), 3),
+            "avg_risk": risk["avg_risk"],
+            "calibration_score": meta["calibration_score"],
+            "topics": len(meta["topics"]),
+        }
+        diff: dict | None = None
+        if previous and previous.get("snapshot"):
+            prev = previous["snapshot"]
+            diff = {}
+            for key in snapshot:
+                if key in prev:
+                    diff[key] = round(snapshot[key] - prev[key], 3)
+            progress = sum(
+                1
+                for key in ("avg_retrievability", "reviewed_ratio",
+                            "calibration_score")
+                if diff.get(key, 0) > 0
+            )
+            regress = sum(
+                1
+                for key in ("avg_retrievability", "reviewed_ratio",
+                            "calibration_score")
+                if diff.get(key, 0) < 0
+            )
+            verdict = "improving" if progress > regress else (
+                "declining" if regress > progress else "stable"
+            )
+            diff["verdict"] = verdict
+        return {
+            "captured_at": (now or utcnow()).isoformat(),
+            "snapshot": snapshot,
+            "diff": diff,
+            "advice": (
+                "快照已生成：下次再拍一张对比，就能看到进步/退步"
+                "（知识追踪，纵向监控）。"
+                if diff is None
+                else f"快照对比完成：{diff.get('verdict', 'stable')}。"
+            ),
+        }
+
     def retrieval_assist(
         self,
         query: str,

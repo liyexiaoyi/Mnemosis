@@ -4152,6 +4152,41 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["status"], "in_progress")
         self.assertEqual(via_mcp["matched_topic"], "物理")
 
+    def test_retrieval_snapshot(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        item = engine.remember(
+            "阿丽喜欢的城市是成都。",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["阿丽", "城市"],
+            importance=0.8,
+            strength=0.5,
+            created_at=utcnow() - timedelta(days=20),
+        )
+        first = engine.retrieval_snapshot()
+        self.assertIn("captured_at", first)
+        self.assertIn("snapshot", first)
+        self.assertIsNone(first["diff"])
+        self.assertIn("total_memories", first["snapshot"])
+        self.assertIn("avg_retrievability", first["snapshot"])
+        self.assertIn("reviewed_ratio", first["snapshot"])
+        self.assertEqual(first["snapshot"]["reviewed_ratio"], 0.0)
+        # strengthen the trace with successful reviews, then re-snapshot
+        for _ in range(3):
+            engine.review(item.id, success=True)
+        second = engine.retrieval_snapshot(previous=first)
+        self.assertIsNotNone(second["diff"])
+        self.assertGreater(second["diff"]["reviewed_ratio"], 0)
+        self.assertIn(second["diff"]["verdict"], ("improving", "stable"))
+        self.assertIn("快照", second["advice"])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "retrieval_snapshot", {"previous": first}
+        )
+        self.assertIsNotNone(via_mcp["diff"])
+        self.assertIn("verdict", via_mcp["diff"])
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

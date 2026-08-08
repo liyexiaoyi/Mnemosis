@@ -1752,6 +1752,27 @@ class MCPServer:
                 },
             },
             {
+                "name": "retrieval_snapshot",
+                "description": (
+                    "Capture a compact memory-state snapshot (knowledge "
+                    "tracing); pass a previous snapshot to get a progress "
+                    "diff with an improving/stable/declining verdict."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "previous": {
+                            "type": "object",
+                            "description": (
+                                "Optional previous retrieval_snapshot "
+                                "report; its 'snapshot' field is diffed "
+                                "against the new one."
+                            ),
+                        },
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -2521,6 +2542,10 @@ class MCPServer:
         if name == "goal_progress":
             return self.engine.goal_progress(
                 goal=str(args.get("goal", "")),
+            )
+        if name == "retrieval_snapshot":
+            return self.engine.retrieval_snapshot(
+                previous=args.get("previous"),
             )
         if name == "practice_due":
             kind_value = args.get("kind")
