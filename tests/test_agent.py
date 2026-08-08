@@ -1481,6 +1481,68 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         )
         self.assertEqual(via_mcp["total"], 2)
 
+    def test_memory_health(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        now = utcnow()
+        hub = engine.remember(
+            "zzz hub one.", kind=MemoryKind.SEMANTIC, source=user
+        )
+        nodes = [
+            engine.remember(
+                f"qqq nod {i}.", kind=MemoryKind.SEMANTIC, source=user
+            )
+            for i in range(5)
+        ]
+        for node in nodes:
+            engine.backend.add_link(hub.id, node.id)
+        for i in range(2):
+            engine.remember(
+                f"aaa lon {i}.", kind=MemoryKind.SEMANTIC, source=user
+            )
+        engine.remember(
+            "conflict alpha", kind=MemoryKind.SEMANTIC, source=user,
+            cues=["conflict-key"], confidence=0.8, auto_cues=False,
+        )
+        engine.remember(
+            "conflict beta", kind=MemoryKind.SEMANTIC, source=user,
+            cues=["conflict-key"], confidence=0.8, auto_cues=False,
+        )
+        for i in range(3):
+            engine.remember(
+                f"crowd {i} item", kind=MemoryKind.SEMANTIC, source=user,
+                cues=["会议"], auto_cues=False,
+            )
+        engine.remember_intent(
+            "overdue task", due_at=now - timedelta(hours=1)
+        )
+        engine.remember_intent(
+            "clash a", due_at=now + timedelta(minutes=10)
+        )
+        engine.remember_intent(
+            "clash b", due_at=now + timedelta(minutes=20)
+        )
+        health = engine.memory_health()
+        self.assertEqual(health["memory_count"], 13)
+        self.assertEqual(health["linked_ratio"], round(11 / 13, 3))
+        self.assertGreaterEqual(health["crowded_clusters"], 1)
+        self.assertGreaterEqual(health["conflicts"], 1)
+        self.assertGreaterEqual(health["overdue_intents"], 1)
+        self.assertGreaterEqual(health["intent_clashes"], 1)
+        self.assertLess(health["score"], 100)
+        self.assertGreaterEqual(health["score"], 0)
+        self.assertGreater(sum(health["penalties"].values()), 0)
+        self.assertEqual(
+            health["score"],
+            max(0, 100 - sum(health["penalties"].values())),
+        )
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("memory_health", {})
+        self.assertEqual(via_mcp["memory_count"], 13)
+        self.assertIn("penalties", via_mcp)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

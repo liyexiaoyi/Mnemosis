@@ -464,9 +464,55 @@ class MemoryEngine:
                             "intent_a": a["id"],
                             "intent_b": b["id"],
                             "cue": a["context_cue"],
-                        }
-                    )
+                }
+            )
         return {"total": len(conflicts), "conflicts": conflicts}
+
+    def memory_health(self) -> dict:
+        """Return one overall memory-health score with sub-metrics.
+
+        Metacognitive monitoring (Koriat & Goldsmith, 1996): a memory
+        system should know how healthy it is. This aggregates existing
+        read-only signals - linked ratio, crowded cues, conflicts,
+        overdue/clashing intentions and suppressed memories - into a
+        0-100 score with itemized penalties.
+        """
+        active = self.store.all_active()
+        memory_count = len(active)
+        assoc = self.association_report(limit=5)
+        connected = assoc["connected_count"]
+        linked_ratio = (
+            round(connected / memory_count, 3) if memory_count else 0.0
+        )
+        crowded = len(
+            self.interference_report(shared_cue_min=3)["crowded_clusters"]
+        )
+        conflicts = len(self.consolidator.detect_conflicts())
+        intents = self.intent_report()
+        clashes = self.intent_conflicts()["total"]
+        suppressed = self.suppressed_report()["count"]
+        penalties = {
+            "isolated": min(
+                20, int(round((1.0 - linked_ratio) * 50))
+            ),
+            "crowded": min(15, crowded * 3),
+            "conflicts": min(20, conflicts * 4),
+            "overdue_intents": min(10, intents["overdue"] * 2),
+            "intent_clashes": min(10, clashes * 3),
+            "suppressed": min(5, suppressed),
+        }
+        score = max(0, 100 - sum(penalties.values()))
+        return {
+            "score": score,
+            "memory_count": memory_count,
+            "linked_ratio": linked_ratio,
+            "crowded_clusters": crowded,
+            "conflicts": conflicts,
+            "overdue_intents": intents["overdue"],
+            "intent_clashes": clashes,
+            "suppressed_count": suppressed,
+            "penalties": penalties,
+        }
 
     def retrieval_assist(
         self,

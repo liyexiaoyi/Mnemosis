@@ -734,6 +734,16 @@ class MCPServer:
                 },
             },
             {
+                "name": "memory_health",
+                "description": (
+                    "One overall memory-health score (0-100) with "
+                    "itemized penalties: linked ratio, crowded cues, "
+                    "conflicts, overdue/clashing intentions and "
+                    "suppressed memories (metacognitive monitoring)."
+                ),
+                "inputSchema": {"type": "object", "properties": {}},
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1238,6 +1248,8 @@ class MCPServer:
                     args.get("time_window_minutes", 60)
                 ),
             )
+        if name == "memory_health":
+            return self.engine.memory_health()
         if name == "practice_due":
             kind_value = args.get("kind")
             from .types import MemoryKind
