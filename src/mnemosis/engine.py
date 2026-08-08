@@ -275,12 +275,66 @@ class MemoryEngine:
         if plan_reuse:
             import re as _re
 
-            match = _re.search(
-                r"(?:参考|参照|学|模仿|按照|像)([\u4e00-\u9fff]{2,3})",
+            ref_persons = _re.findall(
+                r"(?:参考|参照|学|模仿|按照|像)([\u4e00-\u9fff]{2})"
+                r"|和([\u4e00-\u9fff]{2})",
                 query,
             )
-            if match:
-                ref_person = match.group(1)[:2]
+            ref_persons = [
+                (a or b) for a, b in ref_persons if (a or b)
+            ]
+            if ref_persons:
+                from .types import tokenize as _tokenize
+                from .zh_nlp import expand_synonyms as _expand
+
+                query_terms = _expand(set(_tokenize(query)))
+                _TOPIC_STOP = {
+                    "怎么", "如何", "准备", "计划", "参考", "参照", "模仿",
+                    "按照", "更好", "希望", "想要", "想做", "打算", "安排",
+                }
+                topic_terms = [
+                    t for t in query_terms
+                    if t not in ref_persons
+                    and t not in _TOPIC_STOP
+                    and len(t) > 1
+                ][:4]
+                topic = " ".join(topic_terms)
+                existing_ids = {r.item.id for r in episodic}
+                for ref_person in ref_persons:
+                    extra = self.recall(
+                        f"{ref_person} {topic}".strip(),
+                        top_k=8,
+                        now=now,
+                        kind=MemoryKind.EPISODIC,
+                        reasoning_pack=True,
+                        zh_synonyms=zh_synonyms,
+                    )
+                    for r in extra:
+                        if (
+                            r.item.kind is not MemoryKind.EPISODIC
+                            or r.item.id in existing_ids
+                            or "执行成功" in r.item.content
+                            or "执行失败" in r.item.content
+                        ):
+                            continue
+                        if (
+                            ref_person not in r.item.cues
+                            and ref_person not in r.item.content
+                        ):
+                            continue
+                        episodic.append(r)
+                        existing_ids.add(r.item.id)
+                        if not any(
+                            "\u7c7b\u6bd4\u8ba1\u5212" in reason
+                            for reason in r.reasons
+                        ):
+                            r.reasons.append(
+                                "\u7c7b\u6bd4\u8ba1\u5212(\u53c2\u8003"
+                                f"{ref_person})"
+                            )
+            ref_persons_all = ref_persons
+            if ref_persons_all:
+                ref_person = ref_persons_all[0]
                 for r in episodic:
                     if (
                         ref_person in r.item.cues

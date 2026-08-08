@@ -153,6 +153,26 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
             "阿丽在2026年4月1日订了去京都的机票。",
         )
 
+    def test_mcp_plan_tool_uses_outcome_rerank(self) -> None:
+        server = MCPServer(engine=self._engine())
+        result = server._call_tool(
+            "plan",
+            {"goal": "大壮想去京都旅行，参考阿丽和小波谁的计划更好？",
+             "top_k": 8},
+        )
+        contents = [r["content"] for r in result]
+        self.assertTrue(
+            contents.index("小波在2026年5月1日订了去京都的机票。")
+            < contents.index("阿丽在2026年4月1日订了去京都的机票。")
+        )
+        self.assertTrue(
+            any(
+                "\u7ed3\u679c\u52a0\u6743" in reason
+                for r in result
+                for reason in r["reasons"]
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
