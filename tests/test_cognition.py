@@ -115,6 +115,49 @@ class CognitionTest(unittest.TestCase):
         beta2 = [r for r in res2 if "beta" in r.item.cues]
         self.assertEqual(beta2, [])
 
+    def test_self_reference_boost(self):
+        def _build():
+            engine = MemoryEngine()
+            user = SourceRecord(origin=SourceType.USER)
+            self_ = engine.remember(
+                "我喜欢红色。",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["颜色"],
+                importance=0.5,
+                strength=0.5,
+            )
+            engine.remember(
+                "小明喜欢红色。",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["颜色"],
+                importance=0.5,
+                strength=0.5,
+            )
+            return engine, self_
+
+        engine_b, self_b = _build()
+        boosted = engine_b.recall("我喜欢的颜色是什么？", top_k=5)
+        self.assertEqual(boosted[0].item.id, self_b.id)
+        self.assertTrue(
+            any("自我参照" in r for r in boosted[0].reasons)
+        )
+        other_b = next(r for r in boosted if r.item.id != self_b.id)
+        boost_gap = boosted[0].score - other_b.score
+        engine_p, self_p = _build()
+        plain = engine_p.recall(
+            "我喜欢的颜色是什么？",
+            top_k=5,
+            self_reference_boost=False,
+        )
+        other_p = next(
+            r for r in plain if r.item.id != self_p.id
+        )
+        plain_self = next(r.score for r in plain if r.item.id == self_p.id)
+        plain_other = other_p.score
+        self.assertGreater(boost_gap, plain_self - plain_other)
+
     def test_emotional_memory_decays_slower(self):
         now = utcnow()
         self.engine.curve.decay_rate = 0.01

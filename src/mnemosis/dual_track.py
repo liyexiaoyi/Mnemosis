@@ -95,6 +95,7 @@ class DualTrackStore:
         context: str | None = None,
         context_boost: bool = True,
         elaborate_links: bool = True,
+        self_reference_boost: bool = True,
         suppression_factor: float = 0.01,
         suppression_min_cues: int = 2,
         suppression_floor: float = 0.7,
@@ -184,6 +185,22 @@ class DualTrackStore:
             context_match = context_overlap >= 1.0
             reasons: list[str] = []
             semantic = 0.0
+            self_bonus = 0.0
+            self_marked = (
+                "我" in item.content
+                or "自己" in item.content
+                or any("我" in cue or "自己" in cue for cue in item.cues)
+            )
+            if (
+                self_reference_boost
+                and ("我" in query or "自己" in query)
+                and self_marked
+            ):
+                # Self-reference effect (Rogers, Kuiper & Kirker, 1977):
+                # self-relevant traces are encoded deeper and retrieved more
+                # easily, so "我/自己" questions prefer self-related facts.
+                self_bonus = 0.05
+                reasons.append("自我参照(自传体记忆)")
             if query_vector is not None:
                 item_vector = self._embedding(item, embedder)
                 semantic = embedder.cosine(query_vector, item_vector)
@@ -193,6 +210,7 @@ class DualTrackStore:
                     + 0.15 * item.importance
                     + 0.15 * context_overlap
                     + 0.20 * semantic
+                    + self_bonus
                 )
             else:
                 score = (
@@ -200,6 +218,7 @@ class DualTrackStore:
                     + 0.25 * retrievability
                     + 0.20 * item.importance
                     + 0.15 * context_overlap
+                    + self_bonus
                 )
             if overlap > 0:
                 reasons.append(f"cue/keyword overlap {overlap:.2f}")
