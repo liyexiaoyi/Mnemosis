@@ -427,6 +427,29 @@ class MCPServer:
                 },
             },
             {
+                "name": "tag_memories",
+                "description": (
+                    "Add or remove tags (cues) on memories in bulk; tags are "
+                    "first-class retrieval cues."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "memory_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                        "tags": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                        "action": {"type": "string",
+                                   "enum": ["add", "remove"]},
+                    },
+                    "required": ["memory_ids", "tags"],
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -831,6 +854,12 @@ class MCPServer:
         if name == "review_load":
             return self.engine.review_load(
                 days=int(args.get("days", 7))
+            )
+        if name == "tag_memories":
+            return self.engine.tag_memories(
+                args["memory_ids"],
+                args["tags"],
+                action=args.get("action", "add"),
             )
         if name == "practice_due":
             kind_value = args.get("kind")

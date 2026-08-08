@@ -894,6 +894,43 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         via_mcp = server._call_tool("review_load", {"days": 7})
         self.assertIn("load_index", via_mcp)
 
+    def test_tag_memories(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        items = []
+        for i in range(2):
+            item = engine.remember(
+                f"标签{i}：条目。",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["base"],
+                auto_cues=False,
+            )
+            items.append(item)
+        result = engine.tag_memories(
+            [item.id for item in items], ["工作", "项目"], action="add"
+        )
+        self.assertEqual(result["updated"], 2)
+        self.assertEqual(result["added"], 4)
+        first = engine.backend.get(items[0].id)
+        self.assertIn("工作", first.cues)
+        self.assertIn("项目", first.cues)
+        removed = engine.tag_memories(
+            [item.id for item in items], ["项目"], action="remove"
+        )
+        self.assertEqual(removed["removed"], 2)
+        self.assertNotIn("项目", engine.backend.get(items[0].id).cues)
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "tag_memories",
+            {
+                "memory_ids": [item.id for item in items],
+                "tags": ["临时"],
+                "action": "add",
+            },
+        )
+        self.assertEqual(via_mcp["updated"], 2)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

@@ -1554,6 +1554,39 @@ class MemoryEngine:
             "load_index": due_soon + overdue,
         }
 
+    def tag_memories(
+        self,
+        memory_ids: list[str],
+        tags: list[str],
+        action: str = "add",
+    ) -> dict:
+        """Add or remove tags (cues) on memories in bulk.
+
+        Tags are first-class retrieval cues, so this is an indexing
+        maintenance tool: add "工作" to a set of memories and they become
+        reachable through that tag.
+        """
+        if action not in ("add", "remove"):
+            raise ValueError("action must be 'add' or 'remove'")
+        new_tags = set(normalize_cues(tags))
+        updated = added = removed = 0
+        for memory_id in memory_ids:
+            item = self.backend.get(memory_id)
+            if item is None:
+                continue
+            cues = set(item.cues)
+            if action == "add":
+                added += len(new_tags - cues)
+                cues |= new_tags
+            else:
+                removed += len(cues & new_tags)
+                cues -= new_tags
+            item.cues = normalize_cues(list(cues))
+            self.backend.update(item)
+            self.backend.add_cues(item.id, item.cues)
+            updated += 1
+        return {"updated": updated, "added": added, "removed": removed}
+
     # -- sleep cycle ----------------------------------------------------------
 
     def sleep(
