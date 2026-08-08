@@ -222,6 +222,7 @@ class MemoryEngine:
         pattern_completion: bool = True,
         separation: bool = True,
         kind_preference: bool = True,
+        concept_coverage: bool = True,
         exclude_ids: set[str] | None = None,
     ) -> list[RecallResult]:
         embedder = embedder or self.embedder
@@ -277,7 +278,127 @@ class MemoryEngine:
                 "ts": utcnow().isoformat(),
             }
         )
+        if concept_coverage:
+            results = self._apply_concept_coverage(
+                query,
+                results,
+                top_k=top_k,
+                kind=kind,
+                now=now,
+                context=context,
+                embedder=embedder,
+                exclude_ids=exclude_ids,
+                reasoning_pack=reasoning_pack,
+                zh_synonyms=zh_synonyms,
+                pattern_completion=pattern_completion,
+                separation=separation,
+            )
         return results
+
+    def _concept_chunks(self, query: str) -> list[str]:
+        """Split a Chinese multi-concept query into chunks (working memory
+        chunking; Miller, 1956). "A 和 B 分别是多少" becomes [A, B] so each
+        concept gets a retrieval vote instead of being diluted in one
+        bag-of-tokens query."""
+        import re
+
+        if not any("\u4e00" <= ch <= "\u9fff" for ch in query):
+            return []
+        parts = re.split(r"[和与以及、,，及]+", query)
+        chunks = [part.strip() for part in parts if len(part.strip()) >= 2]
+        return chunks if len(chunks) >= 2 else []
+
+    def _apply_concept_coverage(
+        self,
+        query: str,
+        results: list[RecallResult],
+        *,
+        top_k: int,
+        kind: MemoryKind | None,
+        now: datetime | None,
+        context: str | None,
+        embedder: Embedder | None,
+        exclude_ids: set[str],
+        reasoning_pack: bool,
+        zh_synonyms: bool,
+        pattern_completion: bool,
+        separation: bool,
+    ) -> list[RecallResult]:
+        """Ensure every concept chunk of a multi-part question is covered.
+
+        Multi-concept questions ("移动速度和跳跃力度分别是多少") dilute
+        each concept's terms; one concept's best memory can fall just
+        below top-k. This re-queries each uncovered chunk and inserts its
+        best candidate (concept coverage), then re-ranks and truncates.
+        """
+        chunks = self._concept_chunks(query)
+        if not chunks or not results:
+            return results
+        from .types import tokenize
+
+        generic = {
+            "多少", "分别", "是", "什么", "哪些", "怎么", "如何",
+            "一个", "那个", "这个", "还有", "哪些",
+        }
+        seen = {result.item.id for result in results}
+        for chunk in chunks:
+            terms = {
+                term
+                for term in tokenize(chunk)
+                if len(term) >= 2 and term not in generic
+            }
+            if not terms:
+                continue
+            joined = " || ".join(
+                result.item.content + " " + " ".join(result.item.cues)
+                for result in results
+            )
+            if all(term in joined for term in terms):
+                continue
+            for score, candidate in self._chunk_top_candidates(
+                chunk, terms, kind=kind, exclude_ids=exclude_ids
+            ):
+                if candidate.id in seen or score < 0.35:
+                    continue
+                result = RecallResult(candidate, score)
+                if not any(
+                    reason.startswith("概念覆盖")
+                    for reason in result.reasons
+                ):
+                    result.reasons.append(f"概念覆盖({chunk[:12]})")
+                results.append(result)
+                seen.add(candidate.id)
+                break
+        results.sort(key=lambda result: result.score, reverse=True)
+        return results[: max(1, int(top_k))]
+
+    def _chunk_top_candidates(
+        self,
+        chunk: str,
+        terms: set[str],
+        *,
+        kind: MemoryKind | None,
+        exclude_ids: set[str],
+        limit: int = 3,
+    ) -> list[tuple[float, MemoryItem]]:
+        """Score every active memory against one concept chunk."""
+        from .types import tokenize
+
+        rows: list[tuple[float, MemoryItem]] = []
+        for item in self.store.all_active(kind=kind):
+            if item.id in exclude_ids:
+                continue
+            text = item.content + " " + " ".join(item.cues)
+            item_terms = set(tokenize(text))
+            overlap = len(terms & item_terms)
+            if overlap == 0:
+                continue
+            score = overlap / max(1, len(terms))
+            if chunk in text:
+                score += 0.5
+            rows.append((round(score, 4), item))
+        rows.sort(key=lambda pair: (-pair[0], pair[1].id))
+        return rows[: max(1, int(limit))]
 
     def get_recall_log(self, limit: int = 50) -> list[dict]:
         """Return the most recent recall entries (bounded audit log)."""

@@ -4519,6 +4519,72 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["session_result"]["correct"], 1)
         self.assertIsNotNone(via_mcp["snapshot_after"]["diff"])
 
+    def test_concept_coverage_recall(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        engine.remember(
+            "玩家移动速度为 320 像素/秒。",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["速度"],
+            auto_cues=False,
+        )
+        engine.remember(
+            "跳跃力度为 420。",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["跳跃"],
+            auto_cues=False,
+        )
+        engine.remember(
+            "主场景是 Main.tscn。",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["场景"],
+            auto_cues=False,
+        )
+        engine.remember(
+            "玩家移动速度测试记录：昨天调到 300。",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["速度"],
+            auto_cues=False,
+        )
+        engine.remember(
+            "玩家移动速度对比：周日 280，周一 300。",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["速度"],
+            auto_cues=False,
+        )
+        results = engine.recall(
+            "玩家移动速度和跳跃力度分别是多少？", top_k=2
+        )
+        contents = [r.item.content for r in results]
+        self.assertIn("玩家移动速度为 320 像素/秒。", contents)
+        self.assertIn("跳跃力度为 420。", contents)
+        self.assertTrue(
+            any(
+                "概念覆盖" in reason
+                for result in results
+                for reason in result.reasons
+            )
+        )
+        # single-concept query is untouched by coverage
+        single = engine.recall("玩家移动速度是多少？", top_k=2)
+        self.assertEqual(
+            single[0].item.content, "玩家移动速度为 320 像素/秒。"
+        )
+        # coverage can be disabled explicitly
+        off = engine.recall(
+            "玩家移动速度和跳跃力度分别是多少？",
+            top_k=2,
+            concept_coverage=False,
+        )
+        self.assertNotIn(
+            "跳跃力度为 420。", [r.item.content for r in off]
+        )
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(
