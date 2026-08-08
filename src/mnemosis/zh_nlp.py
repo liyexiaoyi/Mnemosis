@@ -43,6 +43,8 @@ _SYNONYM_GROUPS: tuple[frozenset[str], ...] = (
     frozenset({"做饭", "做菜", "烹饪"}),
     frozenset({"早晨", "早上"}),
     frozenset({"晚上", "夜晚"}),
+    frozenset({"贵", "昂贵"}),
+    frozenset({"便宜", "廉价"}),
 )
 
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]")

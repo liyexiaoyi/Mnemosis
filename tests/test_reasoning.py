@@ -68,6 +68,12 @@ class ReasoningKindTests(unittest.TestCase):
         self.assertEqual(
             reasoning_question_kind("阿丽比小波高吗？"), "compare"
         )
+        self.assertEqual(
+            reasoning_question_kind("阿丽和小波谁买的手机更昂贵？"), "compare"
+        )
+        self.assertEqual(
+            reasoning_question_kind("朵朵和小雨买的音箱哪个更廉价？"), "compare"
+        )
 
     def test_transitive_kind(self) -> None:
         self.assertEqual(
@@ -137,6 +143,29 @@ class PremisePackTests(unittest.TestCase):
         contents = [r.item.content for r in results]
         self.assertIn("阿丽最喜欢的城市是成都。", contents)
         self.assertIn("小波最喜欢的城市是杭州。", contents)
+
+    def test_compare_price_premises_surface_via_numbers(self) -> None:
+        engine = MemoryEngine()
+        source = SourceRecord(origin=SourceType.USER)
+        for content, person in (
+            ("阿丽买相机花了2500元。", "阿丽"),
+            ("小波买手机花了3000元。", "小波"),
+            ("阿丽喜欢蓝色。", "阿丽"),
+            ("小波喜欢红色。", "小波"),
+        ):
+            engine.remember(
+                content,
+                kind=MemoryKind.SEMANTIC,
+                source=source,
+                cues=[person],
+                importance=0.7,
+            )
+        results = engine.recall_reasoning(
+            "阿丽买的相机和小波买的手机，哪个更昂贵？", top_k=8
+        )
+        contents = [r.item.content for r in results]
+        self.assertIn("阿丽买相机花了2500元。", contents)
+        self.assertIn("小波买手机花了3000元。", contents)
 
     def test_plain_recall_misses_distractor_dimension(self) -> None:
         engine = _reasoning_engine()

@@ -38,16 +38,18 @@ _MATH_RE = re.compile(
 )
 _COMPARE_RE = re.compile(
     r"比.{1,8}(?:高|低|大|小|早|晚|贵|便宜|多|少|快|慢|长|短|好|近|远)"
-    r"|(?:更|最)(?:高|低|大|小|早|晚|贵|便宜|多|少|快|慢|长|短|好|近|远)"
+    r"|(?:更|最)(?:高|低|大|小|早|晚|贵|便宜|昂贵|廉价|多|少|快|慢|长|短|好|近|远)"
     r"|(?:谁|哪个).{0,6}(?:更|最|比较)"
+    r"|(?:更|最)(?:昂贵|廉价)"
 )
 _TRANSITIVE_RE = re.compile(
     r"(?:谁|哪个|几个人?中).{0,8}(?:最高|最矮|最贵|最便宜|最大|最小|最早|最晚|最近|最远)"
     r"|比.{1,8}(?:高|大|贵|早|晚|近|远).{0,12}比"
 )
 
-_DIMENSION_CHARS = set(
-    "高 低 大 小 早 晚 贵 便宜 多 少 快 慢 长 短 好 近 远".split()
+_DIMENSIONS = (
+    "高", "低", "大", "小", "早", "晚", "贵", "便宜", "昂贵", "廉价",
+    "多", "少", "快", "慢", "长", "短", "好", "近", "远",
 )
 _NUMBER_UNIT_RE = re.compile(r"\d+(?:\.\d+)?\s*(?:元|块|本|个|天|次|人|公里|岁)")
 _CN_NUMBER_UNIT_RE = re.compile(
@@ -101,7 +103,9 @@ def suggested_pack_size(query: str) -> int:
 def _has_dimension(content: str, kind: str) -> bool:
     if kind in ("compare", "transitive"):
         return any(ch in content for ch in ("比", "最")) or any(
-            dim in content for dim in _DIMENSION_CHARS
+            dim in content for dim in _DIMENSIONS
+        ) or bool(
+            _NUMBER_UNIT_RE.search(content) or _CN_NUMBER_UNIT_RE.search(content)
         )
     if kind == "math":
         return bool(
