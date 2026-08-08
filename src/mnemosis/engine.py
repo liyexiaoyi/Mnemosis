@@ -2544,6 +2544,99 @@ class MemoryEngine:
             "advice": advice,
         }
 
+    def difficulty_estimator(
+        self,
+        limit: int = 10,
+        now: datetime | None = None,
+    ) -> dict:
+        """Estimate current learning difficulty of each memory.
+
+        Desirable difficulties (Bjork, 1994): learning benefits most when
+        retrieval is effortful but still possible. This tool buckets every
+        active memory by current retrievability into too-easy / sweet-spot /
+        hard / very-hard, highlights the sweet-spot workload and gives
+        concrete next actions per bucket.
+        """
+        items = self.store.all_active()
+        buckets = {"too_easy": 0, "sweet_spot": 0, "hard": 0, "very_hard": 0}
+        rows: list[dict] = []
+        for item in items:
+            r = self.curve.retrievability(item, now)
+            if r >= 0.75:
+                level = "too_easy"
+            elif r >= 0.35:
+                level = "sweet_spot"
+            elif r >= 0.12:
+                level = "hard"
+            else:
+                level = "very_hard"
+            buckets[level] += 1
+            rows.append(
+                {
+                    "id": item.id,
+                    "preview": item.content[:36],
+                    "topic": item.cues[0] if item.cues else item.content[:10],
+                    "level": level,
+                    "retrievability": round(r, 3),
+                    "importance": round(item.importance, 3),
+                    "reviews": item.review_streak,
+                }
+            )
+        rows.sort(key=lambda row: (-row["importance"], row["retrievability"]))
+        total = len(items)
+        sweet_ratio = round(buckets["sweet_spot"] / max(1, total), 3)
+        topic_rows: list[dict] = []
+        topic_buckets: dict[str, dict] = {}
+        for row in rows:
+            entry = topic_buckets.setdefault(
+                row["topic"],
+                {
+                    "topic": row["topic"],
+                    "count": 0,
+                    "sweet_spot": 0,
+                    "hard": 0,
+                    "very_hard": 0,
+                },
+            )
+            entry["count"] += 1
+            if row["level"] == "sweet_spot":
+                entry["sweet_spot"] += 1
+            elif row["level"] == "hard":
+                entry["hard"] += 1
+            elif row["level"] == "very_hard":
+                entry["very_hard"] += 1
+        for entry in topic_buckets.values():
+            if entry["count"] >= 2:
+                topic_rows.append(entry)
+        topic_rows.sort(
+            key=lambda entry: (-entry["very_hard"], -entry["hard"], -entry["count"])
+        )
+        if buckets["very_hard"] and sweet_ratio < 0.3:
+            advice = (
+                "太难的太多：先给小步重编码（加线索、拆成更小的点），"
+                "把 very_hard 拉回 hard 再进 sweet_spot，不要直接硬背。"
+            )
+        elif buckets["too_easy"] and sweet_ratio < 0.3:
+            advice = (
+                "太容易的太多：容易的推迟复习（间隔），等它掉进"
+                " sweet_spot 再练，避免假熟练。"
+            )
+        elif sweet_ratio >= 0.3:
+            advice = (
+                "难度分布良好：重点保持 sweet_spot 节奏，"
+                "太难的拆解、太容易的延后。"
+            )
+        else:
+            advice = "按 importance 优先：sweet_spot 先练，hard 拆解，very_hard 重编码。"
+        return {
+            "total_memories": total,
+            "buckets": buckets,
+            "sweet_spot_ratio": sweet_ratio,
+            "rows": rows[: max(1, int(limit))],
+            "topic_summary": topic_rows[:5],
+            "advice": advice,
+        }
+
     def retrieval_assist(
         self,
         query: str,

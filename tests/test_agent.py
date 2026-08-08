@@ -2932,6 +2932,84 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["negative_ratio"], 0.375)
         self.assertEqual(via_mcp["mood_profile"]["negative"], 3)
 
+    def test_difficulty_estimator(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        for i in range(3):
+            engine.remember(
+                f"easy fact {i}",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["easy"],
+                importance=0.5,
+                strength=0.95,
+                auto_cues=False,
+            )
+        engine.remember(
+            "sweet formula A",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["math"],
+            importance=0.9,
+            strength=0.55,
+            auto_cues=False,
+        )
+        engine.remember(
+            "sweet formula B",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["math"],
+            importance=0.85,
+            strength=0.55,
+            auto_cues=False,
+        )
+        engine.remember(
+            "hard concept one",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["物理"],
+            importance=0.8,
+            strength=0.25,
+            auto_cues=False,
+        )
+        engine.remember(
+            "hard concept two",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["化学"],
+            importance=0.7,
+            strength=0.25,
+            auto_cues=False,
+        )
+        engine.remember(
+            "very hard derivation",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["物理"],
+            importance=0.6,
+            strength=0.05,
+            auto_cues=False,
+        )
+        report = engine.difficulty_estimator()
+        self.assertEqual(report["total_memories"], 8)
+        self.assertEqual(
+            report["buckets"],
+            {"too_easy": 3, "sweet_spot": 2, "hard": 2, "very_hard": 1},
+        )
+        self.assertEqual(report["sweet_spot_ratio"], 0.25)
+        physics = next(
+            topic for topic in report["topic_summary"]
+            if topic["topic"] == "物理"
+        )
+        self.assertEqual(physics["hard"], 1)
+        self.assertEqual(physics["very_hard"], 1)
+        self.assertEqual(report["rows"][0]["importance"], 0.9)
+        self.assertTrue(report["advice"])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("difficulty_estimator", {})
+        self.assertEqual(via_mcp["buckets"]["sweet_spot"], 2)
+        self.assertEqual(via_mcp["buckets"]["very_hard"], 1)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

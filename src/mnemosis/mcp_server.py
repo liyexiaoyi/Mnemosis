@@ -1364,6 +1364,21 @@ class MCPServer:
                 },
             },
             {
+                "name": "difficulty_estimator",
+                "description": (
+                    "Estimate the current learning difficulty of memories "
+                    "(desirable difficulty, Bjork 1994): too-easy / "
+                    "sweet-spot / hard / very-hard buckets, topic summary "
+                    "and next-action advice."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -2014,6 +2029,10 @@ class MCPServer:
         if name == "emotion_advice":
             return self.engine.emotion_advice(
                 memory_ids=args.get("memory_ids"),
+            )
+        if name == "difficulty_estimator":
+            return self.engine.difficulty_estimator(
+                limit=int(args.get("limit", 10)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")
