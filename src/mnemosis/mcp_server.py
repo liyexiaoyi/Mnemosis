@@ -1006,6 +1006,35 @@ class MCPServer:
                 },
             },
             {
+                "name": "plan_quality",
+                "description": (
+                    "Score a Chinese agent plan's quality: step count, "
+                    "explicit verbs, dependency ordering, duplicates and "
+                    "alignment with project memories (cognitive control, "
+                    "Miller & Cohen 2001; means-ends analysis, Newell & "
+                    "Simon 1972)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "plan": {
+                            "type": "array",
+                            "items": {
+                                "oneOf": [
+                                    {"type": "string"},
+                                    {"type": "object"},
+                                ]
+                            },
+                        },
+                        "context_memory_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                    },
+                    "required": ["plan"],
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1580,6 +1609,11 @@ class MCPServer:
         if name == "bridge_suggestions":
             return self.engine.bridge_suggestions(
                 limit=int(args.get("limit", 20)),
+            )
+        if name == "plan_quality":
+            return self.engine.plan_quality(
+                args["plan"],
+                context_memory_ids=args.get("context_memory_ids"),
             )
         if name == "practice_due":
             kind_value = args.get("kind")

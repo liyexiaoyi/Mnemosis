@@ -2266,6 +2266,43 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         via_mcp = server._call_tool("bridge_suggestions", {"limit": 10})
         self.assertEqual(via_mcp["total"], 2)
 
+    def test_plan_quality(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        ctx = engine.remember(
+            "调研需求、架构、开发、测试、部署、上线全部确认",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["项目"],
+            auto_cues=False,
+        )
+        good = engine.plan_quality(
+            ["调研需求", "设计架构", "开发功能", "测试功能", "部署上线"],
+            context_memory_ids=[ctx.id],
+        )
+        self.assertGreaterEqual(good["score"], 75)
+        self.assertEqual(good["verdict"], "good")
+        self.assertTrue(good["has_verbs"])
+        self.assertGreater(good["context_alignment"], 0.0)
+        weak = engine.plan_quality(["功能", "功能", "完成"])
+        self.assertLess(weak["score"], 50)
+        self.assertEqual(weak["verdict"], "weak")
+        self.assertTrue(weak["duplicate_steps"])
+        self.assertTrue(weak["suggestions"])
+        empty = engine.plan_quality([])
+        self.assertEqual(empty["score"], 0)
+        self.assertEqual(empty["verdict"], "empty")
+        self.assertEqual(empty["step_count"], 0)
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "plan_quality",
+            {
+                "plan": ["调研需求", "设计架构", "开发功能", "测试功能", "部署上线"],
+                "context_memory_ids": [ctx.id],
+            },
+        )
+        self.assertEqual(via_mcp["verdict"], "good")
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

@@ -1370,6 +1370,120 @@ class MemoryEngine:
             "suggestions": suggestions,
         }
 
+    _PLAN_VERBS = (
+        "做", "写", "创建", "设计", "开发", "测试", "部署", "分析",
+        "调研", "优化", "修复", "完成", "检查", "收集", "整理", "实现",
+        "重构", "发布", "验证", "运行", "配置", "安装", "更新", "规划",
+        "评估", "阅读", "发送", "记录", "确认", "制定", "拆分",
+    )
+
+    def plan_quality(
+        self,
+        plan: list,
+        context_memory_ids: list[str] | None = None,
+    ) -> dict:
+        """Score a Chinese agent plan's quality.
+
+        Cognitive control decomposes goals into ordered sub-goals
+        (Miller & Cohen, 2001); problem solving uses means-ends analysis
+        (Newell & Simon, 1972). This checks step count, explicit action
+        verbs, dependency ordering, duplicate steps and alignment with
+        project memories.
+        """
+        from .types import tokenize
+
+        steps = []
+        for item in plan:
+            if isinstance(item, str):
+                text = item
+            else:
+                text = item.get("step") or item.get("action") or ""
+            text = str(text).strip()
+            if text:
+                steps.append(text)
+        if not steps:
+            return {
+                "score": 0,
+                "verdict": "empty",
+                "step_count": 0,
+                "has_verbs": False,
+                "has_ordering": False,
+                "context_alignment": 0.0,
+                "duplicate_steps": False,
+                "suggestions": ["计划为空，先写第一步"],
+            }
+        verb_hits = sum(
+            1 for step in steps
+            if any(verb in step for verb in self._PLAN_VERBS)
+        )
+        has_verbs = verb_hits == len(steps)
+        verb_score = 30.0 * verb_hits / len(steps)
+        prev_anchors = []
+        has_ordering = False
+        for step in steps:
+            if any(anchor in step for anchor in prev_anchors):
+                has_ordering = True
+                break
+            prev_anchors.append(step[:8])
+        duplicate_steps = len(steps) != len(set(steps))
+        implicit_order = (
+            len(steps) >= 4
+            and verb_hits == len(steps)
+            and not duplicate_steps
+        )
+        order_score = 15.0 if (has_ordering or implicit_order) else 5.0
+        dup_penalty = 10.0 if duplicate_steps else 0.0
+        context_terms: set[str] = set()
+        if context_memory_ids:
+            for memory_id in context_memory_ids:
+                item = self.backend.get(memory_id)
+                if item is not None:
+                    context_terms |= set(tokenize(item.content))
+        plan_terms = set()
+        for step in steps:
+            plan_terms |= set(tokenize(step))
+        context_alignment = round(
+            len(context_terms & plan_terms) / max(1, len(plan_terms)),
+            3,
+        ) if context_terms else 0.0
+        context_score = 20.0 * min(1.0, context_alignment)
+        count_penalty = (
+            0.0 if 1 <= len(steps) <= 12
+            else min(15.0, abs(len(steps) - 6))
+        )
+        score = max(
+            0,
+            min(
+                100,
+                int(round(
+                    25 + verb_score + order_score + context_score
+                    - count_penalty - dup_penalty
+                )),
+            ),
+        )
+        verdict = "good" if score >= 75 else (
+            "fair" if score >= 50 else "weak"
+        )
+        suggestions = []
+        if verb_hits < len(steps):
+            suggestions.append("每步用明确动词开头（做/写/测试/部署…）")
+        if not has_ordering:
+            suggestions.append("让后面的步骤引用前面的产出，形成依赖链")
+        if duplicate_steps:
+            suggestions.append("去掉重复步骤")
+        if context_memory_ids and context_alignment == 0:
+            suggestions.append("计划与项目记忆没有重叠，检查是否跑题")
+        return {
+            "score": score,
+            "verdict": verdict,
+            "step_count": len(steps),
+            "has_verbs": has_verbs,
+            "has_ordering": has_ordering,
+            "context_alignment": context_alignment,
+            "duplicate_steps": duplicate_steps,
+            "suggestions": suggestions[:4],
+        }
+
     def retrieval_assist(
         self,
         query: str,
