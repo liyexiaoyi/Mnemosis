@@ -4459,6 +4459,66 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["verdict"], "ready")
         self.assertGreater(len(via_mcp["practice"]["questions"]), 0)
 
+    def test_agent_learning_session(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        now = utcnow()
+        items = []
+        for content in (
+            "阿丽喜欢的城市是成都。",
+            "阿丽喜欢的食物是饺子。",
+            "阿丽喜欢的颜色是蓝色。",
+        ):
+            item = engine.remember(
+                content,
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["偏好"],
+                confidence=0.95,
+                strength=0.9,
+                importance=0.8,
+                created_at=now - timedelta(days=30),
+                auto_cues=False,
+            )
+            items.append(item)
+        session = engine.agent_learning_session(
+            [
+                {"id": items[0].id, "attempt": "阿丽喜欢的城市是成都。"},
+                {"id": items[1].id, "attempt": "完全错误"},
+            ],
+            now=now,
+        )
+        self.assertEqual(session["verdict"], "ready")
+        self.assertIn("total_memories", session["baseline"])
+        self.assertIsNotNone(session["practice"])
+        self.assertEqual(session["session_result"]["attempted"], 2)
+        self.assertEqual(session["session_result"]["correct"], 1)
+        self.assertAlmostEqual(session["session_result"]["success_rate"], 0.5)
+        self.assertIsNotNone(session["snapshot_after"]["diff"])
+        self.assertIn(
+            session["snapshot_after"]["diff"]["verdict"],
+            ("improving", "stable", "declining"),
+        )
+        self.assertEqual(
+            [s["step"] for s in session["next_loop"]["steps"]],
+            ["清积压", "做练习", "拍快照"],
+        )
+        self.assertIn("答对", session["advice"])
+        empty = MemoryEngine().agent_learning_session(now=now)
+        self.assertEqual(empty["verdict"], "empty")
+        self.assertEqual(empty["session_result"]["attempted"], 0)
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "agent_learning_session",
+            {
+                "answers": [
+                    {"id": items[0].id, "attempt": "阿丽喜欢的城市是成都。"}
+                ]
+            },
+        )
+        self.assertEqual(via_mcp["session_result"]["correct"], 1)
+        self.assertIsNotNone(via_mcp["snapshot_after"]["diff"])
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

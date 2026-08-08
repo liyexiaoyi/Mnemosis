@@ -1846,6 +1846,32 @@ class MCPServer:
                 },
             },
             {
+                "name": "agent_learning_session",
+                "description": (
+                    "Run one end-to-end learning session: score practice "
+                    "attempts, diff a second snapshot against the "
+                    "baseline and plan the next loop (testing effect + "
+                    "knowledge tracing)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "answers": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "id": {"type": "string"},
+                                    "attempt": {"type": "string"},
+                                },
+                                "required": ["id"],
+                            },
+                        },
+                        "count": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "retrieval_snapshot",
                 "description": (
                     "Capture a compact memory-state snapshot (knowledge "
@@ -2662,6 +2688,11 @@ class MCPServer:
             return self.engine.review_consistency()
         if name == "learning_loop":
             return self.engine.learning_loop(
+                count=int(args.get("count", 1)),
+            )
+        if name == "agent_learning_session":
+            return self.engine.agent_learning_session(
+                answers=args.get("answers"),
                 count=int(args.get("count", 1)),
             )
         if name == "retrieval_snapshot":

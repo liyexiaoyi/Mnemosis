@@ -6160,6 +6160,99 @@ class MemoryEngine:
             "advice": advice,
         }
 
+    def agent_learning_session(
+        self,
+        answers: list[dict] | None = None,
+        *,
+        now: datetime | None = None,
+        count: int = 1,
+    ) -> dict:
+        """Run one end-to-end agent learning session (study + measure + plan).
+
+        Executes the learning loop with real scoring: each attempt goes
+        through practice_answer (testing effect; Roediger & Karpicke,
+        2006), review consistency is re-checked, a second snapshot is
+        diffed against the baseline (knowledge tracing), and the next
+        loop is planned. Answers are ``{"id": memory_id, "attempt": str}``.
+        """
+        loop = self.learning_loop(now=now, count=count)
+        baseline = loop["baseline"]
+        scored: list[dict] = []
+        if answers:
+            for entry in answers:
+                try:
+                    result = self.practice_answer(
+                        entry["id"],
+                        entry.get("attempt", ""),
+                        now=now,
+                    )
+                    scored.append(
+                        {
+                            "memory_id": entry["id"],
+                            "success": bool(result["success"]),
+                            "retrievability_after": result["retrievability"],
+                        }
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    scored.append(
+                        {
+                            "memory_id": entry.get("id"),
+                            "success": False,
+                            "error": str(exc)[:40],
+                        }
+                    )
+        after = self.retrieval_snapshot(
+            previous={"snapshot": baseline}, now=now
+        )
+        consistency = self.review_consistency(now=now)
+        next_loop = self.learning_loop(now=now, count=count)
+        attempted = len(scored)
+        correct = sum(1 for item in scored if item["success"])
+        verdict = "empty" if not loop["practice"] else "ready"
+        if verdict == "empty":
+            advice = (
+                "记忆库还是空的：先存入学习内容，再开学习会话。"
+            )
+        elif attempted:
+            advice = (
+                f"本次答对 {correct}/{attempted}，"
+                f"快照结论：{after['diff']['verdict']}。"
+                "下一轮计划已生成，按顺序继续。"
+            )
+        else:
+            advice = (
+                "本次没有答题记录：先做练习，再回来拍快照对比。"
+            )
+        return {
+            "baseline": baseline,
+            "practice": loop["practice"],
+            "scored": scored,
+            "session_result": {
+                "attempted": attempted,
+                "correct": correct,
+                "success_rate": (
+                    round(correct / max(1, attempted), 3)
+                    if attempted
+                    else None
+                ),
+            },
+            "snapshot_after": {
+                "diff": after["diff"],
+                "advice": after["advice"],
+            },
+            "review_after": {
+                "overdue_count": consistency["overdue_count"],
+                "adherence_ratio": consistency["adherence_ratio"],
+            },
+            "next_loop": {
+                "focus_topic": next_loop["focus_topic"],
+                "steps": next_loop["steps"],
+                "verdict": next_loop["verdict"],
+            },
+            "verdict": verdict,
+            "advice": advice,
+        }
+
     def sleep_replay(self, now: datetime | None = None) -> dict:
         """Sleep replay: strengthen surprising events, consolidate experience.
 
