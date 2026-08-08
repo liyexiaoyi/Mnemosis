@@ -1574,6 +1574,22 @@ class MCPServer:
                 },
             },
             {
+                "name": "reconsolidation_plan",
+                "description": (
+                    "Produce an update plan for a memory that needs "
+                    "revision: gather conflicting evidence and return "
+                    "retrieve -> update -> reconsolidate steps (Nader et "
+                    "al., 2000)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "memory_id": {"type": "string"},
+                    },
+                    "required": ["memory_id"],
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -2290,6 +2306,10 @@ class MCPServer:
         if name == "metacog_report":
             return self.engine.metacog_report(
                 min_attempts=int(args.get("min_attempts", 3)),
+            )
+        if name == "reconsolidation_plan":
+            return self.engine.reconsolidation_plan(
+                memory_id=str(args.get("memory_id", "")),
             )
         if name == "practice_due":
             kind_value = args.get("kind")

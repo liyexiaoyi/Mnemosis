@@ -3584,6 +3584,45 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
             {topic["flag"] for topic in via_mcp["topics"]},
         )
 
+    def test_reconsolidation_plan(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        a = engine.remember(
+            "会议在周一",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["日期"],
+            confidence=0.9,
+            auto_cues=False,
+        )
+        engine.remember(
+            "会议在周二",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["日期"],
+            confidence=0.9,
+            auto_cues=False,
+        )
+        report = engine.reconsolidation_plan(a.id)
+        self.assertTrue(report["found"])
+        self.assertEqual(report["memory"]["id"], a.id)
+        self.assertGreaterEqual(len(report["conflicts"]), 1)
+        self.assertEqual(
+            [step["order"] for step in report["steps"]],
+            [1, 2, 3, 4],
+        )
+        self.assertIn("冲突", report["advice"])
+        self.assertEqual(
+            engine.reconsolidation_plan("no-such-id")["found"],
+            False,
+        )
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "reconsolidation_plan", {"memory_id": a.id}
+        )
+        self.assertTrue(via_mcp["found"])
+        self.assertGreaterEqual(len(via_mcp["conflicts"]), 1)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

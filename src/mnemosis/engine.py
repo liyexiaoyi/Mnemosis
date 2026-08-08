@@ -3552,6 +3552,92 @@ class MemoryEngine:
             "advice": advice,
         }
 
+    def reconsolidation_plan(
+        self,
+        memory_id: str,
+        *,
+        now: datetime | None = None,
+    ) -> dict:
+        """Produce an update plan for a memory that needs revision.
+
+        Reactivated memories become labile and can be updated, not just
+        replayed (Nader et al., 2000); clinical reconsolidation updating
+        follows retrieve -> prediction error -> update. This tool finds
+        the target memory, gathers conflicting evidence and returns a
+        concrete update plan.
+        """
+        item = self.backend.get(memory_id)
+        if item is None:
+            return {
+                "found": False,
+                "advice": "记忆不存在：先确认 memory_id 再生成更新计划。",
+            }
+        item_cues = set(item.cues)
+        same_topic = [
+            other
+            for other in self.store.all_active()
+            if other.id != item.id
+            and item_cues
+            and (set(other.cues) & item_cues)
+        ]
+        conflicts = []
+        for other in same_topic:
+            if other.content_hash == item.content_hash:
+                continue
+            if len(conflicts) >= 5:
+                break
+            conflicts.append(
+                {
+                    "id": other.id,
+                    "preview": other.content[:36],
+                    "confidence": round(other.confidence, 3),
+                }
+            )
+        r = self.curve.retrievability(item, now)
+        steps = [
+            {
+                "order": 1,
+                "step": "提取：先调出这条记忆，打开可更新窗口",
+                "verdict": "ok",
+            },
+            {
+                "order": 2,
+                "step": "找冲突/新证据",
+                "evidence_count": len(conflicts),
+                "verdict": "ok" if conflicts else "weak",
+            },
+            {
+                "order": 3,
+                "step": "更新：用 update() 改写内容/置信度，或存推理记忆",
+                "verdict": "ok",
+            },
+            {
+                "order": 4,
+                "step": "再巩固：更新后拉开间隔复习，避免反复提取",
+                "verdict": "ok",
+            },
+        ]
+        return {
+            "found": True,
+            "memory": {
+                "id": item.id,
+                "preview": item.content[:40],
+                "confidence": round(item.confidence, 3),
+                "evidence_count": item.evidence_count,
+                "revision_count": item.revision_count,
+                "retrievability": round(r, 3),
+            },
+            "related_count": len(same_topic),
+            "conflicts": conflicts,
+            "steps": steps,
+            "advice": (
+                "有冲突待更新：先提取，再按新证据改写，"
+                "更新后间隔复习（Nader 2000 再巩固流程）。"
+                if conflicts
+                else "暂无冲突：如需刷新内容，直接 update() 后间隔复习。"
+            ),
+        }
+
     def retrieval_assist(
         self,
         query: str,
