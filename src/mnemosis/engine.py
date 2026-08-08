@@ -877,6 +877,55 @@ class MemoryEngine:
             "actions": actions[: max(1, int(limit))],
         }
 
+    def summarize_cluster(
+        self,
+        memory_ids: list[str],
+    ) -> dict | None:
+        """Summarize a cluster of related memories as one gist.
+
+        Fuzzy-trace theory (Brainerd & Reyna, 1990): people keep the gist
+        of repeated related experiences rather than every verbatim
+        detail. This extracts shared cues, frequent terms and evidence
+        counts into a compact summary an agent can use (or write back).
+        """
+        from collections import Counter
+        from .types import tokenize
+
+        items = []
+        for memory_id in memory_ids:
+            item = self.backend.get(memory_id)
+            if item is not None:
+                items.append(item)
+        if not items:
+            return None
+        cue_sets = [set(item.cues) for item in items]
+        common_cues = sorted(set.intersection(*cue_sets)) if cue_sets else []
+        term_counter: Counter = Counter()
+        for item in items:
+            for term in tokenize(item.content):
+                term_counter[term] += 1
+        top_terms = [
+            term for term, _count in term_counter.most_common(6)
+        ]
+        total_chars = sum(len(item.content) for item in items)
+        evidence = sum(item.evidence_count for item in items)
+        previews = [item.content[:24] for item in items[:4]]
+        summary = (
+            f"共 {len(items)} 条记忆，共享线索："
+            + ("、".join(common_cues) if common_cues else "无")
+            + f"；高频词：{'、'.join(top_terms) if top_terms else '无'}；"
+            + f"累计证据 {evidence} 次"
+        )
+        return {
+            "memory_ids": [item.id for item in items],
+            "summary": summary,
+            "common_cues": common_cues,
+            "top_terms": top_terms,
+            "evidence_count": evidence,
+            "total_chars": total_chars,
+            "previews": previews,
+        }
+
     def retrieval_assist(
         self,
         query: str,

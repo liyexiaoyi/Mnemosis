@@ -1833,6 +1833,40 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["total"], 6)
         self.assertEqual(via_mcp["overdue"], 1)
 
+    def test_summarize_cluster(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        ids = []
+        for text in (
+            "会议讨论预算方案A",
+            "会议讨论预算方案B",
+            "邮件确认预算方案C",
+            "文档记录预算方案D",
+        ):
+            item = engine.remember(
+                text,
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["工作"],
+                auto_cues=False,
+            )
+            ids.append(item.id)
+        report = engine.summarize_cluster(ids)
+        self.assertEqual(len(report["memory_ids"]), 4)
+        self.assertIn("工作", report["common_cues"])
+        self.assertIn("预算", report["top_terms"])
+        self.assertTrue(report["summary"])
+        self.assertEqual(report["evidence_count"], 4)
+        self.assertGreater(report["total_chars"], 0)
+        self.assertEqual(len(report["previews"]), 4)
+        self.assertIsNone(engine.summarize_cluster(["missing-id"]))
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "summarize_cluster", {"memory_ids": ids}
+        )
+        self.assertEqual(len(via_mcp["memory_ids"]), 4)
+        self.assertIn("预算", via_mcp["top_terms"])
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

@@ -848,6 +848,24 @@ class MCPServer:
                 },
             },
             {
+                "name": "summarize_cluster",
+                "description": (
+                    "Summarize a cluster of related memories as one gist: "
+                    "shared cues, frequent terms, evidence and previews "
+                    "(fuzzy-trace theory, Brainerd & Reyna 1990)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "memory_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                    },
+                    "required": ["memory_ids"],
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1376,6 +1394,8 @@ class MCPServer:
             return self.engine.action_queue(
                 limit=int(args.get("limit", 20)),
             )
+        if name == "summarize_cluster":
+            return self.engine.summarize_cluster(args["memory_ids"])
         if name == "practice_due":
             kind_value = args.get("kind")
             from .types import MemoryKind
