@@ -1614,6 +1614,52 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertIn("profile", via_mcp)
         self.assertIn("suggested_interval_scale", via_mcp)
 
+    def test_context_pack(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        a = engine.remember(
+            "packed memory alpha content here",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["pack-a1", "pack-a2"],
+            auto_cues=False,
+        )
+        engine.remember(
+            "packed memory beta content here too",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["pack-b"],
+            auto_cues=False,
+        )
+        pack = engine.context_pack(
+            ["pack-a1", "pack-a2", "pack-b"],
+            top_k=2,
+            max_chars=100,
+        )
+        self.assertEqual(pack["query_count"], 3)
+        self.assertEqual(pack["unique_found"], 2)
+        ids = [p["id"] for p in pack["packed"]]
+        self.assertEqual(len(ids), len(set(ids)))
+        self.assertLessEqual(pack["packed_chars"], 100)
+        self.assertTrue(
+            all(
+                pack["packed"][i]["score"]
+                >= pack["packed"][i + 1]["score"]
+                for i in range(len(pack["packed"]) - 1)
+            )
+        )
+        self.assertEqual(
+            pack["packed"][0]["id"], a.id
+        )
+        self.assertIn("total_found", pack)
+        self.assertIn("truncated_count", pack)
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "context_pack",
+            {"queries": ["pack-a1", "pack-b"], "max_chars": 100},
+        )
+        self.assertEqual(via_mcp["unique_found"], 2)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

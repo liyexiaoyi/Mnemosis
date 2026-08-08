@@ -764,6 +764,26 @@ class MCPServer:
                 "inputSchema": {"type": "object", "properties": {}},
             },
             {
+                "name": "context_pack",
+                "description": (
+                    "Pack the best matching memories for several queries "
+                    "into one bounded context: deduplicated, score-ranked, "
+                    "character-budgeted (cognitive load, Sweller 1988)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "queries": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                        "top_k": {"type": "integer"},
+                        "max_chars": {"type": "integer"},
+                    },
+                    "required": ["queries"],
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1274,6 +1294,12 @@ class MCPServer:
             return self.engine.kg_export()
         if name == "learner_profile":
             return self.engine.learner_profile()
+        if name == "context_pack":
+            return self.engine.context_pack(
+                args["queries"],
+                top_k=int(args.get("top_k", 3)),
+                max_chars=int(args.get("max_chars", 1200)),
+            )
         if name == "practice_due":
             kind_value = args.get("kind")
             from .types import MemoryKind

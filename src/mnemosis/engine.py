@@ -605,6 +605,65 @@ class MemoryEngine:
             "suggested_interval_scale": scale,
         }
 
+    def context_pack(
+        self,
+        queries: list[str],
+        *,
+        top_k: int = 3,
+        max_chars: int = 1200,
+        now: datetime | None = None,
+    ) -> dict:
+        """Pack the best matching memories into a bounded context.
+
+        Working memory is limited; cognitive-load theory (Sweller, 1988)
+        says only the essential information should reach the model. This
+        runs recall for several queries, deduplicates by id, ranks by
+        score and returns as much as fits the character budget.
+        """
+        best: dict[str, tuple[float, str]] = {}
+        found = 0
+        for query in queries:
+            for result in self.recall(query, top_k=top_k, now=now):
+                if not any(
+                    "overlap" in r or "semantic" in r
+                    for r in result.reasons
+                ):
+                    continue
+                found += 1
+                item = result.item
+                current = best.get(item.id)
+                if current is None or result.score > current[0]:
+                    best[item.id] = (
+                        result.score, item.content
+                    )
+        ranked = sorted(
+            best.items(), key=lambda kv: kv[1][0], reverse=True
+        )
+        packed = []
+        used = 0
+        truncated = 0
+        for memory_id, (score, content) in ranked:
+            if used + len(content) > max(1, int(max_chars)) and packed:
+                truncated += 1
+                continue
+            packed.append(
+                {
+                    "id": memory_id,
+                    "content": content,
+                    "score": round(score, 3),
+                }
+            )
+            used += len(content)
+        return {
+            "query_count": len(queries),
+            "total_found": found,
+            "unique_found": len(best),
+            "packed_count": len(packed),
+            "packed_chars": used,
+            "truncated_count": truncated,
+            "packed": packed,
+        }
+
     def retrieval_assist(
         self,
         query: str,
