@@ -1831,6 +1831,21 @@ class MCPServer:
                 "inputSchema": {"type": "object", "properties": {}},
             },
             {
+                "name": "learning_loop",
+                "description": (
+                    "Build a ready-to-run learning loop: what to review "
+                    "first, one self-test question for the weakest topic, "
+                    "and the snapshot to take afterwards (spacing + "
+                    "testing effect + knowledge tracing)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "count": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "retrieval_snapshot",
                 "description": (
                     "Capture a compact memory-state snapshot (knowledge "
@@ -2645,6 +2660,10 @@ class MCPServer:
             )
         if name == "review_consistency":
             return self.engine.review_consistency()
+        if name == "learning_loop":
+            return self.engine.learning_loop(
+                count=int(args.get("count", 1)),
+            )
         if name == "retrieval_snapshot":
             return self.engine.retrieval_snapshot(
                 previous=args.get("previous"),

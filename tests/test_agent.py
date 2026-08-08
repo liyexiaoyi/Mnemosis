@@ -4403,6 +4403,62 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["verdict"], "medium")
         self.assertEqual(via_mcp["reviewed_count"], 2)
 
+    def test_learning_loop(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        now = utcnow()
+        for content in (
+            "阿丽喜欢的城市是成都。",
+            "阿丽喜欢的食物是饺子。",
+            "阿丽喜欢的颜色是蓝色。",
+        ):
+            engine.remember(
+                content,
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["偏好"],
+                confidence=0.95,
+                strength=0.9,
+                importance=0.8,
+                created_at=now - timedelta(days=30),
+                auto_cues=False,
+            )
+        loop = engine.learning_loop(now=now)
+        self.assertEqual(loop["verdict"], "ready")
+        self.assertIn("total_memories", loop["baseline"])
+        self.assertIn("overdue_count", loop["review"])
+        self.assertEqual(loop["focus_topic"], "偏好")
+        self.assertIsNotNone(loop["practice"])
+        self.assertEqual(loop["practice"]["kind"], "analogy")
+        self.assertGreater(len(loop["practice"]["questions"]), 0)
+        self.assertEqual(
+            [s["step"] for s in loop["steps"]],
+            ["清积压", "做练习", "拍快照"],
+        )
+        self.assertIn("闭环", loop["advice"])
+        # developing topic -> test kind practice
+        dev = MemoryEngine()
+        dev.remember(
+            "物理公式：F=ma",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["物理"],
+            confidence=0.6,
+            strength=0.6,
+            auto_cues=False,
+        )
+        dev_loop = dev.learning_loop(now=now)
+        self.assertEqual(dev_loop["practice"]["kind"], "test")
+        # empty store graceful
+        empty = MemoryEngine().learning_loop(now=now)
+        self.assertEqual(empty["verdict"], "empty")
+        self.assertIsNone(empty["focus_topic"])
+        self.assertIn("闭环", empty["advice"])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("learning_loop", {"count": 1})
+        self.assertEqual(via_mcp["verdict"], "ready")
+        self.assertGreater(len(via_mcp["practice"]["questions"]), 0)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(
