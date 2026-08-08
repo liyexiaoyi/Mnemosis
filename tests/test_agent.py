@@ -1443,6 +1443,44 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["total_events"], 9)
         self.assertEqual(len(via_mcp["periods"]), 3)
 
+    def test_intent_conflicts(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        now = utcnow()
+        i1 = engine.remember_intent("call a", due_at=now + timedelta(minutes=10))
+        i2 = engine.remember_intent("call b", due_at=now + timedelta(minutes=20))
+        i3 = engine.remember_intent("later", due_at=now + timedelta(hours=2))
+        i4 = engine.remember_intent(
+            "office a", due_at=now + timedelta(days=1), context_cue="office"
+        )
+        i5 = engine.remember_intent(
+            "office b", due_at=now + timedelta(days=2), context_cue="office"
+        )
+        result = engine.intent_conflicts(time_window_minutes=60)
+        self.assertEqual(result["total"], 2)
+        time_hit = next(
+            c for c in result["conflicts"] if c["type"] == "time"
+        )
+        self.assertEqual(
+            {time_hit["intent_a"], time_hit["intent_b"]}, {i1["id"], i2["id"]}
+        )
+        self.assertEqual(time_hit["gap_minutes"], 10.0)
+        context_hit = next(
+            c for c in result["conflicts"] if c["type"] == "context"
+        )
+        self.assertEqual(context_hit["cue"], "office")
+        self.assertNotIn(
+            i3["id"],
+            {c["intent_a"] for c in result["conflicts"]}
+            | {c["intent_b"] for c in result["conflicts"]},
+        )
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "intent_conflicts", {"time_window_minutes": 60}
+        )
+        self.assertEqual(via_mcp["total"], 2)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

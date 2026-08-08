@@ -720,6 +720,20 @@ class MCPServer:
                 },
             },
             {
+                "name": "intent_conflicts",
+                "description": (
+                    "Detect intention clashes: two active intentions due "
+                    "within a short window, or sharing the same context "
+                    "cue."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "time_window_minutes": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1217,6 +1231,12 @@ class MCPServer:
             return self.engine.life_story(
                 period_days=int(args.get("period_days", 30)),
                 limit=int(args.get("limit", 20)),
+            )
+        if name == "intent_conflicts":
+            return self.engine.intent_conflicts(
+                time_window_minutes=int(
+                    args.get("time_window_minutes", 60)
+                ),
             )
         if name == "practice_due":
             kind_value = args.get("kind")

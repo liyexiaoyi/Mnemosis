@@ -422,6 +422,52 @@ class MemoryEngine:
             ),
         }
 
+    def intent_conflicts(
+        self,
+        time_window_minutes: int = 60,
+    ) -> dict:
+        """Detect intention clashes (time or context collisions).
+
+        Prospective memory must schedule actions without collisions: two
+        intentions due within a short window (Einstein & McDaniel, 1990)
+        or sharing the same context cue risk one being forgotten. This
+        tool reports both kinds so the agent can reschedule.
+        """
+        from datetime import datetime as _dt
+
+        active = [
+            r for r in self._intents.values() if r["status"] == "active"
+        ]
+        conflicts = []
+        for i in range(len(active)):
+            a = active[i]
+            for b in active[i + 1:]:
+                ta = _dt.fromisoformat(a["due_at"])
+                tb = _dt.fromisoformat(b["due_at"])
+                gap = abs((ta - tb).total_seconds()) / 60.0
+                if gap < max(1, int(time_window_minutes)):
+                    conflicts.append(
+                        {
+                            "type": "time",
+                            "intent_a": a["id"],
+                            "intent_b": b["id"],
+                            "gap_minutes": round(gap, 1),
+                        }
+                    )
+                if (
+                    a.get("context_cue")
+                    and a["context_cue"] == b.get("context_cue")
+                ):
+                    conflicts.append(
+                        {
+                            "type": "context",
+                            "intent_a": a["id"],
+                            "intent_b": b["id"],
+                            "cue": a["context_cue"],
+                        }
+                    )
+        return {"total": len(conflicts), "conflicts": conflicts}
+
     def retrieval_assist(
         self,
         query: str,
