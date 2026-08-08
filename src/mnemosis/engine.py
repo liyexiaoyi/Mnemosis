@@ -63,6 +63,7 @@ class MemoryEngine:
         self.meta = Metacognition(self.store, self.curve, self.consolidator)
         self.recycle = RecycleBin(self.backend)
         self._recall_log: deque[dict] = deque(maxlen=100)
+        self._intents: dict[str, dict] = {}
 
     # -- wake cycle ---------------------------------------------------------
 
@@ -313,6 +314,109 @@ class MemoryEngine:
                 }
             )
         return out
+
+    def remember_intent(
+        self,
+        content: str,
+        due_at: datetime,
+        *,
+        context_cue: str | None = None,
+        importance: float = 0.5,
+        now: datetime | None = None,
+    ) -> dict:
+        """Register a future intention (prospective memory).
+
+        Prospective memory is the capacity to remember to carry out an
+        intended action at the right later moment (Einstein & McDaniel,
+        1990): the intent stays in a small register with its deadline and
+        optional context cue, and surfaces when due instead of being
+        reinforced like a past fact.
+        """
+        import uuid
+
+        now = now or utcnow()
+        record = {
+            "id": uuid.uuid4().hex,
+            "content": content.strip(),
+            "due_at": due_at.isoformat(),
+            "context_cue": (context_cue or "").strip() or None,
+            "importance": max(0.0, min(1.0, float(importance))),
+            "created_at": now.isoformat(),
+            "status": "active",
+            "completed_at": None,
+        }
+        self._intents[record["id"]] = record
+        return dict(record)
+
+    def intent_due(
+        self,
+        now: datetime | None = None,
+        limit: int = 10,
+    ) -> list[dict]:
+        """Return active intents whose deadline has arrived."""
+        from datetime import datetime as _dt
+
+        now = now or utcnow()
+        due = [
+            r for r in self._intents.values()
+            if r["status"] == "active"
+            and _dt.fromisoformat(r["due_at"]) <= now
+        ]
+        due.sort(key=lambda r: r["due_at"])
+        return [dict(r) for r in due[: max(1, int(limit))]]
+
+    def complete_intent(
+        self,
+        intent_id: str,
+        now: datetime | None = None,
+    ) -> dict | None:
+        """Mark an intent as completed."""
+        now = now or utcnow()
+        record = self._intents.get(intent_id)
+        if record is None or record["status"] != "active":
+            return None
+        record["status"] = "completed"
+        record["completed_at"] = now.isoformat()
+        return dict(record)
+
+    def cancel_intent(self, intent_id: str) -> dict | None:
+        """Cancel an intent without completing it."""
+        record = self._intents.get(intent_id)
+        if record is None or record["status"] != "active":
+            return None
+        record["status"] = "cancelled"
+        return dict(record)
+
+    def intent_report(self, now: datetime | None = None) -> dict:
+        """Summarize the intention register (due / upcoming / done)."""
+        from datetime import datetime as _dt
+
+        now = now or utcnow()
+        active = [
+            r for r in self._intents.values() if r["status"] == "active"
+        ]
+        overdue = [
+            r for r in active if _dt.fromisoformat(r["due_at"]) <= now
+        ]
+        upcoming = [
+            r for r in active if _dt.fromisoformat(r["due_at"]) > now
+        ]
+        upcoming.sort(key=lambda r: r["due_at"])
+        return {
+            "active": len(active),
+            "completed": sum(
+                1 for r in self._intents.values()
+                if r["status"] == "completed"
+            ),
+            "cancelled": sum(
+                1 for r in self._intents.values()
+                if r["status"] == "cancelled"
+            ),
+            "overdue": len(overdue),
+            "next_upcoming": (
+                dict(upcoming[0]) if upcoming else None
+            ),
+        }
 
     def recall_reasoning(
         self,
@@ -1444,6 +1548,7 @@ class MemoryEngine:
             "version": 1,
             "exported_at": utcnow().isoformat(),
             "memories": [item.to_dict() for item in items],
+            "intents": [dict(r) for r in self._intents.values()],
         }
 
     def import_memories(self, payload: dict) -> int:
@@ -1463,6 +1568,10 @@ class MemoryEngine:
             self.associations.index(item)
             self.associations.link_related(item)
             imported += 1
+        for record in payload.get("intents", []):
+            record = dict(record)
+            if record.get("id"):
+                self._intents[record["id"]] = record
         return imported
 
     def practice_session(

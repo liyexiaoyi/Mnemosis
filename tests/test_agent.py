@@ -1091,6 +1091,61 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp[0]["count"], 2)
         self.assertEqual(via_mcp[1]["count"], 2)
 
+    def test_intent_register(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        now = utcnow()
+        i1 = engine.remember_intent(
+            "send report", due_at=now - timedelta(hours=1)
+        )
+        i2 = engine.remember_intent(
+            "pay bill", due_at=now - timedelta(hours=2)
+        )
+        i3 = engine.remember_intent(
+            "book meeting", due_at=now + timedelta(days=1),
+            context_cue="office",
+        )
+        due = engine.intent_due(now=now)
+        self.assertEqual([r["id"] for r in due], [i2["id"], i1["id"]])
+        report = engine.intent_report(now=now)
+        self.assertEqual(report["active"], 3)
+        self.assertEqual(report["overdue"], 2)
+        self.assertEqual(report["next_upcoming"]["id"], i3["id"])
+        self.assertIsNone(engine.complete_intent("missing-id"))
+        completed = engine.complete_intent(i1["id"], now=now)
+        self.assertEqual(completed["status"], "completed")
+        self.assertEqual(engine.intent_due(now=now)[0]["id"], i2["id"])
+        self.assertIsNone(engine.complete_intent(i1["id"]))
+        cancelled = engine.cancel_intent(i3["id"])
+        self.assertEqual(cancelled["status"], "cancelled")
+        report = engine.intent_report(now=now)
+        self.assertEqual(report["active"], 1)
+        self.assertEqual(report["completed"], 1)
+        self.assertEqual(report["cancelled"], 1)
+        payload = engine.export_memories()
+        fresh = MemoryEngine()
+        fresh.import_memories(payload)
+        self.assertEqual(fresh.intent_report(now=now), report)
+        self.assertEqual(
+            fresh.intent_due(now=now)[0]["id"], i2["id"]
+        )
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "intent_remember",
+            {
+                "content": "mcp intent",
+                "due_at": (now + timedelta(minutes=5)).isoformat(),
+            },
+        )
+        self.assertEqual(via_mcp["status"], "active")
+        self.assertGreaterEqual(
+            len(server._call_tool("intent_due", {"limit": 10})), 0
+        )
+        self.assertIn(
+            "active", server._call_tool("intent_report", {})
+        )
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

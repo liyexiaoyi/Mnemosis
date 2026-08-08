@@ -528,6 +528,65 @@ class MCPServer:
                 },
             },
             {
+                "name": "intent_remember",
+                "description": (
+                    "Register a future intention (prospective memory): "
+                    "content, deadline and optional context cue."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "content": {"type": "string"},
+                        "due_at": {"type": "string"},
+                        "context_cue": {"type": "string"},
+                        "importance": {"type": "number"},
+                    },
+                    "required": ["content", "due_at"],
+                },
+            },
+            {
+                "name": "intent_due",
+                "description": (
+                    "List active intentions whose deadline has arrived."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer"},
+                    },
+                },
+            },
+            {
+                "name": "intent_complete",
+                "description": "Mark an intention as completed.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "intent_id": {"type": "string"},
+                    },
+                    "required": ["intent_id"],
+                },
+            },
+            {
+                "name": "intent_cancel",
+                "description": "Cancel an intention without completing it.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "intent_id": {"type": "string"},
+                    },
+                    "required": ["intent_id"],
+                },
+            },
+            {
+                "name": "intent_report",
+                "description": (
+                    "Summarize the intention register: active, overdue, "
+                    "next upcoming, completed and cancelled counts."
+                ),
+                "inputSchema": {"type": "object", "properties": {}},
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -962,6 +1021,25 @@ class MCPServer:
             return self.engine.association_report(
                 limit=int(args.get("limit", 10)),
             )
+        if name == "intent_remember":
+            from datetime import datetime
+
+            return self.engine.remember_intent(
+                args["content"],
+                datetime.fromisoformat(args["due_at"]),
+                context_cue=args.get("context_cue"),
+                importance=float(args.get("importance", 0.5)),
+            )
+        if name == "intent_due":
+            return self.engine.intent_due(
+                limit=int(args.get("limit", 10)),
+            )
+        if name == "intent_complete":
+            return self.engine.complete_intent(args["intent_id"])
+        if name == "intent_cancel":
+            return self.engine.cancel_intent(args["intent_id"])
+        if name == "intent_report":
+            return self.engine.intent_report()
         if name == "practice_due":
             kind_value = args.get("kind")
             from .types import MemoryKind
