@@ -236,7 +236,7 @@ class MemoryEngine:
 
         results = self.recall(
             query,
-            top_k=max(top_k, 12),
+            top_k=max(top_k * 2, 16),
             now=now,
             reasoning_pack=True,
             zh_synonyms=zh_synonyms,
@@ -267,21 +267,25 @@ class MemoryEngine:
             return "9999-12-31"
 
         episodic = [
-            r for r in results if r.item.kind is MemoryKind.EPISODIC
+            r for r in results
+            if r.item.kind is MemoryKind.EPISODIC
+            and "执行成功" not in r.item.content
+            and "执行失败" not in r.item.content
         ]
         others = [
             r for r in results if r.item.kind is not MemoryKind.EPISODIC
         ]
+        ref_persons: list[str] = []
         if plan_reuse:
             import re as _re
 
-            ref_persons = _re.findall(
+            found = _re.findall(
                 r"(?:参考|参照|学|模仿|按照|像)([\u4e00-\u9fff]{2})"
                 r"|和([\u4e00-\u9fff]{2})",
                 query,
             )
             ref_persons = [
-                (a or b) for a, b in ref_persons if (a or b)
+                (a or b) for a, b in found if (a or b)
             ]
             if ref_persons:
                 from .types import tokenize as _tokenize
@@ -348,7 +352,16 @@ class MemoryEngine:
                                 "\u7c7b\u6bd4\u8ba1\u5212(\u53c2\u8003"
                                 f"{ref_person})"
                             )
-        episodic.sort(key=_event_date)
+        def _plan_key(result) -> tuple:
+            person = (
+                result.item.cues[0][:2]
+                if result.item.cues
+                else result.item.content[:2]
+            )
+            ref_priority = 0 if person in ref_persons else 1
+            return (ref_priority, _event_date(result))
+
+        episodic.sort(key=_plan_key)
         ordered = episodic + others
         for result in episodic:
             if not any("步骤" in reason for reason in result.reasons):
@@ -365,6 +378,7 @@ class MemoryEngine:
         now: datetime | None = None,
         zh_synonyms: bool = True,
         outcome_aware: bool = True,
+        effort: str | None = None,
     ) -> list[RecallResult]:
         """Agent planning: turn a goal into an ordered step plan.
 
@@ -378,6 +392,15 @@ class MemoryEngine:
         what actually worked.
         Falls back to the reasoning premise pack for non-step goals.
         """
+        if effort is None:
+            effort = self._plan_effort(goal)
+        if effort == "low":
+            outcome_aware = False
+            top_k = top_k or 6
+        elif effort == "high":
+            top_k = top_k or 14
+        else:
+            top_k = top_k or self._suggested_plan_size(goal)
         if top_k is None:
             top_k = self._suggested_plan_size(goal)
         if any(marker in goal for marker in (
@@ -399,6 +422,33 @@ class MemoryEngine:
                 self._apply_outcome_rerank(plan)
             return plan
         return self.recall_reasoning(goal, top_k=top_k, now=now)
+
+    def _plan_effort(self, goal: str) -> str:
+        """Resource-rational planning depth (Lieder & Griffiths, 2020).
+
+        Simple goals get a shallow, fast plan; goals with many references /
+        constraints get a deep plan. Constraint words: 预算/人数/时间/地点/
+        要求/限制/完整/全部/按顺序; references: 参考/参照/学/模仿/按照/像.
+        """
+        import re as _re
+
+        refs = len(_re.findall(
+            r"(?:参考|参照|学|模仿|按照|像)([\u4e00-\u9fff]{2})"
+            r"|和([\u4e00-\u9fff]{2})",
+            goal,
+        ))
+        constraints = sum(
+            1 for token in (
+                "预算", "人数", "时间", "地点", "要求", "限制",
+                "完整", "全部", "按顺序", "一共", "几天",
+            ) if token in goal
+        )
+        score = refs * 2 + constraints
+        if score >= 4:
+            return "high"
+        if score >= 2:
+            return "medium"
+        return "low"
 
     def _suggested_plan_size(self, goal: str) -> int:
         """Working-memory capacity matching (Miller, 1956).

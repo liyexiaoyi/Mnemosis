@@ -216,6 +216,39 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         contents = [r.item.content for r in auto]
         self.assertTrue(all(s in contents for s, _ in steps))
 
+    def test_plan_effort_levels(self) -> None:
+        engine = MemoryEngine()
+        self.assertEqual(engine._plan_effort("阿丽喜欢什么颜色？"), "low")
+        self.assertEqual(engine._plan_effort("大壮想去京都旅行"), "low")
+        self.assertEqual(
+            engine._plan_effort("大壮想去京都旅行，参考阿丽"), "medium"
+        )
+        self.assertEqual(
+            engine._plan_effort(
+                "大壮想去京都旅行，参考阿丽和小波，预算5000，3个人，按顺序列出"
+            ),
+            "high",
+        )
+
+    def test_low_effort_skips_outcome_rerank(self) -> None:
+        engine = self._engine()
+        low = engine.plan_for_goal(
+            "大壮想去京都旅行",
+            outcome_aware=True,  # explicit True must be overridden by effort
+        )
+        contents = [r.item.content for r in low]
+        self.assertTrue(
+            contents.index("阿丽在2026年4月1日订了去京都的机票。")
+            < contents.index("小波在2026年5月1日订了去京都的机票。")
+        )
+        self.assertFalse(
+            any(
+                "\u7ed3\u679c\u52a0\u6743" in reason
+                for r in low
+                for reason in r.reasons
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
