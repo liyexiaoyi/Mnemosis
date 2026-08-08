@@ -366,6 +366,48 @@ class CognitionTest(unittest.TestCase):
         )
         self.assertEqual(plain[0].item.id, w_p)
 
+    def test_revision_flag(self):
+        user = SourceRecord(origin=SourceType.USER)
+        now = utcnow() - timedelta(days=10)
+        revised = self.engine.remember(
+            "alpha old version",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["alpha"],
+            importance=0.5,
+            strength=0.5,
+            created_at=now,
+            auto_cues=False,
+        )
+        self.engine.update(
+            revised.id, content="alpha new version", now=now
+        )
+        fresh = self.engine.remember(
+            "beta unchanged",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["beta"],
+            importance=0.5,
+            strength=0.5,
+            created_at=now,
+            auto_cues=False,
+        )
+        res = self.engine.recall("alpha", top_k=3)
+        self.assertTrue(
+            any("已修订" in r for r in res[0].reasons)
+        )
+        res2 = self.engine.recall("beta", top_k=3)
+        self.assertFalse(
+            any("已修订" in r for r in res2[0].reasons)
+        )
+        res3 = self.engine.recall(
+            "alpha", top_k=3, revision_flag=False
+        )
+        self.assertFalse(
+            any("已修订" in r for r in res3[0].reasons)
+        )
+        self.assertIsNotNone(fresh)
+
     def test_weak_important_replay(self):
         now = utcnow()
         important = self.remember(

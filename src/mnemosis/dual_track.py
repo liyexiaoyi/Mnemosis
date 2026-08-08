@@ -136,6 +136,7 @@ class DualTrackStore:
         conflict_flag: bool = True,
         corroboration_boost: bool = True,
         corroboration_weight: float = 0.03,
+        revision_flag: bool = True,
         suppression_factor: float = 0.01,
         suppression_min_cues: int = 2,
         suppression_floor: float = 0.7,
@@ -524,6 +525,17 @@ class DualTrackStore:
                         ):
                             results[0].reasons.append("存在更强证据冲突")
                         break
+        if revision_flag:
+            for result in results:
+                if result.item.revision_count > 0 and not any(
+                    "已修订" in reason for reason in result.reasons
+                ):
+                    # Reconsolidation transparency (Nader et al., 2000):
+                    # a revised trace should tell the agent it changed, so
+                    # the newest version is not mistaken for the original.
+                    result.reasons.append(
+                        f"已修订(版本{result.item.revision_count})"
+                    )
         if reinforce:
             for score, overlap, item, _, matched in scored[:top_k]:
                 if not matched:
