@@ -586,6 +586,54 @@ class MemoryEngine:
         out.sort(key=lambda r: r["suppressed_at"])
         return {"count": len(out), "memories": out}
 
+    def timeline_report(
+        self,
+        start: datetime | None = None,
+        end: datetime | None = None,
+        limit: int = 200,
+    ) -> dict:
+        """Return an autobiographical timeline of episodic memories.
+
+        Autobiographical memory is organized hierarchically by time
+        (Conway & Pleydell-Pearce, 2000): life periods contain events,
+        events contain details. This report lists episodic traces in
+        chronological order grouped by day, optionally bounded by a
+        start/end window.
+        """
+        items = [
+            item
+            for item in self.store.all_active(MemoryKind.EPISODIC)
+            if item.status is MemoryStatus.ACTIVE
+        ]
+        items.sort(key=lambda item: item.created_at)
+        if start is not None:
+            items = [item for item in items if item.created_at >= start]
+        if end is not None:
+            items = [item for item in items if item.created_at < end]
+        items = items[: max(1, int(limit))]
+        days: dict[str, list[dict]] = {}
+        for item in items:
+            day = item.created_at.date().isoformat()
+            days.setdefault(day, []).append(
+                {
+                    "id": item.id,
+                    "preview": item.content[:40],
+                    "kind": item.kind.value,
+                    "importance": round(item.importance, 3),
+                    "created_at": item.created_at.isoformat(),
+                }
+            )
+        out = [
+            {"date": day, "count": len(entries), "items": entries}
+            for day, entries in sorted(days.items())
+        ]
+        return {
+            "total": len(items),
+            "days": out,
+            "start_date": out[0]["date"] if out else None,
+            "end_date": out[-1]["date"] if out else None,
+        }
+
     def recall_reasoning(
         self,
         query: str,

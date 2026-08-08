@@ -656,6 +656,22 @@ class MCPServer:
                 "inputSchema": {"type": "object", "properties": {}},
             },
             {
+                "name": "timeline_report",
+                "description": (
+                    "Autobiographical timeline: episodic memories in "
+                    "chronological order grouped by day, optionally within "
+                    "a start/end window."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "start": {"type": "string"},
+                        "end": {"type": "string"},
+                        "limit": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1124,6 +1140,22 @@ class MCPServer:
             return self.engine.unsuppress_memories(args["memory_ids"])
         if name == "suppressed_report":
             return self.engine.suppressed_report()
+        if name == "timeline_report":
+            from datetime import datetime
+
+            return self.engine.timeline_report(
+                start=(
+                    datetime.fromisoformat(args["start"])
+                    if args.get("start")
+                    else None
+                ),
+                end=(
+                    datetime.fromisoformat(args["end"])
+                    if args.get("end")
+                    else None
+                ),
+                limit=int(args.get("limit", 200)),
+            )
         if name == "practice_due":
             kind_value = args.get("kind")
             from .types import MemoryKind

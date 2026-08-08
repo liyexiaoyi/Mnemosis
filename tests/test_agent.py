@@ -1282,6 +1282,47 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
             1,
         )
 
+    def test_timeline_report(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        now = utcnow().replace(hour=12, minute=0, second=0, microsecond=0)
+        for day in range(3):
+            for slot in range(2):
+                engine.remember(
+                    f"event d{day} s{slot}",
+                    kind=MemoryKind.EPISODIC,
+                    source=user,
+                    cues=[f"tl-{day}-{slot}"],
+                    created_at=(
+                        now - timedelta(days=2 - day) + timedelta(hours=slot)
+                    ),
+                    auto_cues=False,
+                )
+        engine.remember(
+            "semantic fact", kind=MemoryKind.SEMANTIC, source=user,
+            auto_cues=False,
+        )
+        report = engine.timeline_report()
+        self.assertEqual(report["total"], 6)
+        self.assertEqual(len(report["days"]), 3)
+        self.assertTrue(all(d["count"] == 2 for d in report["days"]))
+        dates = [d["date"] for d in report["days"]]
+        self.assertEqual(dates, sorted(dates))
+        window = engine.timeline_report(
+            start=now - timedelta(days=1),
+            end=now + timedelta(days=1),
+        )
+        self.assertEqual(window["total"], 4)
+        self.assertEqual(len(window["days"]), 2)
+        self.assertEqual(
+            report["days"][0]["items"][0]["kind"], "episodic"
+        )
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("timeline_report", {"limit": 50})
+        self.assertEqual(via_mcp["total"], 6)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(
