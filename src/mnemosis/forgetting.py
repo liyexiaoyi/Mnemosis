@@ -170,6 +170,8 @@ class ReviewScheduler:
         limit: int = 10,
         due_threshold: float = 0.5,
         importance_first: bool = True,
+        desirable_difficulty: bool = False,
+        difficulty_target: float = 0.45,
     ) -> list[MemoryItem]:
         """Due memories, most important first.
 
@@ -177,6 +179,12 @@ class ReviewScheduler:
         content. When the daily review quota is limited, high-importance due
         memories are selected before low-importance ones (ties broken by
         retrievability, most forgotten first).
+
+        Desirable difficulty (Bjork & Bjork, 2011; Bjork, 1994): within an
+        importance group, prefer due memories whose retrievability is
+        closest to ``difficulty_target`` - hard enough to require effort
+        (which strengthens more) but easy enough to succeed. This replaces
+        "most forgotten first", which tends to schedule failures.
         """
         now = now or utcnow()
         due = [
@@ -184,6 +192,16 @@ class ReviewScheduler:
             for item in items
             if self.is_due(item, now, due_threshold=due_threshold)
         ]
+        if desirable_difficulty:
+            def _dd_key(item: MemoryItem) -> tuple:
+                retrievability = self.curve.retrievability(item, now)
+                difficulty = abs(retrievability - difficulty_target)
+                if importance_first:
+                    return (-item.importance, difficulty)
+                return (difficulty,)
+
+            due.sort(key=_dd_key)
+            return due[:limit]
         if importance_first:
             due.sort(
                 key=lambda i: (

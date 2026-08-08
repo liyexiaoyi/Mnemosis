@@ -804,12 +804,14 @@ class MemoryEngine:
         limit: int = 10,
         now: datetime | None = None,
         importance_first: bool = True,
+        desirable_difficulty: bool = False,
     ) -> list[MemoryItem]:
         return self.scheduler.due_items(
             self.store.all_active(),
             now=now,
             limit=limit,
             importance_first=importance_first,
+            desirable_difficulty=desirable_difficulty,
         )
 
     def review(
