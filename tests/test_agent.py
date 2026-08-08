@@ -573,6 +573,38 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertAlmostEqual(by_id[good.id]["retry_hours"], 24.0)
         self.assertAlmostEqual(by_id[bad.id]["retry_hours"], 12.0)
 
+    def test_practice_report_difficulty(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        now = utcnow()
+        items = []
+        for strength in (0.3, 0.6, 0.9):
+            item = engine.remember(
+                f"难度记忆{strength}：条目。",
+                kind=MemoryKind.SEMANTIC,
+                source=SourceRecord(origin=SourceType.USER),
+                cues=[f"难度{strength}"],
+                importance=0.8,
+                strength=strength,
+                created_at=now - timedelta(days=20),
+            )
+            items.append(item)
+        report = engine.practice_report(
+            [{"id": item.id, "attempt": "随便答"} for item in items],
+            now=now,
+        )
+        diff = report["difficulty"]
+        self.assertEqual(diff["n"], 3)
+        self.assertAlmostEqual(
+            diff["mean_difficulty"],
+            1.0 - diff["mean_retrievability"],
+            places=3,
+        )
+        self.assertGreaterEqual(diff["min_retrievability"], 0.0)
+        self.assertLessEqual(diff["max_retrievability"], 1.0)
+        self.assertLess(diff["min_retrievability"], diff["max_retrievability"])
+
     def test_practice_plan(self) -> None:
         from datetime import datetime, timedelta
 

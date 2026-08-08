@@ -1169,7 +1169,24 @@ class MemoryEngine:
             detail["retry_hours"] = round(
                 (next_review - now).total_seconds() / 3600.0, 1
             )
+        retrievabilities = []
+        for detail in details:
+            item = self.backend.get(detail["id"])
+            if item is not None:
+                retrievabilities.append(
+                    self.curve.retrievability(item, now)
+                )
         successes = sum(1 for d in details if d["success"])
+        difficulty = None
+        if retrievabilities:
+            mean_ret = sum(retrievabilities) / len(retrievabilities)
+            difficulty = {
+                "n": len(retrievabilities),
+                "mean_retrievability": round(mean_ret, 3),
+                "mean_difficulty": round(1.0 - mean_ret, 3),
+                "min_retrievability": round(min(retrievabilities), 3),
+                "max_retrievability": round(max(retrievabilities), 3),
+            }
         return {
             "n": len(details),
             "successes": successes,
@@ -1177,6 +1194,7 @@ class MemoryEngine:
             "success_rate": round(
                 successes / len(details), 3
             ) if details else 0.0,
+            "difficulty": difficulty,
             "details": details,
         }
 
