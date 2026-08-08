@@ -276,6 +276,43 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
             )
         )
 
+    def test_replan_avoids_failed_step_and_records_decision(self) -> None:
+        engine = self._engine()
+        plan = engine.replan(
+            "大壮想去京都旅行，参考阿丽和小波",
+            "订机票",
+        )
+        contents = [r.item.content for r in plan]
+        failed_steps = [c for c in contents if c.startswith("阿丽")]
+        failed_flight = [c for c in failed_steps if "机票" in c]
+        others = [
+            c for c in contents
+            if not (c.startswith("阿丽") and "机票" in c)
+        ]
+        # only 阿丽's failed flight step is moved to the end
+        self.assertTrue(others)
+        self.assertTrue(failed_flight)
+        self.assertTrue(
+            any("小波在2026年5月1日订了去京都的机票。" in c
+                for c in others)
+        )
+        self.assertEqual(
+            contents[: len(others)],
+            others,
+        )
+        for r in plan:
+            if r.item.content.startswith("阿丽") and "机票" in r.item.content:
+                self.assertTrue(
+                    any("\u91cd\u89c4\u5212" in reason
+                        for reason in r.reasons)
+                )
+        # re-planning decision is stored and retrievable
+        recall = engine.recall("重新规划 订机票", top_k=3)
+        self.assertTrue(
+            any("\u91cd\u65b0\u89c4\u5212" in r.item.content
+                for r in recall)
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

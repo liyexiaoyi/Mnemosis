@@ -450,6 +450,80 @@ class MemoryEngine:
             return "medium"
         return "low"
 
+    def replan(
+        self,
+        goal: str,
+        failed_step: str,
+        *,
+        top_k: int | None = None,
+        now: datetime | None = None,
+    ) -> list[RecallResult]:
+        """Replan after a failed step (error monitoring and re-planning).
+
+        The anterior cingulate cortex monitors errors (Botvinick et al.,
+        2001) and the prefrontal cortex re-plans. The failed step is moved
+        to the end of the plan (avoided), marked with a 重规划 reason, and
+        the re-planning decision itself is stored so future plans remember
+        what to avoid.
+        """
+        _ACTION_PREFIXES = "订买卖打包收拾请找定学搬选入"
+        noun = failed_step.lstrip(_ACTION_PREFIXES) or failed_step
+        # which person(s) actually failed this step? (evidence-weighted)
+        failing_persons: dict[str, float] = {}
+        for item in self.backend.list(kind=MemoryKind.EPISODIC):
+            if "执行失败" not in item.content or len(item.cues) < 3:
+                continue
+            step_cue = item.cues[1]
+            step_noun = step_cue.lstrip(_ACTION_PREFIXES)
+            if noun and step_noun != noun and step_cue != failed_step:
+                continue
+            person = item.cues[0][:2]
+            failing_persons[person] = (
+                failing_persons.get(person, 0.0)
+                + max(1, item.evidence_count)
+            )
+        plan = self.plan_for_goal(
+            goal,
+            top_k=top_k,
+            now=now,
+            effort="high",
+            outcome_aware=True,
+        )
+        kept: list[RecallResult] = []
+        failed: list[RecallResult] = []
+        for r in plan:
+            person = (
+                r.item.cues[0][:2]
+                if r.item.cues
+                else r.item.content[:2]
+            )
+            should_avoid = bool(
+                noun and noun in r.item.content
+                and (
+                    not failing_persons
+                    or failing_persons.get(person, 0.0) > 0.0
+                )
+            )
+            if should_avoid:
+                if not any("重规划" in reason for reason in r.reasons):
+                    r.reasons.append(
+                        f"\u91cd\u89c4\u5212:\u5df2\u907f\u5f00"
+                        f"\u5931\u8d25\u6b65\u9aa4{failed_step}"
+                    )
+                failed.append(r)
+            else:
+                kept.append(r)
+        self.remember(
+            f"项目“{goal[:8]}”重新规划：避开失败步骤“{failed_step}”。",
+            kind=MemoryKind.EPISODIC,
+            source=SourceRecord(origin=SourceType.AGENT),
+            cues=[goal[:8], failed_step, "重规划"],
+            importance=0.75,
+            evidence_count=1,
+            created_at=now,
+        )
+        return kept + failed
+
     def _suggested_plan_size(self, goal: str) -> int:
         """Working-memory capacity matching (Miller, 1956).
 
