@@ -387,6 +387,15 @@ class MCPServer:
                 },
             },
             {
+                "name": "memory_audit",
+                "description": (
+                    "Deep lifecycle audit: active/recycled counts, revised "
+                    "and emotional traces, conflicts, due now, average "
+                    "retrievability and importance."
+                ),
+                "inputSchema": {"type": "object", "properties": {}},
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -782,6 +791,8 @@ class MCPServer:
             return self.engine.sleep_and_plan(
                 days=int(args.get("days", 7))
             )
+        if name == "memory_audit":
+            return self.engine.memory_audit()
         if name == "practice_due":
             kind_value = args.get("kind")
             from .types import MemoryKind

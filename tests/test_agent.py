@@ -722,6 +722,72 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         )
         self.assertIn("sleep_summary", via_mcp)
 
+    def test_memory_audit(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        now = utcnow()
+        revised = engine.remember(
+            "audit old",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["audit-r"],
+            strength=0.5,
+            created_at=now - timedelta(days=10),
+            auto_cues=False,
+        )
+        engine.update(revised.id, content="audit new", now=now)
+        engine.remember(
+            "audit emotional",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["audit-e"],
+            affect="negative",
+            strength=0.5,
+            created_at=now - timedelta(days=10),
+            auto_cues=False,
+        )
+        engine.remember(
+            "audit event",
+            kind=MemoryKind.EPISODIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["audit-ep"],
+            strength=0.5,
+            created_at=now - timedelta(days=10),
+            auto_cues=False,
+        )
+        engine.remember(
+            "audit conflict a",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["audit-c"],
+            confidence=0.8,
+        )
+        engine.remember(
+            "audit conflict b",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["audit-c"],
+            confidence=0.8,
+        )
+        trash = engine.remember(
+            "audit trash",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["audit-t"],
+        )
+        engine.forget(trash.id)
+        audit = engine.memory_audit(now=now)
+        self.assertEqual(audit["active"], 5)
+        self.assertEqual(audit["recycled"], 1)
+        self.assertGreaterEqual(audit["revised"], 1)
+        self.assertGreaterEqual(audit["emotional"], 1)
+        self.assertEqual(audit["conflicts"], 1)
+        self.assertIn("avg_retrievability", audit)
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("memory_audit", {})
+        self.assertEqual(via_mcp["active"], 5)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

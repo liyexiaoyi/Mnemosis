@@ -1452,6 +1452,39 @@ class MemoryEngine:
             "forecast": forecast,
         }
 
+    def memory_audit(self, now: datetime | None = None) -> dict:
+        """Deep lifecycle audit beyond the quick status snapshot.
+
+        Adds recycled count, revised traces, emotional traces, average
+        retrievability, due and conflict counts - the numbers a maintainer
+        would review before deciding what to keep, fix or rehearse.
+        """
+        now = now or utcnow()
+        stats = self.backend.stats()
+        items = self.store.all_active()
+        retrievabilities = [
+            self.curve.retrievability(item, now) for item in items
+        ]
+        recycled = len(
+            self.backend.list(status=MemoryStatus.RECYCLED)
+        )
+        return {
+            "active": len(items),
+            "recycled": recycled,
+            "semantic": stats["semantic"],
+            "episodic": stats["episodic"],
+            "revised": sum(1 for i in items if i.revision_count > 0),
+            "emotional": sum(1 for i in items if i.affect),
+            "conflicts": len(self.consolidator.detect_conflicts()),
+            "due_now": len(
+                self.scheduler.due_items(items, now=now, limit=10**6)
+            ),
+            "avg_retrievability": round(
+                sum(retrievabilities) / len(retrievabilities), 3
+            ) if retrievabilities else 0.0,
+            "avg_importance": stats["avg_importance"],
+        }
+
     # -- sleep cycle ----------------------------------------------------------
 
     def sleep(
