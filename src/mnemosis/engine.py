@@ -555,6 +555,56 @@ class MemoryEngine:
             "edge_count": len(edges),
         }
 
+    def learner_profile(self, now: datetime | None = None) -> dict:
+        """Estimate the learner's rate from review history.
+
+        Adaptive spaced repetition estimates learning rate from observed
+        retrieval success (Mozer et al., 2009): fast learners get longer
+        intervals, struggling ones get shorter ones. This reports the
+        estimated profile and a suggested interval scale.
+        """
+        items = self.store.all_active()
+        total_reviews = 0
+        successes = 0
+        retrievability_sum = 0.0
+        importance_sum = 0.0
+        for item in items:
+            total_reviews += (
+                item.retrieval_successes + item.retrieval_failures
+            )
+            successes += item.retrieval_successes
+            retrievability_sum += self.curve.retrievability(item, now)
+            importance_sum += item.importance
+        n = len(items)
+        success_rate = (
+            successes / total_reviews if total_reviews else None
+        )
+        if n == 0 or success_rate is None:
+            profile = "unknown"
+            scale = 1.0
+        elif success_rate >= 0.8:
+            profile = "fast"
+            scale = 1.2
+        elif success_rate >= 0.6:
+            profile = "steady"
+            scale = 1.0
+        else:
+            profile = "struggling"
+            scale = 0.8
+        return {
+            "total_memories": n,
+            "total_reviews": total_reviews,
+            "success_rate": (
+                round(success_rate, 3) if success_rate is not None else None
+            ),
+            "avg_retrievability": round(
+                retrievability_sum / max(1, n), 3
+            ),
+            "avg_importance": round(importance_sum / max(1, n), 3),
+            "profile": profile,
+            "suggested_interval_scale": scale,
+        }
+
     def retrieval_assist(
         self,
         query: str,

@@ -1579,6 +1579,41 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["node_count"], 7)
         self.assertEqual(via_mcp["edge_count"], 4)
 
+    def test_learner_profile(self) -> None:
+        user = SourceRecord(origin=SourceType.USER)
+
+        def _store(successes: int, failures: int) -> MemoryEngine:
+            engine = MemoryEngine()
+            for i in range(4):
+                item = engine.remember(
+                    f"learner {i}",
+                    kind=MemoryKind.SEMANTIC,
+                    source=user,
+                    cues=[f"lp-{i}"],
+                    auto_cues=False,
+                )
+                item.retrieval_successes = successes
+                item.retrieval_failures = failures
+                engine.backend.update(item)
+            return engine
+
+        fast = _store(3, 0).learner_profile()
+        self.assertEqual(fast["total_memories"], 4)
+        self.assertEqual(fast["total_reviews"], 12)
+        self.assertEqual(fast["success_rate"], 1.0)
+        self.assertEqual(fast["profile"], "fast")
+        self.assertEqual(fast["suggested_interval_scale"], 1.2)
+        slow = _store(1, 3).learner_profile()
+        self.assertEqual(slow["success_rate"], 0.25)
+        self.assertEqual(slow["profile"], "struggling")
+        self.assertEqual(slow["suggested_interval_scale"], 0.8)
+        empty = MemoryEngine().learner_profile()
+        self.assertEqual(empty["profile"], "unknown")
+        server = MCPServer(engine=_store(2, 1))
+        via_mcp = server._call_tool("learner_profile", {})
+        self.assertIn("profile", via_mcp)
+        self.assertIn("suggested_interval_scale", via_mcp)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

@@ -754,6 +754,16 @@ class MCPServer:
                 "inputSchema": {"type": "object", "properties": {}},
             },
             {
+                "name": "learner_profile",
+                "description": (
+                    "Estimate learning rate from review history and return "
+                    "a profile (fast/steady/struggling) plus a suggested "
+                    "review-interval scale (adaptive spacing, Mozer et al. "
+                    "2009)."
+                ),
+                "inputSchema": {"type": "object", "properties": {}},
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1262,6 +1272,8 @@ class MCPServer:
             return self.engine.memory_health()
         if name == "kg_export":
             return self.engine.kg_export()
+        if name == "learner_profile":
+            return self.engine.learner_profile()
         if name == "practice_due":
             kind_value = args.get("kind")
             from .types import MemoryKind
