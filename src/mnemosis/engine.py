@@ -638,8 +638,19 @@ class MemoryEngine:
         predictions (Miller & Cohen, 2001; Smolen et al., 2016). The outcome
         is stored with evidence accumulation, so repeated success/failure
         strengthens the trace and future plans can prefer it.
+
+        Prediction-error weighting (Schultz et al., 1997; Rescorla & Wagner,
+        1972): outcomes that contradict the accumulated history get a higher
+        importance and an "意外" cue, so surprising events are easy to find
+        and the prediction is updated more visibly.
         """
         result = "成功" if success else "失败"
+        prior = self._step_success_ratio(step)
+        error = abs((1.0 if success else 0.0) - prior)
+        importance = round(min(0.95, 0.75 + 0.15 * error), 3)
+        cues = [goal[:8], step[:8], result]
+        if error >= 0.6:
+            cues.append("意外")
         content = (
             f"项目“{goal}”的步骤“{step}”执行{result}"
             + (f"（{note}）" if note else "")
@@ -649,11 +660,44 @@ class MemoryEngine:
             content,
             kind=MemoryKind.EPISODIC,
             source=SourceRecord(origin=SourceType.AGENT),
-            cues=[goal[:8], step[:8], result],
-            importance=0.75,
+            cues=cues,
+            importance=importance,
             evidence_count=1,
             created_at=now,
         )
+
+    def _step_success_ratio(self, step: str) -> float:
+        """Prior success probability of a step from its outcome records."""
+        _ACTION_PREFIXES = "订买卖打包收拾请找定学搬选入"
+        noun = step.lstrip(_ACTION_PREFIXES) or step
+        success = failure = 0
+        for item in self.backend.list(kind=MemoryKind.EPISODIC):
+            if "执行成功" not in item.content and "执行失败" not in item.content:
+                continue
+            if len(item.cues) < 3:
+                continue
+            step_cue = item.cues[1]
+            step_noun = step_cue.lstrip(_ACTION_PREFIXES)
+            if step_cue != step and step_noun != noun:
+                continue
+            weight = max(1, item.evidence_count)
+            if "执行成功" in item.content:
+                success += weight
+            else:
+                failure += weight
+        total = success + failure
+        if total == 0:
+            return 0.5
+        return success / total
+
+    def predict_step(self, step: str) -> dict:
+        """Predict a step's success probability from outcome history."""
+        ratio = self._step_success_ratio(step)
+        return {
+            "step": step,
+            "success_probability": round(ratio, 3),
+            "confidence": round(abs(ratio - 0.5) * 2, 3),
+        }
 
     # -- sleep cycle ----------------------------------------------------------
 

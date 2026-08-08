@@ -333,6 +333,33 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
             )
         )
 
+    def test_prediction_error_updates(self) -> None:
+        engine = MemoryEngine()
+        for _ in range(5):
+            engine.record_outcome("旅行", "订机票", success=True)
+        self.assertEqual(
+            engine.predict_step("订机票")["success_probability"], 1.0
+        )
+        surprising = engine.record_outcome(
+            "旅行", "订机票", success=False, note="航班取消"
+        )
+        self.assertGreaterEqual(surprising.importance, 0.85)
+        self.assertIn("\u610f\u5916", surprising.cues)
+        self.assertAlmostEqual(
+            engine.predict_step("订机票")["success_probability"],
+            5 / 6,
+            places=3,
+        )
+        expected = engine.record_outcome("旅行", "订机票", success=True)
+        self.assertLess(expected.importance, surprising.importance)
+        self.assertNotIn("\u610f\u5916", expected.cues)
+
+    def test_predict_step_unknown_is_uncertain(self) -> None:
+        engine = MemoryEngine()
+        pred = engine.predict_step("买相机")
+        self.assertEqual(pred["success_probability"], 0.5)
+        self.assertEqual(pred["confidence"], 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()
