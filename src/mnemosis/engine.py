@@ -2202,6 +2202,70 @@ class MemoryEngine:
             "lessons": lessons[:6],
         }
 
+    def transfer_report(
+        self,
+        plan: list,
+        lessons_memory_ids: list[str] | None = None,
+    ) -> dict:
+        """Map past lessons onto a new plan's steps.
+
+        Reusable schemas transfer to new tasks (Bartlett, 1932): this
+        matches each lesson memory (success/failure/experience) against
+        plan steps by token overlap and reports which lessons apply.
+        """
+        from .types import tokenize
+
+        steps = []
+        for item in plan:
+            if isinstance(item, str):
+                text = item
+            else:
+                text = item.get("step") or item.get("action") or ""
+            text = str(text).strip()
+            if text:
+                steps.append(text)
+        if lessons_memory_ids:
+            items = []
+            for memory_id in lessons_memory_ids:
+                item = self.backend.get(memory_id)
+                if item is not None:
+                    items.append(item)
+        else:
+            items = self.store.all_active()
+        lessons = []
+        for item in items:
+            content = item.content
+            if not any(
+                keyword in content
+                for keyword in ("成功", "失败", "经验", "注意", "教训", "建议")
+            ):
+                continue
+            content_terms = set(tokenize(content))
+            matched_steps = [
+                step for step in steps
+                if content_terms & set(tokenize(step))
+            ]
+            tag = (
+                "failure"
+                if any(k in content for k in ("失败", "注意", "教训"))
+                else "success" if "成功" in content else "lesson"
+            )
+            lessons.append(
+                {
+                    "id": item.id,
+                    "preview": content[:48],
+                    "tag": tag,
+                    "matched_steps": matched_steps,
+                }
+            )
+        applicable = [lesson for lesson in lessons if lesson["matched_steps"]]
+        return {
+            "plan_steps": steps,
+            "total_lessons": len(lessons),
+            "applicable_lessons": applicable,
+            "suggestion": "把适用的经验写进计划注意事项，避免重复踩坑",
+        }
+
     def retrieval_assist(
         self,
         query: str,

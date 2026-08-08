@@ -2671,6 +2671,43 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["score"], 50)
         self.assertEqual(via_mcp["verdict"], "fair")
 
+    def test_transfer_report(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        ids = []
+        for text, cue in (
+            ("成功：先调研需求再开发", "tr-1"),
+            ("失败：测试超时", "tr-2"),
+            ("经验：原型先行", "tr-3"),
+        ):
+            item = engine.remember(
+                text,
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=[cue],
+                auto_cues=False,
+            )
+            ids.append(item.id)
+        report = engine.transfer_report(
+            ["调研需求", "开发功能", "测试功能"],
+            lessons_memory_ids=ids,
+        )
+        self.assertEqual(len(report["plan_steps"]), 3)
+        self.assertEqual(report["total_lessons"], 3)
+        self.assertEqual(len(report["applicable_lessons"]), 2)
+        by_id = {lesson["id"]: lesson for lesson in report["applicable_lessons"]}
+        self.assertIn("调研需求", by_id[ids[0]]["matched_steps"])
+        self.assertIn("测试功能", by_id[ids[1]]["matched_steps"])
+        self.assertNotIn(ids[2], by_id)
+        self.assertTrue(report["suggestion"])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "transfer_report",
+            {"plan": ["调研需求", "开发功能", "测试功能"],
+             "lessons_memory_ids": ids},
+        )
+        self.assertEqual(len(via_mcp["applicable_lessons"]), 2)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

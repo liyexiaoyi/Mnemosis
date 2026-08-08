@@ -1259,6 +1259,33 @@ class MCPServer:
                 },
             },
             {
+                "name": "transfer_report",
+                "description": (
+                    "Map past lessons onto a new plan's steps by token "
+                    "overlap, so reusable schemas transfer to the new "
+                    "task (schema reuse, Bartlett 1932)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "plan": {
+                            "type": "array",
+                            "items": {
+                                "oneOf": [
+                                    {"type": "string"},
+                                    {"type": "object"},
+                                ]
+                            },
+                        },
+                        "lessons_memory_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                    },
+                    "required": ["plan"],
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1883,6 +1910,11 @@ class MCPServer:
             return self.engine.decision_review(
                 args["plan"],
                 args["results"],
+            )
+        if name == "transfer_report":
+            return self.engine.transfer_report(
+                args["plan"],
+                lessons_memory_ids=args.get("lessons_memory_ids"),
             )
         if name == "practice_due":
             kind_value = args.get("kind")
