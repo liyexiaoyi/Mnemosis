@@ -1479,6 +1479,26 @@ class MCPServer:
                 },
             },
             {
+                "name": "test_generator",
+                "description": (
+                    "Generate retrieval-practice questions (cue prompts "
+                    "and cloze blanks) from memories with answers hidden, "
+                    "for self-testing (testing effect; Roediger & "
+                    "Karpicke, 2006)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "topic": {"type": "string"},
+                        "memory_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                        "count": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -2165,6 +2185,12 @@ class MCPServer:
                 limit=int(args.get("limit", 8)),
                 capacity=int(args.get("capacity", 7)),
                 optimal=int(args.get("optimal", 4)),
+            )
+        if name == "test_generator":
+            return self.engine.test_generator(
+                topic=args.get("topic"),
+                memory_ids=args.get("memory_ids"),
+                count=int(args.get("count", 4)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")

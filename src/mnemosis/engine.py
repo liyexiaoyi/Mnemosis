@@ -3122,6 +3122,71 @@ class MemoryEngine:
             "advice": advice,
         }
 
+    def test_generator(
+        self,
+        *,
+        topic: str | None = None,
+        memory_ids: list[str] | None = None,
+        count: int = 4,
+    ) -> dict:
+        """Generate retrieval-practice questions without giving answers.
+
+        Testing effect (Roediger & Karpicke, 2006): taking a test on
+        material beats re-reading it. This tool turns memories into
+        cue-prompt and cloze questions (answers hidden) so the agent can
+        self-quiz and then score with practice_answer.
+        """
+        if memory_ids:
+            items = []
+            for memory_id in memory_ids:
+                item = self.backend.get(memory_id)
+                if item is not None:
+                    items.append(item)
+        elif topic:
+            items = [
+                item
+                for item in self.store.all_active()
+                if topic in item.cues or topic in item.content
+            ]
+        else:
+            items = self.store.all_active()
+        items = items[: max(1, int(count))]
+        questions: list[dict] = []
+        for index, item in enumerate(items):
+            content = item.content
+            cue = item.cues[0] if item.cues else content[:10]
+            if index % 2 == 0:
+                question = (
+                    f"【测试】提示词“{cue}”：请回忆这条记忆讲了什么。"
+                )
+                qtype = "cue_prompt"
+            else:
+                if len(content) > 8:
+                    blank_len = min(4, max(2, len(content) // 3))
+                    blank = "____" * max(1, blank_len // 4)
+                    question = content[:-blank_len] + blank
+                else:
+                    question = f"【测试】请补全：{blank}（提示：{cue}）"
+                qtype = "cloze"
+            questions.append(
+                {
+                    "memory_id": item.id,
+                    "question": question,
+                    "qtype": qtype,
+                    "hint_cues": item.cues[:3],
+                    "answer_hidden": True,
+                }
+            )
+        return {
+            "topic": topic,
+            "question_count": len(questions),
+            "questions": questions,
+            "advice": (
+                "先自测再对答案：测试比重读记得牢（Roediger & Karpicke 2006）；"
+                "答完用 practice_answer 打分并强化。"
+            ),
+        }
+
     def retrieval_assist(
         self,
         query: str,

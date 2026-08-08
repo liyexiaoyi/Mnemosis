@@ -3290,6 +3290,41 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["verdict"], "overloaded")
         self.assertGreaterEqual(len(via_mcp["chunks"]), 3)
 
+    def test_test_generator(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        contents = [
+            "牛顿第二定律 F 等于 ma",
+            "光速约每秒 30 万千米",
+            "水的沸点是 100 摄氏度",
+            "地球绕太阳一圈约 365 天",
+        ]
+        for content in contents:
+            engine.remember(
+                content,
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["物理"],
+                auto_cues=False,
+            )
+        report = engine.test_generator(topic="物理", count=4)
+        self.assertEqual(report["question_count"], 4)
+        for question in report["questions"]:
+            item = engine.backend.get(question["memory_id"])
+            self.assertIsNotNone(item)
+            self.assertNotIn(item.content, question["question"])
+        qtypes = {question["qtype"] for question in report["questions"]}
+        self.assertEqual(qtypes, {"cue_prompt", "cloze"})
+        self.assertTrue(report["advice"])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "test_generator", {"topic": "物理", "count": 4}
+        )
+        self.assertEqual(via_mcp["question_count"], 4)
+        self.assertTrue(
+            all(question["answer_hidden"] for question in via_mcp["questions"])
+        )
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(
