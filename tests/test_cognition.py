@@ -232,6 +232,48 @@ class CognitionTest(unittest.TestCase):
             plain_emo - plain_neu,
         )
 
+    def test_second_look_recollect(self):
+        def _build():
+            engine = MemoryEngine()
+            user = SourceRecord(origin=SourceType.USER)
+            now = utcnow() - timedelta(days=10)
+            weak = engine.remember(
+                "alpha weak",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["alpha"],
+                importance=0.7,
+                strength=0.6,
+                evidence_count=1,
+                created_at=now,
+                auto_cues=False,
+            )
+            strong = engine.remember(
+                "alpha strong",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["alpha"],
+                importance=0.55,
+                strength=0.5,
+                evidence_count=3,
+                created_at=now,
+                auto_cues=False,
+            )
+            return engine, weak.id, strong.id
+
+        engine_s, w_s, _ = _build()
+        single = engine_s.recall("alpha", top_k=3)
+        self.assertEqual(single[0].item.id, w_s)
+        self.assertFalse(single[0].confident)
+        engine_l, _, s_l = _build()
+        looked = engine_l.recall(
+            "alpha", top_k=3, second_look=True
+        )
+        self.assertEqual(looked[0].item.id, s_l)
+        self.assertTrue(
+            any("复核" in r for r in looked[0].reasons)
+        )
+
     def test_weak_important_replay(self):
         now = utcnow()
         important = self.remember(

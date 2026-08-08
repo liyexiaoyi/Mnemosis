@@ -131,6 +131,7 @@ class DualTrackStore:
         gist_boost: float = 0.20,
         emotional_salience_boost: bool = True,
         emotional_salience_weight: float = 0.05,
+        second_look: bool = False,
         suppression_factor: float = 0.01,
         suppression_min_cues: int = 2,
         suppression_floor: float = 0.7,
@@ -437,6 +438,41 @@ class DualTrackStore:
             RecallResult(item=item, score=score, reasons=reasons)
             for score, _, item, reasons, _ in scored[:top_k]
         ]
+        if second_look and results:
+            # Second look (metacognitive monitoring, Koriat & Goldsmith
+            # 1996; recollection, Yonelinas 2002): when the first answer is
+            # shaky, re-rank the candidates by evidence strength and source
+            # reliability before answering - "think again, what am I most
+            # sure of?".
+            top_score = results[0].score
+            second_score = results[1].score if len(results) > 1 else -1.0
+            shaky = not (
+                top_score >= 0.45 and top_score - second_score >= 0.03
+            )
+            if shaky:
+                def _recollect(entry) -> float:
+                    _, _, item, _, _ = entry
+                    evidence_boost = 0.08 * min(
+                        2, item.evidence_count - 1
+                    )
+                    trust_boost = max(
+                        0.0, 0.03 * (item.source.trust - 0.8)
+                    )
+                    return entry[0] + evidence_boost + trust_boost
+
+                reordered = sorted(
+                    scored[:top_k], key=_recollect, reverse=True
+                )
+                if reordered[0][2].id != results[0].item.id:
+                    new_top = reordered[0]
+                    new_top[3].append("复核(证据/来源重排)")
+                    scored[:top_k] = reordered
+                    results = [
+                        RecallResult(
+                            item=item, score=score, reasons=reasons
+                        )
+                        for score, _, item, reasons, _ in scored[:top_k]
+                    ]
         if results:
             # Metacognitive flag (Koriat & Goldsmith, 1996): tell the agent
             # when the top answer is shaky - low absolute score or a tiny
