@@ -193,6 +193,51 @@ class CognitionTest(unittest.TestCase):
         )
         self.assertEqual(plain[0].item.id, l_p)
 
+    def test_mood_congruent_boost(self):
+        from datetime import timedelta
+
+        def _build():
+            engine = MemoryEngine()
+            user = SourceRecord(origin=SourceType.USER)
+            now = utcnow() - timedelta(days=10)
+            happy = engine.remember(
+                "提到红色我喜欢。",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["红色"],
+                affect="positive",
+                importance=0.5,
+                strength=0.5,
+                created_at=now,
+            )
+            anxious = engine.remember(
+                "提到红色我害怕。",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["红色"],
+                affect="negative",
+                importance=0.5,
+                strength=0.5,
+                created_at=now,
+            )
+            return engine, happy.id, anxious.id
+
+        engine_b, h_b, _ = _build()
+        boosted = engine_b.recall(
+            "为什么提到红色会开心？", top_k=3
+        )
+        self.assertEqual(boosted[0].item.id, h_b)
+        self.assertTrue(
+            any("情绪一致" in r for r in boosted[0].reasons)
+        )
+        engine_p, _, a_p = _build()
+        plain = engine_p.recall(
+            "为什么提到红色会开心？",
+            top_k=3,
+            mood_congruent_boost=False,
+        )
+        self.assertEqual(plain[0].item.id, a_p)
+
     def test_emotional_memory_decays_slower(self):
         now = utcnow()
         self.engine.curve.decay_rate = 0.01

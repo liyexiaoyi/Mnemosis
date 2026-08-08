@@ -28,6 +28,31 @@ from .types import (
 )
 
 
+MOOD_WORDS: dict[str, tuple[str, ...]] = {
+    "positive": (
+        "开心", "高兴", "快乐", "兴奋", "满意", "喜欢", "愉快",
+        "happy", "glad", "excited", "pleased",
+    ),
+    "negative": (
+        "难过", "悲伤", "焦虑", "紧张", "害怕", "生气", "愤怒", "担心",
+        "sad", "anxious", "angry", "afraid", "worried",
+    ),
+    "arousing": (
+        "刺激", "惊吓", "惊喜", "惊险", "arousing", "surprising",
+    ),
+}
+
+
+def _query_mood(query: str) -> str | None:
+    """Detect a single dominant emotion in the query (Bower, 1981)."""
+    lowered = query.lower()
+    found: set[str] = set()
+    for tag, words in MOOD_WORDS.items():
+        if any(w in lowered for w in words):
+            found.add(tag)
+    return found.pop() if len(found) == 1 else None
+
+
 class DualTrackStore:
     def __init__(
         self,
@@ -98,6 +123,8 @@ class DualTrackStore:
         self_reference_boost: bool = True,
         source_trust_boost: bool = True,
         source_trust_weight: float = 0.06,
+        mood_congruent_boost: bool = True,
+        mood_boost_weight: float = 0.05,
         suppression_factor: float = 0.01,
         suppression_min_cues: int = 2,
         suppression_floor: float = 0.7,
@@ -166,6 +193,7 @@ class DualTrackStore:
                     item for item in candidates if item.id in hit_ids
                 ]
         query_vector = embedder.embed(query) if embedder is not None else None
+        query_mood = _query_mood(query) if mood_congruent_boost else None
         scored: list[tuple[float, float, MemoryItem, list[str], bool]] = []
         for item in candidates:
             overlap = _overlap(query_terms, self._terms(item))
@@ -208,6 +236,12 @@ class DualTrackStore:
                 if source_trust_boost
                 else 0.0
             )
+            mood_bonus = 0.0
+            if query_mood and item.affect in (query_mood, "mixed"):
+                # Mood-congruent memory (Bower, 1981): a question full of
+                # joy/anxiety preferentially retrieves traces stored under
+                # the same emotion, as mood acts as a retrieval cue.
+                mood_bonus = mood_boost_weight
             if query_vector is not None:
                 item_vector = self._embedding(item, embedder)
                 semantic = embedder.cosine(query_vector, item_vector)
@@ -219,6 +253,7 @@ class DualTrackStore:
                     + 0.20 * semantic
                     + self_bonus
                     + trust_bonus
+                    + mood_bonus
                 )
             else:
                 score = (
@@ -228,6 +263,7 @@ class DualTrackStore:
                     + 0.15 * context_overlap
                     + self_bonus
                     + trust_bonus
+                    + mood_bonus
                 )
             if overlap > 0:
                 reasons.append(f"cue/keyword overlap {overlap:.2f}")
@@ -236,6 +272,8 @@ class DualTrackStore:
                 # when several traces compete, prefer the one from a more
                 # trustworthy origin instead of letting recency win.
                 reasons.append("来源可信(高)")
+            if query_mood and item.affect in (query_mood, "mixed"):
+                reasons.append(f"情绪一致({query_mood})")
             if action_cued and item.kind is MemoryKind.EPISODIC:
                 score += 0.05
                 reasons.append("action-cued episodic preference")
