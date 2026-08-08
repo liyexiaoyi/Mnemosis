@@ -1699,6 +1699,53 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         )
         self.assertEqual(via_mcp["verdict"], "well_encoded")
 
+    def test_explain_memory(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        m1 = engine.remember(
+            "explained memory one",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["explain-a"],
+            auto_cues=False,
+        )
+        m2 = engine.remember(
+            "explained memory two",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["explain-b"],
+            auto_cues=False,
+        )
+        m3 = engine.remember(
+            "explained memory three",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["explain-c"],
+            auto_cues=False,
+        )
+        engine.backend.add_link(m1.id, m3.id)
+        engine.backend.add_link(m3.id, m1.id)
+        for _ in range(3):
+            m1.touch()
+        engine.backend.update(m1)
+        engine.suppress_memories([m2.id])
+        e1 = engine.explain_memory(m1.id)
+        self.assertGreaterEqual(e1["linked_count"], 1)
+        self.assertEqual(e1["access_count"], 3)
+        self.assertFalse(e1["suppressed"])
+        e2 = engine.explain_memory(m2.id)
+        self.assertEqual(e2["linked_count"], 0)
+        self.assertTrue(e2["suppressed"])
+        e3 = engine.explain_memory(m3.id)
+        self.assertIn("retrievability", e3)
+        self.assertIn("review_streak", e3)
+        self.assertIsNone(engine.explain_memory("missing-id"))
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "explain_memory", {"memory_id": m1.id}
+        )
+        self.assertEqual(via_mcp["access_count"], 3)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

@@ -800,6 +800,22 @@ class MCPServer:
                 },
             },
             {
+                "name": "explain_memory",
+                "description": (
+                    "Explain one memory's full state: content, cues, "
+                    "retrievability, importance, strength, confidence, "
+                    "evidence, links, suppression, access and review "
+                    "state."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "memory_id": {"type": "string"},
+                    },
+                    "required": ["memory_id"],
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1318,6 +1334,8 @@ class MCPServer:
             )
         if name == "encoding_quality":
             return self.engine.encoding_quality(args["memory_id"])
+        if name == "explain_memory":
+            return self.engine.explain_memory(args["memory_id"])
         if name == "practice_due":
             kind_value = args.get("kind")
             from .types import MemoryKind

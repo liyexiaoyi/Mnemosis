@@ -730,6 +730,56 @@ class MemoryEngine:
             "suggestions": suggestions[:4],
         }
 
+    def explain_memory(
+        self,
+        memory_id: str,
+        now: datetime | None = None,
+    ) -> dict | None:
+        """Explain one memory's full state in plain fields.
+
+        Metacognitive monitoring (Koriat & Goldsmith, 1996): an agent
+        should be able to say why a memory exists and how reachable it
+        is. This returns content, cues, retrievability, importance,
+        strength, confidence, evidence, links, suppression, access and
+        review state.
+        """
+        item = self.backend.get(memory_id)
+        if item is None:
+            return None
+        linked_count = sum(
+            1
+            for src, dst, _weight in self.backend.all_links()
+            if src == memory_id or dst == memory_id
+        )
+        return {
+            "memory_id": memory_id,
+            "content": item.content,
+            "kind": item.kind.value,
+            "created_at": item.created_at.isoformat(),
+            "cues": item.cues,
+            "retrievability": round(
+                self.curve.retrievability(item, now), 3
+            ),
+            "importance": round(item.importance, 3),
+            "strength": round(item.strength, 3),
+            "confidence": round(item.confidence, 3),
+            "evidence_count": item.evidence_count,
+            "linked_count": linked_count,
+            "suppressed": memory_id in self._suppressed_ids,
+            "access_count": item.access_count,
+            "last_access_at": (
+                item.last_access_at.isoformat()
+                if item.last_access_at is not None
+                else None
+            ),
+            "review_streak": item.review_streak,
+            "last_review_at": (
+                item.last_review_at.isoformat()
+                if item.last_review_at is not None
+                else None
+            ),
+        }
+
     def retrieval_assist(
         self,
         query: str,
