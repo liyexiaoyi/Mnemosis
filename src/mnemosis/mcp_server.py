@@ -866,6 +866,23 @@ class MCPServer:
                 },
             },
             {
+                "name": "multi_hop_report",
+                "description": (
+                    "Walk the association network hop by hop from a start "
+                    "memory: which memories are 1 hop, 2 hops etc. away "
+                    "(spreading activation, Collins & Loftus 1975)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "start_id": {"type": "string"},
+                        "depth": {"type": "integer"},
+                        "limit": {"type": "integer"},
+                    },
+                    "required": ["start_id"],
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1396,6 +1413,12 @@ class MCPServer:
             )
         if name == "summarize_cluster":
             return self.engine.summarize_cluster(args["memory_ids"])
+        if name == "multi_hop_report":
+            return self.engine.multi_hop_report(
+                args["start_id"],
+                depth=int(args.get("depth", 2)),
+                limit=int(args.get("limit", 20)),
+            )
         if name == "practice_due":
             kind_value = args.get("kind")
             from .types import MemoryKind

@@ -1867,6 +1867,42 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(len(via_mcp["memory_ids"]), 4)
         self.assertIn("预算", via_mcp["top_terms"])
 
+    def test_multi_hop_report(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        items = [
+            engine.remember(
+                f"zzz {letter}",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=[f"mh-{letter}"],
+                auto_cues=False,
+            )
+            for letter in ("a", "b", "c", "d", "e")
+        ]
+        a, b, c, d, e = [item.id for item in items]
+        engine.backend.add_link(a, b)
+        engine.backend.add_link(b, c)
+        engine.backend.add_link(c, d)
+        engine.backend.add_link(b, e)
+        report = engine.multi_hop_report(a, depth=2)
+        self.assertEqual(report["hops"][0]["memory_ids"], [b])
+        self.assertEqual(
+            set(report["hops"][1]["memory_ids"]), {c, e}
+        )
+        self.assertEqual(report["total_reached"], 3)
+        deep = engine.multi_hop_report(a, depth=3)
+        self.assertEqual(
+            set(deep["hops"][2]["memory_ids"]), {d}
+        )
+        self.assertEqual(deep["total_reached"], 4)
+        self.assertIsNone(engine.multi_hop_report("missing-id"))
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "multi_hop_report", {"start_id": a, "depth": 2}
+        )
+        self.assertEqual(via_mcp["total_reached"], 3)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

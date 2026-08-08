@@ -926,6 +926,54 @@ class MemoryEngine:
             "previews": previews,
         }
 
+    def multi_hop_report(
+        self,
+        start_id: str,
+        depth: int = 2,
+        limit: int = 20,
+    ) -> dict | None:
+        """Walk the association network hop by hop from a start memory.
+
+        Spreading activation (Collins & Loftus, 1975): related memories
+        become reachable through their links, hop by hop. This BFS report
+        shows which memories appear at each distance, so agents can gather
+        multi-hop evidence for reasoning.
+        """
+        from collections import defaultdict
+
+        if self.backend.get(start_id) is None:
+            return None
+        adj: dict[str, set[str]] = defaultdict(set)
+        for src, dst, _weight in self.backend.all_links():
+            adj[src].add(dst)
+            adj[dst].add(src)
+        frontier = {start_id}
+        seen = {start_id}
+        hops = []
+        for hop in range(1, max(1, int(depth)) + 1):
+            next_frontier: set[str] = set()
+            for node in frontier:
+                next_frontier |= adj.get(node, set())
+            next_frontier -= seen
+            if not next_frontier:
+                break
+            seen |= next_frontier
+            hops.append(
+                {
+                    "hop": hop,
+                    "memory_ids": sorted(next_frontier)[: max(1, int(limit))],
+                    "count": len(next_frontier),
+                }
+            )
+            frontier = next_frontier
+        return {
+            "start_id": start_id,
+            "depth": max(1, int(depth)),
+            "hops": hops,
+            "total_reached": len(seen) - 1,
+            "reached_ids": sorted(seen - {start_id})[: max(1, int(limit))],
+        }
+
     def retrieval_assist(
         self,
         query: str,
