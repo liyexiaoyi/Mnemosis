@@ -1802,6 +1802,37 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         )
         self.assertEqual(via_mcp["verdict"], "duplicate")
 
+    def test_action_queue(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        now = utcnow()
+        i1 = engine.remember_intent("soon a", due_at=now + timedelta(minutes=10))
+        i2 = engine.remember_intent("soon b", due_at=now + timedelta(minutes=20))
+        i3 = engine.remember_intent("later", due_at=now + timedelta(hours=2))
+        i4 = engine.remember_intent("overdue", due_at=now - timedelta(hours=1))
+        i5 = engine.remember_intent(
+            "office a", due_at=now + timedelta(days=1), context_cue="office"
+        )
+        i6 = engine.remember_intent(
+            "office b", due_at=now + timedelta(days=2), context_cue="office"
+        )
+        queue = engine.action_queue(now=now)
+        self.assertEqual(queue["total"], 6)
+        self.assertEqual(queue["overdue"], 1)
+        self.assertEqual(queue["actions"][0]["intent_id"], i4["id"])
+        by_id = {a["intent_id"]: a for a in queue["actions"]}
+        self.assertTrue(by_id[i1["id"]]["urgent"])
+        self.assertFalse(by_id[i3["id"]]["urgent"])
+        self.assertTrue(by_id[i1["id"]]["clash"])
+        self.assertTrue(by_id[i6["id"]]["clash"])
+        self.assertFalse(by_id[i3["id"]]["clash"])
+        self.assertEqual(queue["clashes"], 4)
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("action_queue", {"limit": 10})
+        self.assertEqual(via_mcp["total"], 6)
+        self.assertEqual(via_mcp["overdue"], 1)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

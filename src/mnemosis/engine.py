@@ -834,6 +834,49 @@ class MemoryEngine:
             "verdict": verdict,
         }
 
+    def action_queue(
+        self,
+        now: datetime | None = None,
+        limit: int = 20,
+    ) -> dict:
+        """Order active intentions as an action queue.
+
+        Goal-directed behavior prioritizes urgent tasks (ACT-R, Anderson,
+        1983): overdue first, then upcoming by deadline, with clashing
+        intentions flagged for rescheduling.
+        """
+        from datetime import datetime as _dt, timedelta
+
+        now = now or utcnow()
+        conflicts = self.intent_conflicts()["conflicts"]
+        clash_ids = {
+            c["intent_a"] for c in conflicts
+        } | {c["intent_b"] for c in conflicts}
+        actions = []
+        for record in self._intents.values():
+            if record["status"] != "active":
+                continue
+            due = _dt.fromisoformat(record["due_at"])
+            actions.append(
+                {
+                    "type": "intent",
+                    "intent_id": record["id"],
+                    "content": record["content"][:60],
+                    "due_at": record["due_at"],
+                    "overdue": due <= now,
+                    "urgent": due <= now + timedelta(minutes=60),
+                    "clash": record["id"] in clash_ids,
+                }
+            )
+        actions.sort(key=lambda a: (not a["overdue"], a["due_at"]))
+        return {
+            "total": len(actions),
+            "overdue": sum(1 for a in actions if a["overdue"]),
+            "upcoming": sum(1 for a in actions if not a["overdue"]),
+            "clashes": len(clash_ids),
+            "actions": actions[: max(1, int(limit))],
+        }
+
     def retrieval_assist(
         self,
         query: str,

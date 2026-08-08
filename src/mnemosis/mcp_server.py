@@ -833,6 +833,21 @@ class MCPServer:
                 },
             },
             {
+                "name": "action_queue",
+                "description": (
+                    "Order active intentions as an action queue: overdue "
+                    "first, then upcoming by deadline, with clashing "
+                    "intentions flagged (goal-directed priority, ACT-R; "
+                    "Anderson 1983)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1356,6 +1371,10 @@ class MCPServer:
         if name == "compare_memories":
             return self.engine.compare_memories(
                 args["id_a"], args["id_b"]
+            )
+        if name == "action_queue":
+            return self.engine.action_queue(
+                limit=int(args.get("limit", 20)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")
