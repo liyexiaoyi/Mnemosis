@@ -66,6 +66,10 @@ class Backend(ABC):
         """Return the weight of the src->dst link (0.0 if absent)."""
 
     @abstractmethod
+    def all_links(self) -> list[tuple[str, str, float]]:
+        """Return every directed link as (src, dst, weight)."""
+
+    @abstractmethod
     def related(
         self, memory_id: str, depth: int = 1, max_nodes: int = 20
     ) -> list[MemoryItem]: ...
@@ -159,6 +163,9 @@ class DictBackend(Backend):
 
     def link_weight(self, src: str, dst: str) -> float:
         return self._links.get((src, dst), 0.0)
+
+    def all_links(self) -> list[tuple[str, str, float]]:
+        return [(a, b, w) for (a, b), w in self._links.items()]
 
     def related(
         self, memory_id: str, depth: int = 1, max_nodes: int = 20
@@ -450,6 +457,12 @@ class SQLiteBackend(Backend):
             (src, dst),
         ).fetchone()
         return float(row["weight"]) if row else 0.0
+
+    def all_links(self) -> list[tuple[str, str, float]]:
+        rows = self._conn.execute(
+            "SELECT src, dst, weight FROM links"
+        ).fetchall()
+        return [(r["src"], r["dst"], float(r["weight"])) for r in rows]
 
     def related(
         self, memory_id: str, depth: int = 1, max_nodes: int = 20

@@ -1676,6 +1676,50 @@ class MemoryEngine:
         pairs.sort(key=lambda p: p["overlap"], reverse=True)
         return pairs[: max(1, int(limit))]
 
+    def association_report(self, limit: int = 10) -> dict:
+        """Summarize the memory association network.
+
+        Reports how well memories are interlinked (spreading activation;
+        Collins & Loftus, 1975): total links, connected vs isolated
+        memories, average degree, and the most-connected memories.
+        """
+        items = {item.id: item for item in self.store.all_active()}
+        links = self.backend.all_links()
+        degree: dict[str, int] = {mid: 0 for mid in items}
+        unique_pairs: set[frozenset[str]] = set()
+        directed = 0
+        for src, dst, _weight in links:
+            if src in items and dst in items:
+                directed += 1
+                degree[src] += 1
+                degree[dst] += 1
+                unique_pairs.add(frozenset((src, dst)))
+        connected = sum(1 for d in degree.values() if d > 0)
+        top = sorted(
+            degree.items(), key=lambda kv: (-kv[1], kv[0])
+        )[: max(1, int(limit))]
+        top_connected = [
+            {
+                "id": mid,
+                "preview": items[mid].content[:40],
+                "link_count": degree[mid],
+                "kind": items[mid].kind.value,
+            }
+            for mid, _count in top
+            if degree[mid] > 0
+        ]
+        return {
+            "memory_count": len(items),
+            "directed_links": directed,
+            "unique_pairs": len(unique_pairs),
+            "connected_count": connected,
+            "isolated_count": len(items) - connected,
+            "avg_links": round(
+                sum(degree.values()) / max(1, len(items)), 3
+            ),
+            "top_connected": top_connected,
+        }
+
     # -- sleep cycle ----------------------------------------------------------
 
     def sleep(

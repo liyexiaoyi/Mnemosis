@@ -491,6 +491,20 @@ class MCPServer:
                 },
             },
             {
+                "name": "association_report",
+                "description": (
+                    "Summarize the memory association network: total "
+                    "links, connected/isolated memories, average links and "
+                    "the most-connected memories (spreading activation)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -914,6 +928,10 @@ class MCPServer:
             return self.engine.similarity_report(
                 threshold=float(args.get("threshold", 0.6)),
                 limit=int(args.get("limit", 20)),
+            )
+        if name == "association_report":
+            return self.engine.association_report(
+                limit=int(args.get("limit", 10)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")
