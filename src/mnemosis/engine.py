@@ -160,7 +160,7 @@ class MemoryEngine:
         expansion_discount: float = 0.95,
         temporal_boost: float = 1.0,
         temporal_reason: bool = True,
-        reasoning_pack: bool = False,
+        reasoning_pack: bool = True,
         pattern_completion: bool = True,
         separation: bool = True,
         kind_preference: bool = True,

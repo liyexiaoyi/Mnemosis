@@ -225,6 +225,7 @@ def eval_retrieval(
     pattern_completion: bool = True,
     kind_preference: bool = True,
     temporal_reason: bool = True,
+    reasoning_pack: bool = True,
 ) -> dict:
     stats: dict[str, dict] = defaultdict(
         lambda: {"n": 0, "hit1": 0, "hit5": 0, "pass": 0, "anchor5": 0, "mrr": 0.0}
@@ -246,6 +247,7 @@ def eval_retrieval(
             pattern_completion=pattern_completion,
             kind_preference=kind_preference,
             temporal_reason=temporal_reason,
+            reasoning_pack=reasoning_pack,
         )
         contents = [r.item.content for r in results]
         expected = question["expected"]

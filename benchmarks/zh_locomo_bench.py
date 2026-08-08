@@ -117,6 +117,7 @@ def evaluate(
     dataset: dict,
     filter_stopwords: bool,
     temporal_reason: bool = True,
+    reasoning_pack: bool = True,
 ) -> dict:
     types.CJK_STOPWORDS = (
         _ORIGINAL if filter_stopwords else frozenset()
@@ -145,7 +146,12 @@ def evaluate(
             continue
         query_tokens += len(types.tokenize(q["q"]))
         q_count += 1
-        results = engine.recall(q["q"], top_k=5, temporal_reason=temporal_reason)
+        results = engine.recall(
+            q["q"],
+            top_k=5,
+            temporal_reason=temporal_reason,
+            reasoning_pack=reasoning_pack,
+        )
         contents = [r.item.content for r in results]
         stats[kind][0] += int(
             all(e in contents for e in q["expected"])

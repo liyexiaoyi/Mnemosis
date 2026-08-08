@@ -104,7 +104,13 @@ def build(sessions: int = 6) -> tuple[MemoryEngine, list[dict], str]:
     return engine, questions, "阿丽最喜欢的颜色是什么？"
 
 
-def score_questions(engine, questions, now=None, temporal_reason: bool = True) -> dict:
+def score_questions(
+    engine,
+    questions,
+    now=None,
+    temporal_reason: bool = True,
+    reasoning_pack: bool = True,
+) -> dict:
     hits5 = hits1 = 0
     for q in questions:
         if q["kind"] == "distractor":
@@ -112,7 +118,11 @@ def score_questions(engine, questions, now=None, temporal_reason: bool = True) -
             hits5 += 1
             continue
         results = engine.recall(
-            q["q"], top_k=5, now=now, temporal_reason=temporal_reason
+            q["q"],
+            top_k=5,
+            now=now,
+            temporal_reason=temporal_reason,
+            reasoning_pack=reasoning_pack,
         )
         contents = [r.item.content for r in results]
         if results and contents[0] == q["expected"][0]:

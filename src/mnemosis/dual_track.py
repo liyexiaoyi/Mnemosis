@@ -103,7 +103,7 @@ class DualTrackStore:
         event_chain: EventChainIndex | None = None,
         temporal_boost: float = 1.0,
         temporal_reason: bool = True,
-        reasoning_pack: bool = False,
+        reasoning_pack: bool = True,
         pattern_completion: bool = True,
         pc_min_overlap: float = 0.25,
         pc_max_overlap: float = 0.95,
