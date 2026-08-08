@@ -4357,6 +4357,52 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
             via_mcp["prompts"][0]["original"],
         )
 
+    def test_review_consistency(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        now = utcnow()
+        fresh = engine.remember(
+            "阿丽喜欢的城市是成都。",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["A"],
+            created_at=now - timedelta(days=30),
+            auto_cues=False,
+        )
+        stale = engine.remember(
+            "阿丽喜欢的食物是饺子。",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["B"],
+            created_at=now - timedelta(days=60),
+            auto_cues=False,
+        )
+        engine.remember(
+            "阿丽喜欢的颜色是蓝色。",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["C"],
+            created_at=now - timedelta(days=10),
+            auto_cues=False,
+        )
+        engine.review(fresh.id, success=True, now=now)
+        engine.review(fresh.id, success=True, now=now)
+        engine.review(stale.id, success=True, now=now - timedelta(days=20))
+        engine.review(stale.id, success=True, now=now - timedelta(days=20))
+        report = engine.review_consistency(now=now)
+        self.assertEqual(report["reviewed_count"], 2)
+        self.assertEqual(report["on_time_count"], 1)
+        self.assertEqual(report["overdue_count"], 1)
+        self.assertEqual(report["never_reviewed_count"], 1)
+        self.assertAlmostEqual(report["adherence_ratio"], 0.5)
+        self.assertEqual(report["verdict"], "medium")
+        self.assertIn("复习", report["advice"])
+        self.assertEqual(report["top_overdue"][0]["memory_id"], stale.id)
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("review_consistency", {})
+        self.assertEqual(via_mcp["verdict"], "medium")
+        self.assertEqual(via_mcp["reviewed_count"], 2)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

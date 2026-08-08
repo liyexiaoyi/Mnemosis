@@ -1821,6 +1821,16 @@ class MCPServer:
                 },
             },
             {
+                "name": "review_consistency",
+                "description": (
+                    "Monitor adherence to the spaced-review schedule: "
+                    "flag overdue reviews, report an adherence ratio and "
+                    "plain advice (Cepeda et al., 2006; self-regulated "
+                    "learning monitoring)."
+                ),
+                "inputSchema": {"type": "object", "properties": {}},
+            },
+            {
                 "name": "retrieval_snapshot",
                 "description": (
                     "Capture a compact memory-state snapshot (knowledge "
@@ -2633,6 +2643,8 @@ class MCPServer:
                 count=int(args.get("count", 3)),
                 min_mastery=float(args.get("min_mastery", 0.7)),
             )
+        if name == "review_consistency":
+            return self.engine.review_consistency()
         if name == "retrieval_snapshot":
             return self.engine.retrieval_snapshot(
                 previous=args.get("previous"),

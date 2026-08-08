@@ -5968,6 +5968,94 @@ class MemoryEngine:
             ),
         }
 
+    def review_consistency(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> dict:
+        """Monitor adherence to the spaced-review schedule (SRL).
+
+        Spacing only works when reviews actually happen at the scheduled
+        time (Cepeda et al., 2006), and monitoring one's own study
+        behavior is a core self-regulated-learning skill (Zimmerman).
+        For every memory with review history this computes the next
+        scheduled review from its last review, flags past-due items,
+        and reports an adherence ratio with plain advice.
+        """
+        now = now or utcnow()
+        reviewed = []
+        never_reviewed = 0
+        for item in self.store.all_active():
+            if item.last_review_at is None:
+                never_reviewed += 1
+                continue
+            due_at = self.scheduler.next_review_at(
+                item, now=item.last_review_at
+            )
+            overdue = now > due_at
+            lateness_days = max(0, (now - due_at).days)
+            reviewed.append(
+                {
+                    "memory_id": item.id,
+                    "preview": item.content[:32],
+                    "review_streak": item.review_streak,
+                    "last_review_at": item.last_review_at.isoformat(),
+                    "scheduled_at": due_at.isoformat(),
+                    "overdue": overdue,
+                    "lateness_days": lateness_days,
+                }
+            )
+        reviewed.sort(key=lambda row: -row["lateness_days"])
+        on_time = sum(1 for row in reviewed if not row["overdue"])
+        total_reviewed = len(reviewed)
+        adherence_ratio = round(
+            on_time / max(1, total_reviewed), 3
+        )
+        avg_lateness = round(
+            sum(row["lateness_days"] for row in reviewed)
+            / max(1, total_reviewed),
+            2,
+        )
+        if adherence_ratio >= 0.8:
+            verdict = "high"
+        elif adherence_ratio >= 0.5:
+            verdict = "medium"
+        else:
+            verdict = "low"
+        if total_reviewed == 0:
+            advice = (
+                "还没有复习记录：间隔复习只有真复习才有用，"
+                "先从到期记忆开始每天复习。"
+            )
+        elif verdict == "high":
+            advice = (
+                f"坚持度 {adherence_ratio:.0%}：复习很准时，"
+                "保持这个节奏，重点看最晚到期的几条。"
+            )
+        elif verdict == "medium":
+            advice = (
+                f"坚持度 {adherence_ratio:.0%}：一半左右复习在到期后补做，"
+                "把复习固定到固定时段，先清积压再上新。"
+            )
+        else:
+            advice = (
+                f"坚持度 {adherence_ratio:.0%}：积压较多，"
+                "建议先只复习最危险（最重要+最晚到期）的几条，"
+                "恢复节奏后再扩量。"
+            )
+        return {
+            "total_memories": len(reviewed) + never_reviewed,
+            "reviewed_count": total_reviewed,
+            "on_time_count": on_time,
+            "overdue_count": total_reviewed - on_time,
+            "never_reviewed_count": never_reviewed,
+            "adherence_ratio": adherence_ratio,
+            "avg_lateness_days": avg_lateness,
+            "verdict": verdict,
+            "top_overdue": reviewed[:3],
+            "advice": advice,
+        }
+
     def sleep_replay(self, now: datetime | None = None) -> dict:
         """Sleep replay: strengthen surprising events, consolidate experience.
 
