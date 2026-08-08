@@ -2708,6 +2708,36 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         )
         self.assertEqual(len(via_mcp["applicable_lessons"]), 2)
 
+    def test_retrieval_quality(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        for i in range(4):
+            engine.remember(
+                f"quality item {i}",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=[f"rq-{i}"],
+                auto_cues=False,
+            )
+        report = engine.retrieval_quality(
+            queries=["rq-0", "rq-1", "rq-2", "rq-3", "zzz miss", "qqq miss"],
+            top_k=3,
+        )
+        self.assertEqual(report["queries_evaluated"], 6)
+        self.assertGreaterEqual(report["hit_count"], 4)
+        self.assertGreaterEqual(report["weak_count"], 1)
+        self.assertTrue(0.0 <= report["hit_rate"] <= 1.0)
+        self.assertIn(
+            report["verdict"], ("good", "fair", "poor")
+        )
+        self.assertIn("avg_top_score", report)
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "retrieval_quality",
+            {"queries": ["rq-0", "rq-1", "zzz miss"], "top_k": 3},
+        )
+        self.assertEqual(via_mcp["queries_evaluated"], 3)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

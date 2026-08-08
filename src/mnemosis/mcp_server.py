@@ -1286,6 +1286,26 @@ class MCPServer:
                 },
             },
             {
+                "name": "retrieval_quality",
+                "description": (
+                    "Measure retrieval quality across queries: average "
+                    "top score, retrievability, hit rate and weak rate "
+                    "(metacognitive monitoring of retrieval, Koriat & "
+                    "Goldsmith 1996)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "queries": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                        "top_k": {"type": "integer"},
+                        "limit": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1915,6 +1935,12 @@ class MCPServer:
             return self.engine.transfer_report(
                 args["plan"],
                 lessons_memory_ids=args.get("lessons_memory_ids"),
+            )
+        if name == "retrieval_quality":
+            return self.engine.retrieval_quality(
+                queries=args.get("queries"),
+                top_k=int(args.get("top_k", 5)),
+                limit=int(args.get("limit", 10)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")

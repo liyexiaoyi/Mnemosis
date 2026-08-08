@@ -2266,6 +2266,74 @@ class MemoryEngine:
             "suggestion": "把适用的经验写进计划注意事项，避免重复踩坑",
         }
 
+    def retrieval_quality(
+        self,
+        queries: list[str] | None = None,
+        top_k: int = 5,
+        now: datetime | None = None,
+        limit: int = 10,
+    ) -> dict:
+        """Measure retrieval quality across a set of queries.
+
+        Metacognitive monitoring of retrieval (Koriat & Goldsmith, 1996):
+        run the real recall pipeline over known queries and report average
+        top score, top retrievability, hit rate and weak rate.
+        """
+        if not queries:
+            queries = [
+                item.cues[0]
+                for item in self.store.all_active()
+                if item.cues
+            ][: max(1, int(limit))]
+        top_scores = []
+        top_retrievability = []
+        hit_count = 0
+        weak_count = 0
+        for query in queries:
+            results = self.recall(query, top_k=max(1, int(top_k)), now=now)
+            if not results:
+                weak_count += 1
+                continue
+            top = results[0]
+            top_scores.append(top.score)
+            top_retrievability.append(
+                self.curve.retrievability(top.item, now)
+            )
+            if any(
+                "overlap" in reason or "semantic" in reason
+                for reason in top.reasons
+            ):
+                hit_count += 1
+            else:
+                weak_count += 1
+        evaluated = len(queries)
+        hit_rate = (
+            round(hit_count / evaluated, 3) if evaluated else 0.0
+        )
+        weak_rate = (
+            round(weak_count / evaluated, 3) if evaluated else 0.0
+        )
+        verdict = (
+            "good" if hit_rate >= 0.8 else (
+                "fair" if hit_rate >= 0.5 else "poor"
+            )
+        )
+        return {
+            "queries_evaluated": evaluated,
+            "hit_count": hit_count,
+            "weak_count": weak_count,
+            "avg_top_score": round(
+                sum(top_scores) / max(1, len(top_scores)), 3
+            ),
+            "avg_top_retrievability": round(
+                sum(top_retrievability) / max(1, len(top_retrievability)),
+                3,
+            ),
+            "hit_rate": hit_rate,
+            "weak_rate": weak_rate,
+            "verdict": verdict,
+        }
+
     def retrieval_assist(
         self,
         query: str,
