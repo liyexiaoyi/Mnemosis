@@ -954,6 +954,20 @@ class MCPServer:
                 },
             },
             {
+                "name": "coverage_report",
+                "description": (
+                    "Report review coverage per topic schema: memory "
+                    "count, reviewed count, coverage ratio, average "
+                    "retrievability/importance and status."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1514,6 +1528,10 @@ class MCPServer:
                 args["memory_id"],
                 days=int(args.get("days", 30)),
                 step_days=int(args.get("step_days", 1)),
+            )
+        if name == "coverage_report":
+            return self.engine.coverage_report(
+                limit=int(args.get("limit", 20)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")

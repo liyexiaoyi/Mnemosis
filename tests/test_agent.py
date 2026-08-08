@@ -2089,6 +2089,40 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(len(via_mcp["points"]), 31)
         self.assertIn("initial", via_mcp)
 
+    def test_coverage_report(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+
+        def _add(topic: str, n: int, reviewed: int) -> None:
+            for i in range(n):
+                item = engine.remember(
+                    f"cov {topic} {i}",
+                    kind=MemoryKind.SEMANTIC,
+                    source=user,
+                    cues=[topic],
+                    auto_cues=False,
+                )
+                if i < reviewed:
+                    item.retrieval_successes = 1
+                    engine.backend.update(item)
+
+        _add("主题甲", 4, 3)
+        _add("主题乙", 4, 1)
+        _add("主题丙", 2, 0)
+        report = engine.coverage_report()
+        self.assertEqual(report["total_topics"], 3)
+        by_topic = {t["topic"]: t for t in report["topics"]}
+        self.assertEqual(by_topic["主题甲"]["coverage"], 0.75)
+        self.assertEqual(by_topic["主题甲"]["status"], "good")
+        self.assertEqual(by_topic["主题乙"]["coverage"], 0.25)
+        self.assertEqual(by_topic["主题乙"]["status"], "partial")
+        self.assertEqual(by_topic["主题丙"]["coverage"], 0.0)
+        self.assertEqual(by_topic["主题丙"]["status"], "unreviewed")
+        self.assertEqual(by_topic["主题甲"]["reviewed_count"], 3)
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("coverage_report", {"limit": 10})
+        self.assertEqual(via_mcp["total_topics"], 3)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

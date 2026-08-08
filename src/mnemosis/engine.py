@@ -1190,6 +1190,61 @@ class MemoryEngine:
             "points": points,
         }
 
+    def coverage_report(
+        self,
+        now: datetime | None = None,
+        limit: int = 20,
+    ) -> dict:
+        """Report review coverage per topic schema.
+
+        Spaced-review systems need coverage monitoring: a topic with many
+        never-reviewed memories is a blind spot. This reports, per topic,
+        memory count, reviewed count, coverage ratio, average
+        retrievability/importance and a status.
+        """
+        schema = self.schema_report(limit=max(1, int(limit)))
+        topics = []
+        for group in schema["top_groups"]:
+            topic = group["topic"]
+            members = [
+                item
+                for item in self.store.all_active()
+                if item.cues and item.cues[0] == topic
+            ]
+            reviewed = [
+                item for item in members
+                if item.retrieval_successes + item.retrieval_failures > 0
+            ]
+            count = len(members)
+            coverage = round(len(reviewed) / count, 3) if count else 1.0
+            if coverage == 0:
+                status = "unreviewed"
+            elif coverage < 0.5:
+                status = "partial"
+            else:
+                status = "good"
+            topics.append(
+                {
+                    "topic": topic,
+                    "memory_count": count,
+                    "reviewed_count": len(reviewed),
+                    "coverage": coverage,
+                    "avg_retrievability": round(
+                        sum(
+                            self.curve.retrievability(item, now)
+                            for item in members
+                        ) / max(1, count),
+                        3,
+                    ),
+                    "avg_importance": group["avg_importance"],
+                    "status": status,
+                }
+            )
+        return {
+            "topics": topics,
+            "total_topics": len(topics),
+        }
+
     def retrieval_assist(
         self,
         query: str,
