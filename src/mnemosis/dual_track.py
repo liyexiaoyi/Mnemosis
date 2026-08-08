@@ -336,12 +336,26 @@ class DualTrackStore:
         least `min_shared_cues` cues AND high lexical overlap with the top
         match, but are a different memory, lose a little score. Only the
         top-10 window is considered, so large stores stay cheap.
+
+        Evidence-weighted protection (learning science: strength/evidence
+        accumulation; Anderson 1974; complementary learning systems,
+        McClelland et al. 1995): among a near-duplicate group, the memory
+        with the most confirmations (`evidence_count`) is *protected* from
+        the separation penalty and gets a small boost, so a well-confirmed
+        fact can win over weak same-pattern rivals. When all memories have
+        evidence_count == 1 (the default), behavior is unchanged.
         """
         if len(scored) < 2:
             return
         _, _, top_item, _, _ = scored[0]
         top_cues = set(top_item.cues)
         top_terms = self._terms(top_item)
+        # Pass 1: find the near-duplicate group (relative to the top match)
+        # and the group's strongest evidence. Protection must be scoped to
+        # the group, not the whole window (another person's high-evidence
+        # memory in the window must not block this group's protection).
+        group: list[int] = []
+        group_max_evidence = top_item.evidence_count
         for index in range(1, min(len(scored), 10)):
             score, overlap, item, reasons, matched = scored[index]
             if item.content_hash == top_item.content_hash:
@@ -355,13 +369,50 @@ class DualTrackStore:
             jaccard = len(intersection) / len(union)
             if jaccard < overlap_min:
                 continue
-            scored[index] = (
-                max(0.0, score - penalty),
-                overlap,
-                item,
-                reasons + ["\u6a21\u5f0f\u5206\u79bb(\u76f8\u4f3c\u4f46\u4e0d\u540c)"],
-                matched,
-            )
+            group.append(index)
+            group_max_evidence = max(group_max_evidence, item.evidence_count)
+        # Pass 2: penalize weaker-evidence rivals; protect the strongest one.
+        changed = False
+        for index in group:
+            score, overlap, item, reasons, matched = scored[index]
+            if (
+                group_max_evidence > 1
+                and item.evidence_count >= group_max_evidence
+            ):
+                # strongest-evidenced rival: protect and nudge upward
+                scored[index] = (
+                    score + penalty * 0.5,
+                    overlap,
+                    item,
+                    reasons + [
+                        "\u8bc1\u636e\u52a0\u6743\u4fdd\u62a4"
+                        "(\u540c\u6a21\u5f0f\u4e2d\u8bc1\u636e\u6700\u591a)"
+                    ],
+                    matched,
+                )
+                changed = True
+            else:
+                if (
+                    group_max_evidence > 1
+                    and group_max_evidence >= 2 * max(1, item.evidence_count)
+                ):
+                    # A clearly stronger-evidenced fact exists: push the
+                    # weak rival out of the default context so the LLM does
+                    # not see a stale contradiction (belief updating /
+                    # reconsolidation; Nader et al. 2000, Smolen et al. 2016).
+                    effective_penalty = penalty * 3
+                else:
+                    effective_penalty = penalty
+                scored[index] = (
+                    max(0.0, score - effective_penalty),
+                    overlap,
+                    item,
+                    reasons + ["\u6a21\u5f0f\u5206\u79bb(\u76f8\u4f3c\u4f46\u4e0d\u540c)"],
+                    matched,
+                )
+        if changed:
+            # a protected rival may now outrank the previous top item
+            scored.sort(key=lambda entry: entry[0], reverse=True)
 
     def _pattern_completion(
         self,
