@@ -70,3 +70,9 @@ jobs:
           --out /tmp/synonym_10k_smoke.json
         env:
           PYTHONPATH: src
+      - name: Outcome evidence 10k smoke (3 questions, retrieval only)
+        run: >
+          python benchmarks/outcome_evidence_10k_bench.py
+          --out /tmp/outcome_10k_smoke.json
+        env:
+          PYTHONPATH: src
