@@ -132,15 +132,17 @@ class Consolidator:
         """Replay important-but-fading traces during sleep.
 
         Sleep-dependent consolidation prioritises salient content
-        (Stickgold & Walker, 2013): a high-importance memory that is about
-        to fade gets a bounded durable gain even if it is old and outside
-        the recency window. This protects important knowledge from silent
-        forgetting.
+        (Stickgold & Walker, 2013): a high-importance *consolidated
+        semantic* trace that is about to fade gets a bounded durable gain
+        even if it is old and outside the recency window. Episodes keep
+        their existing recency-based replay contract; this protects
+        important knowledge from silent forgetting.
         """
         candidates = [
             item
             for item in self.store.all_active()
-            if item.importance >= self.weak_replay_importance
+            if item.kind is MemoryKind.SEMANTIC
+            and item.importance >= self.weak_replay_importance
             and self.store.curve.retrievability(item, now)
             < self.weak_replay_threshold
         ]
