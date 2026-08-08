@@ -3428,6 +3428,62 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["risk_level"], "medium")
         self.assertEqual(len(via_mcp["risky_memories"]), 1)
 
+    def test_consolidation_forecast(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        key = engine.remember(
+            "高数重点",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["数学"],
+            importance=0.9,
+            affect="negative",
+            strength=0.4,
+            auto_cues=False,
+        )
+        engine.remember(
+            "日常笔记",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["笔记"],
+            importance=0.6,
+            strength=0.8,
+            auto_cues=False,
+        )
+        engine.remember(
+            "获奖",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["荣誉"],
+            importance=0.8,
+            affect="positive",
+            strength=0.95,
+            auto_cues=False,
+        )
+        engine.remember(
+            "琐事",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["琐事"],
+            importance=0.2,
+            strength=0.9,
+            auto_cues=False,
+        )
+        report = engine.consolidation_forecast(limit=4)
+        self.assertEqual(report["total_memories"], 4)
+        top = report["tonight_candidates"][0]
+        self.assertEqual(top["id"], key.id)
+        self.assertGreaterEqual(top["consolidation_score"], 0.8)
+        self.assertTrue(top["reason"])
+        self.assertGreater(report["predicted_gain_total"], 0)
+        self.assertTrue(report["advice"])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "consolidation_forecast", {"limit": 4}
+        )
+        self.assertEqual(len(via_mcp["tonight_candidates"]), 4)
+        self.assertEqual(via_mcp["tonight_candidates"][0]["id"], key.id)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

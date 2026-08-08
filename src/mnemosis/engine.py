@@ -3335,6 +3335,77 @@ class MemoryEngine:
             "advice": advice,
         }
 
+    def consolidation_forecast(
+        self,
+        *,
+        limit: int = 5,
+        now: datetime | None = None,
+    ) -> dict:
+        """Predict which memories will benefit most from sleep.
+
+        Sleep consolidates memory, and pre-sleep rehearsal of important
+        material strengthens it (Rasch & Born, 2013). Emotional salience
+        also boosts overnight consolidation (Cahill & McGaugh, 1998).
+        This tool scores every memory's overnight-gain potential and
+        returns tonight's review candidates with predicted gain.
+        """
+        items = self.store.all_active()
+        rows: list[dict] = []
+        for item in items:
+            r = self.curve.retrievability(item, now)
+            emotional = int(
+                item.affect in ("positive", "negative", "arousing", "mixed")
+            )
+            weak_boost = 0.5 if r < 0.6 else 0.0
+            score = round(
+                min(
+                    1.0,
+                    0.4 * item.importance
+                    + 0.3 * emotional
+                    + 0.3 * weak_boost,
+                ),
+                3,
+            )
+            gain = round(max(0.0, 1.0 - r) * item.importance, 3)
+            rows.append(
+                {
+                    "id": item.id,
+                    "preview": item.content[:36],
+                    "importance": round(item.importance, 3),
+                    "affect": item.affect or "neutral",
+                    "retrievability": round(r, 3),
+                    "consolidation_score": score,
+                    "predicted_gain": gain,
+                    "reason": (
+                        "重要 + 情绪显著 + 需要巩固，睡眠收益最大"
+                        if score >= 0.8
+                        else "重要或情绪记忆，睡前过一遍可强化"
+                        if score >= 0.5
+                        else "巩固收益一般，按常规间隔复习即可"
+                    ),
+                }
+            )
+        rows.sort(
+            key=lambda row: (
+                -row["consolidation_score"],
+                -row["predicted_gain"],
+            )
+        )
+        top = rows[: max(1, int(limit))]
+        return {
+            "total_memories": len(items),
+            "tonight_candidates": top,
+            "predicted_gain_total": round(
+                sum(row["predicted_gain"] for row in top), 3
+            ),
+            "advice": (
+                "睡前把今晚候选快速过一遍，睡后巩固效果最好"
+                "（Rasch & Born 2013）。"
+                if top
+                else "暂无高收益候选，保持常规复习即可。"
+            ),
+        }
+
     def retrieval_assist(
         self,
         query: str,

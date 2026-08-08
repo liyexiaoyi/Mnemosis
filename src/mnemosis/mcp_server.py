@@ -1529,6 +1529,21 @@ class MCPServer:
                 },
             },
             {
+                "name": "consolidation_forecast",
+                "description": (
+                    "Predict which memories gain most from overnight "
+                    "consolidation (importance + emotional salience + "
+                    "weakness) and list tonight's review candidates "
+                    "(sleep consolidation; Rasch & Born, 2013)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -2230,6 +2245,10 @@ class MCPServer:
         if name == "rumination_check":
             return self.engine.rumination_check(
                 access_threshold=int(args.get("access_threshold", 5)),
+            )
+        if name == "consolidation_forecast":
+            return self.engine.consolidation_forecast(
+                limit=int(args.get("limit", 5)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")
