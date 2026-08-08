@@ -14,6 +14,7 @@ from .backend import Backend
 from .forgetting import ForgettingCurve
 from .importance import ImportanceScorer
 from .embedding import Embedder
+from .reasoning import apply_premise_pack
 from .schema import EventChainIndex
 from .temporal_reason import apply_time_cell_reasoning
 from .types import (
@@ -102,6 +103,7 @@ class DualTrackStore:
         event_chain: EventChainIndex | None = None,
         temporal_boost: float = 1.0,
         temporal_reason: bool = True,
+        reasoning_pack: bool = False,
         pattern_completion: bool = True,
         pc_min_overlap: float = 0.25,
         pc_max_overlap: float = 0.95,
@@ -226,6 +228,13 @@ class DualTrackStore:
             )
         if temporal_reason:
             apply_time_cell_reasoning(
+                scored,
+                candidates,
+                query,
+                query_terms,
+            )
+        if reasoning_pack:
+            apply_premise_pack(
                 scored,
                 candidates,
                 query,

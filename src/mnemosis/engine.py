@@ -160,6 +160,7 @@ class MemoryEngine:
         expansion_discount: float = 0.95,
         temporal_boost: float = 1.0,
         temporal_reason: bool = True,
+        reasoning_pack: bool = False,
         pattern_completion: bool = True,
         separation: bool = True,
         kind_preference: bool = True,
@@ -179,9 +180,31 @@ class MemoryEngine:
             event_chain=self.event_chain,
             temporal_boost=temporal_boost,
             temporal_reason=temporal_reason,
+            reasoning_pack=reasoning_pack,
             pattern_completion=pattern_completion,
             separation=separation,
             kind_preference=kind_preference,
+        )
+
+    def recall_reasoning(
+        self,
+        query: str,
+        *,
+        top_k: int = 8,
+        now: datetime | None = None,
+    ) -> list[RecallResult]:
+        """System-2 recall: assemble a reasoning premise pack.
+
+        Fast keyword retrieval (System 1) plus a bounded boost for all
+        same-dimension premises (math / compare / transitive questions), so
+        the full premise set reaches the LLM context (Kahneman 2011;
+        Miller & Cohen 2001).
+        """
+        return self.recall(
+            query,
+            top_k=top_k,
+            now=now,
+            reasoning_pack=True,
         )
 
     # -- sleep cycle ----------------------------------------------------------
