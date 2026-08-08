@@ -73,6 +73,7 @@ def _run(second_look: bool) -> dict:
             f"alpha{i}",
             top_k=3,
             second_look=second_look,
+            corroboration_boost=False,
         )
         if not results[0].confident:
             shaky += 1
