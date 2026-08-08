@@ -368,6 +368,30 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         result = server._call_tool("predict_step", {"step": "订机票"})
         self.assertEqual(result["success_probability"], 1.0)
 
+    def test_sleep_replay_consolidates_and_strengthens(self) -> None:
+        engine = MemoryEngine()
+        for _ in range(5):
+            engine.record_outcome("旅行", "订机票", success=True)
+        surprising = engine.record_outcome(
+            "旅行", "订机票", success=False, note="航班取消"
+        )
+        retrieval_before = surprising.retrieval_successes
+        for _ in range(3):
+            engine.record_outcome("旅行", "买相机", success=True)
+        report = engine.sleep_replay()
+        self.assertEqual(report["replayed_surprising"], 1)
+        self.assertEqual(report["consolidated_steps"], 2)
+        self.assertGreater(surprising.retrieval_successes, retrieval_before)
+        pred = engine.predict_step("订机票")
+        self.assertEqual(pred["source"], "consolidated")
+        self.assertAlmostEqual(
+            pred["success_probability"], 5 / 6, places=3
+        )
+        summary = engine.recall("订机票 历史成功率", top_k=3)
+        self.assertTrue(
+            any("历史成功率" in r.item.content for r in summary)
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -692,11 +692,86 @@ class MemoryEngine:
 
     def predict_step(self, step: str) -> dict:
         """Predict a step's success probability from outcome history."""
+        _ACTION_PREFIXES = "订买卖打包收拾请找定学搬选入"
+        noun = step.lstrip(_ACTION_PREFIXES) or step
+        # fast path: consolidated step-experience summary from sleep replay
+        for item in self.backend.list(kind=MemoryKind.SEMANTIC):
+            if "历史成功率" not in item.content:
+                continue
+            if noun not in item.content and step not in item.content:
+                continue
+            match = __import__("re").search(
+                r"(\d+)\s*/\s*(\d+)", item.content
+            )
+            if match:
+                success = float(match.group(1))
+                total = float(match.group(2))
+                if total > 0:
+                    ratio = success / total
+                    return {
+                        "step": step,
+                        "success_probability": round(ratio, 3),
+                        "confidence": round(abs(ratio - 0.5) * 2, 3),
+                        "source": "consolidated",
+                    }
         ratio = self._step_success_ratio(step)
         return {
             "step": step,
             "success_probability": round(ratio, 3),
             "confidence": round(abs(ratio - 0.5) * 2, 3),
+            "source": "records",
+        }
+
+    def sleep_replay(self, now: datetime | None = None) -> dict:
+        """Sleep replay: strengthen surprising events, consolidate experience.
+
+        Hippocampal replay (Wilson & McNaughton, 1994) preferentially
+        replays salient waking events; sleep-dependent consolidation
+        (Stickgold & Walker, 2013) stabilizes them. Prediction-error marked
+        records ("意外") get a small strength boost, and each step's outcome
+        history is consolidated into a semantic "历史成功率" summary.
+        """
+        _ACTION_PREFIXES = "订买卖打包收拾请找定学搬选入"
+        steps: dict[str, list[int]] = {}
+        replayed = 0
+        for item in self.backend.list(kind=MemoryKind.EPISODIC):
+            if "执行成功" not in item.content and "执行失败" not in item.content:
+                continue
+            if len(item.cues) < 3:
+                continue
+            step_cue = item.cues[1]
+            noun = step_cue.lstrip(_ACTION_PREFIXES) or step_cue
+            steps.setdefault(noun, [0, 0])
+            if "执行成功" in item.content:
+                steps[noun][0] += max(1, item.evidence_count)
+            else:
+                steps[noun][1] += max(1, item.evidence_count)
+            if "意外" in item.cues:
+                item.retrieval_successes += 1
+                if item.strength < 1.0:
+                    item.strength = round(min(1.0, item.strength + 0.05), 4)
+                self.backend.update(item)
+                replayed += 1
+
+        consolidated = 0
+        source = SourceRecord(origin=SourceType.INFERENCE)
+        for noun, (success, failure) in steps.items():
+            total = success + failure
+            if total < 2:
+                continue
+            self.remember(
+                f"步骤“{noun}”的历史成功率：{success}/{total}。",
+                kind=MemoryKind.SEMANTIC,
+                source=source,
+                cues=[noun, "成功率"],
+                importance=0.7,
+                evidence_count=total,
+                created_at=now,
+            )
+            consolidated += 1
+        return {
+            "replayed_surprising": replayed,
+            "consolidated_steps": consolidated,
         }
 
     # -- sleep cycle ----------------------------------------------------------
