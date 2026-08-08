@@ -274,6 +274,8 @@ class MCPServer:
                     "properties": {
                         "limit": {"type": "integer"},
                         "desirable_difficulty": {"type": "boolean"},
+                        "min_gap_hours": {"type": "number"},
+                        "adaptive_gap": {"type": "boolean"},
                     },
                 },
             },
@@ -582,6 +584,8 @@ class MCPServer:
                 desirable_difficulty=bool(
                     args.get("desirable_difficulty", True)
                 ),
+                min_gap_hours=float(args.get("min_gap_hours", 24.0)),
+                adaptive_gap=bool(args.get("adaptive_gap", True)),
             )
         if name == "practice_answer":
             return self.engine.practice_answer(

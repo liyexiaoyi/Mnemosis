@@ -529,6 +529,32 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         massed = engine.practice_due(limit=5, now=now, min_gap_hours=0)
         self.assertTrue(any(d["id"] == item.id for d in massed))
 
+    def test_success_rate_and_adaptive_gap_params(self) -> None:
+        engine = MemoryEngine()
+        item = engine.remember(
+            "阿丽喜欢的颜色是蓝色。",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["阿丽", "颜色"],
+            importance=0.8,
+            strength=0.4,
+            created_at=utcnow() - timedelta(days=20),
+        )
+        item.retrieval_successes = 1
+        item.retrieval_failures = 2
+        engine.backend.update(item)
+        self.assertAlmostEqual(engine._success_rate(item), 1 / 3)
+        cards = engine.practice_due(
+            limit=5, min_gap_hours=0, adaptive_gap=True
+        )
+        self.assertTrue(any(c["id"] == item.id for c in cards))
+        server = MCPServer(engine=engine)
+        result = server._call_tool(
+            "practice_due",
+            {"limit": 5, "min_gap_hours": 0, "adaptive_gap": True},
+        )
+        self.assertTrue(isinstance(result, list))
+
 
 if __name__ == "__main__":
     unittest.main()

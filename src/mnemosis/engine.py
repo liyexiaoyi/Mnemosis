@@ -781,6 +781,7 @@ class MemoryEngine:
         *,
         desirable_difficulty: bool = True,
         min_gap_hours: float = 24.0,
+        adaptive_gap: bool = True,
     ) -> list[dict]:
         """Active retrieval practice: due memories shown as cues only.
 
@@ -797,11 +798,20 @@ class MemoryEngine:
             desirable_difficulty=desirable_difficulty,
         )
         if min_gap_hours > 0:
-            items = [
-                item for item in items
-                if self.curve.hours_since_last_access(item, now)
-                >= min_gap_hours
-            ][:limit]
+            kept = []
+            for item in items:
+                gap = min_gap_hours
+                if adaptive_gap:
+                    rate = self._success_rate(item)
+                    total = item.retrieval_successes + item.retrieval_failures
+                    if total > 0 and rate < 0.5:
+                        # struggling memory: practise again sooner
+                        gap *= 0.6
+                    elif total > 0 and rate >= 0.9:
+                        gap *= 1.3
+                if self.curve.hours_since_last_access(item, now) >= gap:
+                    kept.append(item)
+            items = kept[:limit]
         else:
             items = items[:limit]
         return [
@@ -811,6 +821,12 @@ class MemoryEngine:
             }
             for item in items
         ]
+
+    def _success_rate(self, item: MemoryItem) -> float:
+        total = item.retrieval_successes + item.retrieval_failures
+        if total == 0:
+            return 0.5
+        return item.retrieval_successes / total
 
     def practice_answer(
         self,
