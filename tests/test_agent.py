@@ -3974,6 +3974,57 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["week_summary"]["total_memories"], 4)
         self.assertGreaterEqual(len(via_mcp["next_week_plan"]), 1)
 
+    def test_transfer_prompt(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        math_items = []
+        for i in range(2):
+            item = engine.remember(
+                f"数学公式 {i}",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["数学"],
+                confidence=0.9,
+                strength=0.9,
+                auto_cues=False,
+            )
+            item.retrieval_successes = 9
+            item.retrieval_failures = 1
+            engine.backend.update(item)
+            math_items.append(item)
+        engine.remember(
+            "物理新概念",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["物理"],
+            confidence=0.4,
+            strength=0.4,
+            auto_cues=False,
+        )
+        report = engine.transfer_prompt(count=2)
+        self.assertEqual(report["topics"][0]["topic"], "数学")
+        self.assertGreaterEqual(len(report["prompts"]), 1)
+        self.assertTrue(
+            all(
+                prompt["answer_hidden"]
+                for prompt in report["prompts"]
+            )
+        )
+        self.assertTrue(
+            all(
+                engine.backend.get(prompt["memory_id"]) is not None
+                for prompt in report["prompts"]
+            )
+        )
+        self.assertIn("迁移", report["prompts"][0]["question"])
+        self.assertTrue(report["advice"])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "transfer_prompt", {"count": 2}
+        )
+        self.assertEqual(via_mcp["topics"][0]["topic"], "数学")
+        self.assertGreaterEqual(len(via_mcp["prompts"]), 1)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

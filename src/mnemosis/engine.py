@@ -4085,6 +4085,69 @@ class MemoryEngine:
             ),
         }
 
+    def transfer_prompt(
+        self,
+        *,
+        count: int = 3,
+        min_mastery: float = 0.7,
+        now: datetime | None = None,
+    ) -> dict:
+        """Generate cross-context application questions (far transfer).
+
+        Transfer depends on applying knowledge in a new context (Barnett
+        & Ceci, 2002). This tool picks mastered topics from mastery_map
+        and builds hidden-answer prompts that apply the knowledge to a
+        new scenario instead of re-asking the original fact.
+        """
+        mastery = self.mastery_map(now=now)
+        mastered = [
+            topic for topic in mastery["topics"]
+            if topic["flag"] == "mastered"
+            and topic["mastery"] >= min_mastery
+        ]
+        chosen = mastered[: max(1, int(count))]
+        if not chosen:
+            chosen = mastery["topics"][: max(1, int(count))]
+        scenarios = [
+            "一个陌生领域",
+            "一次真实任务",
+            "一个反例场景",
+        ]
+        prompts: list[dict] = []
+        for index, topic in enumerate(chosen):
+            items = [
+                item
+                for item in self.store.all_active()
+                if item.cues and item.cues[0] == topic["topic"]
+            ]
+            for item in items[:1]:
+                scenario = scenarios[index % len(scenarios)]
+                prompts.append(
+                    {
+                        "memory_id": item.id,
+                        "topic": topic["topic"],
+                        "question": (
+                            f"【迁移】把「{topic['topic']}」的知识用到"
+                            f"{scenario}：说明怎么应用（答案隐藏）。"
+                        ),
+                        "hint_cues": item.cues[:3],
+                        "answer_hidden": True,
+                    }
+                )
+        return {
+            "topics": [
+                {"topic": topic["topic"], "mastery": topic["mastery"]}
+                for topic in chosen
+            ],
+            "prompts": prompts,
+            "advice": (
+                "迁移题已生成：已掌握主题换新场景应用，"
+                "检验的是真理解而不是死记（Barnett & Ceci 2002）。"
+                if prompts
+                else "暂无已掌握主题：先巩固基础，再练迁移。"
+            ),
+        }
+
     def retrieval_assist(
         self,
         query: str,

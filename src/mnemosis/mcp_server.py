@@ -1691,6 +1691,21 @@ class MCPServer:
                 "inputSchema": {"type": "object", "properties": {}},
             },
             {
+                "name": "transfer_prompt",
+                "description": (
+                    "Generate hidden-answer application questions from "
+                    "mastered topics, applying knowledge to new contexts "
+                    "(far transfer; Barnett & Ceci, 2002)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "count": {"type": "integer"},
+                        "min_mastery": {"type": "number"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -2442,6 +2457,11 @@ class MCPServer:
             )
         if name == "weekly_review":
             return self.engine.weekly_review()
+        if name == "transfer_prompt":
+            return self.engine.transfer_prompt(
+                count=int(args.get("count", 3)),
+                min_mastery=float(args.get("min_mastery", 0.7)),
+            )
         if name == "practice_due":
             kind_value = args.get("kind")
             from .types import MemoryKind
