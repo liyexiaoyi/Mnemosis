@@ -282,6 +282,15 @@ class MCPServer:
                 },
             },
             {
+                "name": "list_conflicts",
+                "description": (
+                    "Return active memory conflicts: same cue, both "
+                    "confident, different content. Agents can use this to "
+                    "spot contradictions before answering."
+                ),
+                "inputSchema": {"type": "object", "properties": {}},
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -647,6 +656,18 @@ class MCPServer:
                     "reasons": result.reasons,
                 }
                 for result in results
+            ]
+        if name == "list_conflicts":
+            conflicts = self.engine.consolidator.detect_conflicts()
+            return [
+                {
+                    "a_id": conflict.a.id,
+                    "a": conflict.a.content,
+                    "b_id": conflict.b.id,
+                    "b": conflict.b.content,
+                    "reason": conflict.reason,
+                }
+                for conflict in conflicts
             ]
         if name == "practice_due":
             kind_value = args.get("kind")

@@ -493,6 +493,30 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertIn("reasons", results[0])
         self.assertIn("score", results[0])
 
+    def test_mcp_list_conflicts(self) -> None:
+        engine = MemoryEngine()
+        engine.remember(
+            "alpha says 1",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["alpha"],
+            confidence=0.8,
+        )
+        engine.remember(
+            "alpha says 2",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["alpha"],
+            confidence=0.8,
+        )
+        server = MCPServer(engine=engine)
+        conflicts = server._call_tool("list_conflicts", {})
+        self.assertEqual(len(conflicts), 1)
+        self.assertEqual(
+            {conflicts[0]["a"], conflicts[0]["b"]},
+            {"alpha says 1", "alpha says 2"},
+        )
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(
