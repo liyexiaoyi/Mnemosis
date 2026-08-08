@@ -208,11 +208,6 @@ class DualTrackStore:
                 if source_trust_boost
                 else 0.0
             )
-            if source_trust_boost and item.source.trust >= 0.95:
-                # Source monitoring (Johnson, Hashtroudi & Lindsay, 1993):
-                # when several traces compete, prefer the one from a more
-                # trustworthy origin instead of letting recency win.
-                reasons.append("来源可信(高)")
             if query_vector is not None:
                 item_vector = self._embedding(item, embedder)
                 semantic = embedder.cosine(query_vector, item_vector)
@@ -236,6 +231,11 @@ class DualTrackStore:
                 )
             if overlap > 0:
                 reasons.append(f"cue/keyword overlap {overlap:.2f}")
+            if source_trust_boost and item.source.trust >= 0.95:
+                # Source monitoring (Johnson, Hashtroudi & Lindsay, 1993):
+                # when several traces compete, prefer the one from a more
+                # trustworthy origin instead of letting recency win.
+                reasons.append("来源可信(高)")
             if action_cued and item.kind is MemoryKind.EPISODIC:
                 score += 0.05
                 reasons.append("action-cued episodic preference")
