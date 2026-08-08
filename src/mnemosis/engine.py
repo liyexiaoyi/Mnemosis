@@ -2853,6 +2853,90 @@ class MemoryEngine:
             ),
         }
 
+    def goal_replay(
+        self,
+        goal: str,
+        *,
+        top_k: int = 5,
+        now: datetime | None = None,
+    ) -> dict:
+        """Replay goal-related memories to plan the next move.
+
+        Planning in the brain is implemented through prefrontal-
+        hippocampal replay: goal states are replayed offline to improve
+        decisions (Jensen, Hennequin & Mattar, 2024), and complex
+        problem solving cycles through goal silencing and reactivation
+        (Watanabe et al., 2023). This tool replays memories relevant to
+        a goal, checks past successes/failures and overdue intentions,
+        and produces a replay-ready step plan.
+        """
+        results = self.recall(goal, top_k=max(1, int(top_k)), now=now)
+        evidence = [
+            {
+                "id": result.item.id,
+                "preview": result.item.content[:44],
+                "kind": result.item.kind.value,
+                "score": round(result.score, 3),
+                "has_lesson": any(
+                    marker in result.item.content
+                    for marker in ("成功", "失败", "learned", "success")
+                ),
+            }
+            for result in results
+            if result.score >= 0.05
+        ]
+        lessons = [item for item in evidence if item["has_lesson"]]
+        queue = self.action_queue(now=now)
+        overdue = queue["overdue"]
+        conflicts = len(self.consolidator.detect_conflicts())
+        replay_steps = [
+            {
+                "order": 1,
+                "step": "目标回放：想起与目标相关的记忆",
+                "evidence_ids": [item["id"] for item in evidence],
+                "verdict": "ok" if evidence else "weak",
+            },
+            {
+                "order": 2,
+                "step": "经验提取：过去的成功/失败",
+                "evidence_ids": [item["id"] for item in lessons],
+                "verdict": "ok" if lessons else "weak",
+            },
+            {
+                "order": 3,
+                "step": "待办重激活：把搁置的下一步找回来",
+                "evidence_ids": [],
+                "verdict": "ok" if overdue else "weak",
+            },
+            {
+                "order": 4,
+                "step": "冲突检查后形成计划",
+                "evidence_ids": [],
+                "verdict": "ok" if not conflicts else "weak",
+            },
+        ]
+        evidence_ratio = min(1.0, len(evidence) / max(1, int(top_k)))
+        lesson_ratio = 1.0 if lessons else 0.0
+        conflict_ratio = 0.0 if conflicts else 1.0
+        replay_score = round(
+            0.4 * evidence_ratio + 0.3 * lesson_ratio + 0.3 * conflict_ratio,
+            3,
+        )
+        return {
+            "goal": goal,
+            "evidence_used": evidence,
+            "lessons_found": len(lessons),
+            "overdue_reactivations": overdue,
+            "replay_steps": replay_steps,
+            "replay_score": replay_score,
+            "advice": (
+                "重放就绪：按步骤执行，先做逾期待办，"
+                "并在行动前复查经验教训。"
+                if replay_score >= 0.7
+                else "重放证据不足：先补记忆（经验/待办），再开始行动。"
+            ),
+        }
+
     def retrieval_assist(
         self,
         query: str,

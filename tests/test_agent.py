@@ -3129,6 +3129,45 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertTrue(via_mcp["stored_memory_id"])
         self.assertEqual(len(via_mcp["steps"]), 4)
 
+    def test_goal_replay(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        engine.remember(
+            "上次搬家 打包箱子 成功",
+            kind=MemoryKind.EPISODIC,
+            source=user,
+            cues=["搬家"],
+            auto_cues=False,
+        )
+        engine.remember(
+            "上次搬家 找搬家公司 失败",
+            kind=MemoryKind.EPISODIC,
+            source=user,
+            cues=["搬家"],
+            auto_cues=False,
+        )
+        engine.remember_intent(
+            "预约搬家公司", due_at=utcnow() - timedelta(hours=1)
+        )
+        report = engine.goal_replay("搬家")
+        self.assertGreaterEqual(len(report["evidence_used"]), 1)
+        self.assertGreaterEqual(report["lessons_found"], 1)
+        self.assertGreaterEqual(report["overdue_reactivations"], 1)
+        self.assertEqual(
+            [step["order"] for step in report["replay_steps"]],
+            [1, 2, 3, 4],
+        )
+        self.assertTrue(0 <= report["replay_score"] <= 1)
+        self.assertTrue(report["advice"])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "goal_replay", {"goal": "搬家"}
+        )
+        self.assertGreaterEqual(via_mcp["lessons_found"], 1)
+        self.assertGreaterEqual(via_mcp["overdue_reactivations"], 1)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

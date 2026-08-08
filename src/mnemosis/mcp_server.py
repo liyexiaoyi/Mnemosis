@@ -1414,6 +1414,24 @@ class MCPServer:
                 },
             },
             {
+                "name": "goal_replay",
+                "description": (
+                    "Replay goal-related memories to plan the next move: "
+                    "recall evidence, extract past lessons, reactivate "
+                    "overdue intentions and score replay readiness "
+                    "(prefrontal-hippocampal replay; Jensen et al., 2024; "
+                    "Watanabe et al., 2023)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "goal": {"type": "string"},
+                        "top_k": {"type": "integer"},
+                    },
+                    "required": ["goal"],
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -2081,6 +2099,11 @@ class MCPServer:
                 store_conclusion=bool(
                     args.get("store_conclusion", True)
                 ),
+            )
+        if name == "goal_replay":
+            return self.engine.goal_replay(
+                goal=str(args.get("goal", "")),
+                top_k=int(args.get("top_k", 5)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")
