@@ -300,6 +300,31 @@ class MCPServer:
                 "inputSchema": {"type": "object", "properties": {}},
             },
             {
+                "name": "review_batch",
+                "description": (
+                    "Apply a batch of spaced-repetition outcomes: each "
+                    "answer is {id, success}; returns the adaptive scheduler "
+                    "state (streak, next review) for every card."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "answers": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "id": {"type": "string"},
+                                    "success": {"type": "boolean"},
+                                },
+                                "required": ["id"],
+                            },
+                        }
+                    },
+                    "required": ["answers"],
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -680,6 +705,8 @@ class MCPServer:
             ]
         if name == "memory_status":
             return self.engine.memory_status()
+        if name == "review_batch":
+            return self.engine.review_batch(args["answers"])
         if name == "practice_due":
             kind_value = args.get("kind")
             from .types import MemoryKind

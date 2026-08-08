@@ -560,6 +560,43 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertGreaterEqual(status["due_now"], 1)
         self.assertEqual(status["conflicts"], 1)
 
+    def test_review_batch(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        now = utcnow()
+        items = []
+        for i in range(4):
+            item = engine.remember(
+                f"批量复习{i}：条目。",
+                kind=MemoryKind.SEMANTIC,
+                source=SourceRecord(origin=SourceType.USER),
+                cues=[f"批量{i}"],
+                importance=0.8,
+                strength=0.3,
+                created_at=now - timedelta(days=20),
+            )
+            items.append(item)
+        answers = [
+            {"id": items[0].id, "success": True},
+            {"id": items[1].id, "success": True},
+            {"id": items[2].id, "success": False},
+            {"id": items[3].id, "success": False},
+        ]
+        report = engine.review_batch(answers, now=now)
+        self.assertEqual(report["n"], 4)
+        self.assertEqual(report["successes"], 2)
+        self.assertEqual(report["failures"], 2)
+        by_id = {d["id"]: d for d in report["details"]}
+        self.assertGreater(by_id[items[0].id]["review_streak"], 0)
+        self.assertEqual(by_id[items[2].id]["review_streak"], 0)
+        self.assertIn("next_review_at", by_id[items[0].id])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "review_batch", {"answers": answers}
+        )
+        self.assertEqual(via_mcp["n"], 4)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

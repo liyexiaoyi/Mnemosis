@@ -1331,6 +1331,54 @@ class MemoryEngine:
             "conflicts": conflicts,
         }
 
+    def review_batch(
+        self,
+        answers: list[dict],
+        now: datetime | None = None,
+    ) -> dict:
+        """Apply a batch of spaced-repetition outcomes.
+
+        Each answer is ``{"id": memory_id, "success": bool}``; results are
+        aggregated with the adaptive scheduler state (review streak, next
+        review time) so agents can drive review loops in bulk (Smolen et
+        al., 2016).
+        """
+        now = now or utcnow()
+        details = []
+        for answer in answers:
+            item = self.review(
+                answer["id"],
+                success=bool(answer.get("success", False)),
+                now=now,
+            )
+            if item is None:
+                continue
+            next_review = self.scheduler.next_review_at(item, now)
+            details.append(
+                {
+                    "id": item.id,
+                    "success": bool(answer.get("success", False)),
+                    "review_streak": item.review_streak,
+                    "retrievability": round(
+                        self.curve.retrievability(item, now), 3
+                    ),
+                    "next_review_at": next_review.isoformat(),
+                    "retry_hours": round(
+                        (next_review - now).total_seconds() / 3600.0, 1
+                    ),
+                }
+            )
+        successes = sum(1 for d in details if d["success"])
+        return {
+            "n": len(details),
+            "successes": successes,
+            "failures": len(details) - successes,
+            "success_rate": round(
+                successes / len(details), 3
+            ) if details else 0.0,
+            "details": details,
+        }
+
     # -- sleep cycle ----------------------------------------------------------
 
     def sleep(
