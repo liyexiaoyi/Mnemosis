@@ -2937,6 +2937,77 @@ class MemoryEngine:
             ),
         }
 
+    def sleep_inference(
+        self,
+        *,
+        limit: int = 5,
+        now: datetime | None = None,
+    ) -> dict:
+        """Find memory pairs that sleep can weave into new inferences.
+
+        NREM/REM sleep coordinates the weaving of inferential knowledge:
+        the brain replays learned pairs offline and the prefrontal cortex
+        codes the inferred outcome (Abdou, Nomoto et al., Nature
+        Communications, 2024). This tool finds same-topic memory pairs
+        that are consolidated enough to support a new inference, ranks
+        them by readiness, and tells the agent what to "let sleep
+        integrate" next.
+        """
+        from collections import defaultdict
+
+        items = self.store.all_active()
+        topic_groups: dict[str, list] = defaultdict(list)
+        for item in items:
+            topic = item.cues[0] if item.cues else item.content[:10]
+            topic_groups[topic].append(item)
+        candidates: list[dict] = []
+        for topic, members in topic_groups.items():
+            for i in range(len(members)):
+                for j in range(i + 1, len(members)):
+                    a, b = members[i], members[j]
+                    if a.content_hash == b.content_hash:
+                        continue
+                    shared_cues = len(set(a.cues) & set(b.cues))
+                    ra = self.curve.retrievability(a, now)
+                    rb = self.curve.retrievability(b, now)
+                    need_consolidation = int(
+                        min(ra, rb) < 0.6
+                        and min(a.importance, b.importance) >= 0.4
+                    )
+                    readiness = round(
+                        min(1.0, 0.5 * min(1.0, shared_cues)
+                            + 0.5 * need_consolidation),
+                        3,
+                    )
+                    candidates.append(
+                        {
+                            "topic": topic,
+                            "a_preview": a.content[:36],
+                            "b_preview": b.content[:36],
+                            "shared_cues": shared_cues,
+                            "retrievability_a": round(ra, 3),
+                            "retrievability_b": round(rb, 3),
+                            "readiness": readiness,
+                            "reason": (
+                                "同一主题、遗忘到需要巩固的程度，"
+                                "睡眠重放后可组合出新推断"
+                            ),
+                        }
+                    )
+        candidates.sort(key=lambda candidate: -candidate["readiness"])
+        ready = [candidate for candidate in candidates if candidate["readiness"] >= 0.5]
+        return {
+            "total_pairs": len(candidates),
+            "ready_pairs": len(ready),
+            "candidates": candidates[: max(1, int(limit))],
+            "advice": (
+                "睡眠整合窗口：已找到可组合的推断对，"
+                "睡前复习一遍、睡后再查一次，把新推断补进记忆库。"
+                if ready
+                else "暂无可组合推断对：继续积累同主题记忆，睡眠后再看。"
+            ),
+        }
+
     def retrieval_assist(
         self,
         query: str,

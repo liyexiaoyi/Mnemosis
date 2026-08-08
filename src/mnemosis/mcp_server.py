@@ -1432,6 +1432,21 @@ class MCPServer:
                 },
             },
             {
+                "name": "sleep_inference",
+                "description": (
+                    "Find same-topic memory pairs that sleep can weave "
+                    "into new inferences, ranked by consolidation "
+                    "readiness (NREM/REM inferential weaving; Abdou, "
+                    "Nomoto et al., 2024)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -2104,6 +2119,10 @@ class MCPServer:
             return self.engine.goal_replay(
                 goal=str(args.get("goal", "")),
                 top_k=int(args.get("top_k", 5)),
+            )
+        if name == "sleep_inference":
+            return self.engine.sleep_inference(
+                limit=int(args.get("limit", 5)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")

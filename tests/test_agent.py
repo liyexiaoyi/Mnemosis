@@ -3168,6 +3168,45 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertGreaterEqual(via_mcp["lessons_found"], 1)
         self.assertGreaterEqual(via_mcp["overdue_reactivations"], 1)
 
+    def test_sleep_inference(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        now = utcnow()
+        engine.remember(
+            "引力使苹果落地",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["物理"],
+            importance=0.7,
+            strength=0.5,
+            created_at=now - timedelta(days=20),
+            auto_cues=False,
+        )
+        engine.remember(
+            "质量越大引力越大",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["物理"],
+            importance=0.7,
+            strength=0.5,
+            created_at=now - timedelta(days=20),
+            auto_cues=False,
+        )
+        report = engine.sleep_inference(limit=5)
+        self.assertGreaterEqual(report["total_pairs"], 1)
+        self.assertGreaterEqual(report["ready_pairs"], 1)
+        top = report["candidates"][0]
+        self.assertEqual(top["topic"], "物理")
+        self.assertGreaterEqual(top["readiness"], 0.5)
+        self.assertTrue(top["reason"])
+        self.assertTrue(report["advice"])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("sleep_inference", {})
+        self.assertGreaterEqual(via_mcp["ready_pairs"], 1)
+        self.assertGreaterEqual(via_mcp["total_pairs"], 1)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(
