@@ -1146,6 +1146,48 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
             "active", server._call_tool("intent_report", {})
         )
 
+    def test_retrieval_assist(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        engine.remember(
+            "用户喜欢颜色偏蓝的配色",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["颜色偏好", "蓝色主题"],
+        )
+        engine.remember(
+            "计划去北京旅行",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["旅行计划"],
+        )
+        assist = engine.retrieval_assist("色彩")
+        self.assertIn(
+            "颜色偏好", [s["cue"] for s in assist["suggestions"]]
+        )
+        self.assertIn("颜色", assist["new_synonyms"])
+        self.assertIn(
+            "颜色", assist["top_recall"][0]["preview"]
+        )
+        assist2 = engine.retrieval_assist("旅游")
+        self.assertIn(
+            "旅行计划", [s["cue"] for s in assist2["suggestions"]]
+        )
+        self.assertIn("旅行", assist2["new_synonyms"])
+        self.assertIn(
+            "旅行", assist2["top_recall"][0]["preview"]
+        )
+        self.assertLessEqual(len(assist["suggestions"]), 8)
+        self.assertIn("expanded_terms", assist)
+        self.assertIn("source", assist["suggestions"][0])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "retrieval_assist", {"query": "色彩", "limit": 5}
+        )
+        self.assertIn(
+            "颜色偏好", [s["cue"] for s in via_mcp["suggestions"]]
+        )
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

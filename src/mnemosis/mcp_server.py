@@ -587,6 +587,22 @@ class MCPServer:
                 "inputSchema": {"type": "object", "properties": {}},
             },
             {
+                "name": "retrieval_assist",
+                "description": (
+                    "Suggest alternative retrieval cues when a query "
+                    "stalls: mines stored cues and content terms that "
+                    "overlap the (synonym-expanded) query."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"},
+                        "limit": {"type": "integer"},
+                    },
+                    "required": ["query"],
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1040,6 +1056,11 @@ class MCPServer:
             return self.engine.cancel_intent(args["intent_id"])
         if name == "intent_report":
             return self.engine.intent_report()
+        if name == "retrieval_assist":
+            return self.engine.retrieval_assist(
+                args["query"],
+                limit=int(args.get("limit", 8)),
+            )
         if name == "practice_due":
             kind_value = args.get("kind")
             from .types import MemoryKind

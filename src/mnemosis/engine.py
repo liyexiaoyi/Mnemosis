@@ -418,6 +418,81 @@ class MemoryEngine:
             ),
         }
 
+    def retrieval_assist(
+        self,
+        query: str,
+        *,
+        limit: int = 8,
+        now: datetime | None = None,
+    ) -> dict:
+        """Suggest alternative retrieval cues when a query stalls.
+
+        Encoding specificity (Tulving & Thomson, 1973) and
+        transfer-appropriate processing (Morris, Bransford & Franks,
+        1977): a memory is reachable through the cues present at encoding,
+        so rephrasing the question with the stored cue words recovers
+        traces the original query misses. This tool mines existing cues
+        and content terms that overlap the (synonym-expanded) query and
+        returns them as concrete follow-up queries.
+        """
+        from .types import tokenize
+        from .zh_nlp import expand_synonyms, has_cjk
+
+        q_terms = set(tokenize(query))
+        expanded = (
+            expand_synonyms(q_terms) if has_cjk(query) else set(q_terms)
+        )
+        new_synonyms = sorted(expanded - q_terms)
+        cue_counts: dict[str, int] = {}
+        content_counts: dict[str, int] = {}
+        for item in self.store.all_active():
+            best_cue = 0
+            for cue in item.cues:
+                common = len(expanded & set(tokenize(cue)))
+                if common > best_cue:
+                    best_cue = common
+            if best_cue and item.cues:
+                cue_counts[item.cues[0]] = max(
+                    cue_counts.get(item.cues[0], 0), best_cue
+                )
+            common = len(expanded & set(tokenize(item.content)))
+            if common:
+                for cue in item.cues[:3] or [item.content[:12]]:
+                    content_counts[cue] = max(
+                        content_counts.get(cue, 0), common
+                    )
+        suggestions: list[dict] = []
+        for cue, count in sorted(
+            cue_counts.items(), key=lambda kv: (-kv[1], kv[0])
+        ):
+            suggestions.append(
+                {"cue": cue, "source": "cue", "matched_count": count}
+            )
+        for cue, count in sorted(
+            content_counts.items(), key=lambda kv: (-kv[1], kv[0])
+        ):
+            if not any(s["cue"] == cue for s in suggestions):
+                suggestions.append(
+                    {"cue": cue, "source": "content", "matched_count": count}
+                )
+        suggestions = suggestions[: max(1, int(limit))]
+        recall = self.recall(query, top_k=3, now=now)
+        return {
+            "query": query,
+            "expanded_terms": sorted(expanded),
+            "new_synonyms": new_synonyms,
+            "suggestions": suggestions,
+            "top_recall": [
+                {
+                    "id": r.item.id,
+                    "preview": r.item.content[:40],
+                    "score": round(r.score, 3),
+                    "confident": r.confident,
+                }
+                for r in recall
+            ],
+        }
+
     def recall_reasoning(
         self,
         query: str,
