@@ -3008,6 +3008,120 @@ class MemoryEngine:
             ),
         }
 
+    def schema_fit(
+        self,
+        *,
+        limit: int = 20,
+    ) -> dict:
+        """Measure how new memories fit existing schemas.
+
+        Schemas speed up consolidation: memories congruent with an
+        existing schema integrate rapidly in the neocortex (Tse et al.,
+        Science, 2007), and reconstruction follows assimilation or
+        accommodation (Bartlett, 1932). This tool scores each memory's
+        fit to the best-matching schema (topic group) and labels it
+        assimilate / borderline / accommodate.
+        """
+        from collections import defaultdict
+
+        from .types import tokenize
+
+        items = self.store.all_active()
+        groups: dict[str, list] = defaultdict(list)
+        for item in items:
+            topic = item.cues[0] if item.cues else item.content[:10]
+            groups[topic].append(item)
+        schemas = {
+            topic: members
+            for topic, members in groups.items()
+            if len(members) >= 2
+        }
+        rows: list[dict] = []
+        for item in items:
+            best_topic = None
+            best_fit = 0.0
+            item_cues = set(item.cues)
+            item_terms = set(tokenize(item.content))
+            for topic, members in schemas.items():
+                if any(member.id == item.id for member in members):
+                    members = [member for member in members if member.id != item.id]
+                    if not members:
+                        continue
+                cue_union: set[str] = set()
+                term_union: set[str] = set()
+                for member in members:
+                    cue_union.update(member.cues)
+                    term_union.update(tokenize(member.content))
+                cue_overlap = (
+                    len(item_cues & cue_union) / max(1, len(item_cues | cue_union))
+                    if (item_cues or cue_union)
+                    else 0.0
+                )
+                term_overlap = (
+                    len(item_terms & term_union) / max(1, len(item_terms | term_union))
+                    if (item_terms or term_union)
+                    else 0.0
+                )
+                fit = min(1.0, 0.6 * cue_overlap + 0.4 * term_overlap)
+                if fit > best_fit:
+                    best_fit = fit
+                    best_topic = topic
+            verdict = (
+                "assimilate"
+                if best_fit >= 0.5
+                else "borderline"
+                if best_fit >= 0.3
+                else "accommodate"
+            )
+            rows.append(
+                {
+                    "id": item.id,
+                    "preview": item.content[:36],
+                    "topic": item.cues[0] if item.cues else item.content[:10],
+                    "best_schema": best_topic,
+                    "fit": round(best_fit, 3),
+                    "verdict": verdict,
+                }
+            )
+        counts = defaultdict(int)
+        for row in rows:
+            counts[row["verdict"]] += 1
+        schema_summary = []
+        for topic, members in schemas.items():
+            schema_rows = [row for row in rows if row["topic"] == topic]
+            avg_fit = round(
+                sum(row["fit"] for row in schema_rows) / max(1, len(schema_rows)),
+                3,
+            )
+            schema_summary.append(
+                {
+                    "topic": topic,
+                    "member_count": len(members),
+                    "avg_fit": avg_fit,
+                    "assimilate": sum(
+                        1 for row in schema_rows if row["verdict"] == "assimilate"
+                    ),
+                    "accommodate": sum(
+                        1 for row in schema_rows if row["verdict"] == "accommodate"
+                    ),
+                }
+            )
+        schema_summary.sort(key=lambda s: -s["member_count"])
+        if counts["accommodate"] > counts["assimilate"]:
+            advice = "新知识不成体系：多数记忆找不到合适图式，建议先建新图式再积累。"
+        elif counts["assimilate"] >= max(1, counts["accommodate"]):
+            advice = "记忆正顺利并入现有图式：与图式一致的记忆巩固更快（Tse 2007）。"
+        else:
+            advice = "有图式可并入，也有新图式在形成，按主题分别维护即可。"
+        return {
+            "total_memories": len(items),
+            "schema_count": len(schemas),
+            "rows": rows[: max(1, int(limit))],
+            "verdict_counts": dict(counts),
+            "schema_summary": schema_summary,
+            "advice": advice,
+        }
+
     def retrieval_assist(
         self,
         query: str,

@@ -1447,6 +1447,21 @@ class MCPServer:
                 },
             },
             {
+                "name": "schema_fit",
+                "description": (
+                    "Measure how each memory fits existing schemas "
+                    "(topic groups) and label it assimilate / borderline / "
+                    "accommodate (schema-based consolidation; Tse et al., "
+                    "2007; Bartlett, 1932)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -2123,6 +2138,10 @@ class MCPServer:
         if name == "sleep_inference":
             return self.engine.sleep_inference(
                 limit=int(args.get("limit", 5)),
+            )
+        if name == "schema_fit":
+            return self.engine.schema_fit(
+                limit=int(args.get("limit", 20)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")

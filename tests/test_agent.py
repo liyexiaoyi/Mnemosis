@@ -3207,6 +3207,49 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertGreaterEqual(via_mcp["ready_pairs"], 1)
         self.assertGreaterEqual(via_mcp["total_pairs"], 1)
 
+    def test_schema_fit(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        for content in ("物理公式A", "物理公式B", "物理实验C"):
+            engine.remember(
+                content,
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["物理"],
+                auto_cues=False,
+            )
+        engine.remember(
+            "贝多芬交响曲",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["音乐"],
+            auto_cues=False,
+        )
+        report = engine.schema_fit()
+        self.assertEqual(report["total_memories"], 4)
+        self.assertEqual(report["schema_count"], 1)
+        self.assertTrue(
+            any(
+                row["verdict"] == "assimilate" and row["topic"] == "物理"
+                for row in report["rows"]
+            )
+        )
+        music_row = next(
+            row for row in report["rows"] if row["topic"] == "音乐"
+        )
+        self.assertEqual(music_row["verdict"], "accommodate")
+        physics = next(
+            schema for schema in report["schema_summary"]
+            if schema["topic"] == "物理"
+        )
+        self.assertEqual(physics["member_count"], 3)
+        self.assertGreaterEqual(physics["assimilate"], 1)
+        self.assertTrue(report["advice"])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("schema_fit", {})
+        self.assertEqual(via_mcp["schema_count"], 1)
+        self.assertIn("assimilate", via_mcp["verdict_counts"])
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(
