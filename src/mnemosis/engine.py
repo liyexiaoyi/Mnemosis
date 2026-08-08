@@ -1484,6 +1484,75 @@ class MemoryEngine:
             "suggestions": suggestions[:4],
         }
 
+    def project_brief(
+        self,
+        title: str,
+        memory_ids: list[str] | None = None,
+        limit: int = 8,
+    ) -> dict:
+        """Assemble a project brief from related memories and intentions.
+
+        Starting a project activates relevant schemas (Bartlett, 1932):
+        this gathers background, known requirements, known risks and
+        pending actions so the agent can plan with full context.
+        """
+        if memory_ids:
+            items = []
+            for memory_id in memory_ids:
+                item = self.backend.get(memory_id)
+                if item is not None:
+                    items.append(item)
+        else:
+            items = [
+                result.item
+                for result in self.recall(title, top_k=max(1, int(limit)))
+            ]
+        if not items:
+            return {"title": title, "empty": True}
+        background = [
+            {"id": item.id, "preview": item.content[:40]}
+            for item in items[: max(1, int(limit))]
+        ]
+        requirements = [
+            {"id": item.id, "preview": item.content[:40]}
+            for item in items
+            if any(
+                keyword in item.content
+                for keyword in ("需求", "要求", "必须", "需要", "约束", "规格")
+            )
+        ]
+        risks = [
+            {"id": item.id, "preview": item.content[:40]}
+            for item in items
+            if any(
+                keyword in item.content
+                for keyword in ("风险", "问题", "担心", "冲突", "注意")
+            )
+        ]
+        actions = self.action_queue(limit=3)["actions"]
+        pending_actions = [
+            {
+                "intent_id": action["intent_id"],
+                "content": action["content"],
+                "overdue": action["overdue"],
+            }
+            for action in actions
+        ]
+        summary = (
+            f"项目「{title}」：背景 {len(background)} 条、"
+            f"需求 {len(requirements)} 条、风险 {len(risks)} 条、"
+            f"待办 {len(pending_actions)} 件"
+        )
+        return {
+            "title": title,
+            "empty": False,
+            "background": background,
+            "requirements": requirements,
+            "risks": risks,
+            "pending_actions": pending_actions,
+            "summary": summary,
+        }
+
     def retrieval_assist(
         self,
         query: str,

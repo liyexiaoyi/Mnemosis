@@ -2303,6 +2303,48 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         )
         self.assertEqual(via_mcp["verdict"], "good")
 
+    def test_project_brief(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        ids = []
+        for text, cue in (
+            ("项目关于智能客服机器人", "pb-1"),
+            ("需求：支持中文多轮对话", "pb-2"),
+            ("风险：模型延迟高", "pb-3"),
+            ("记录了会议纪要", "pb-4"),
+        ):
+            item = engine.remember(
+                text,
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=[cue],
+                auto_cues=False,
+            )
+            ids.append(item.id)
+        engine.remember_intent(
+            "交付客服项目", due_at=utcnow() - timedelta(hours=1)
+        )
+        brief = engine.project_brief("智能客服", memory_ids=ids)
+        self.assertFalse(brief["empty"])
+        self.assertEqual(len(brief["background"]), 4)
+        req_ids = {r["id"] for r in brief["requirements"]}
+        self.assertIn(ids[1], req_ids)
+        risk_ids = {r["id"] for r in brief["risks"]}
+        self.assertIn(ids[2], risk_ids)
+        self.assertGreaterEqual(len(brief["pending_actions"]), 1)
+        self.assertTrue(brief["summary"])
+        self.assertTrue(
+            engine.project_brief("无记忆", memory_ids=["missing-id"])["empty"]
+        )
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "project_brief", {"title": "智能客服", "memory_ids": ids}
+        )
+        self.assertEqual(len(via_mcp["background"]), 4)
+        self.assertGreaterEqual(len(via_mcp["pending_actions"]), 1)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

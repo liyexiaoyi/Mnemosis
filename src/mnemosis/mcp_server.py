@@ -1035,6 +1035,27 @@ class MCPServer:
                 },
             },
             {
+                "name": "project_brief",
+                "description": (
+                    "Assemble a project brief from related memories and "
+                    "intentions: background, known requirements, known "
+                    "risks and pending actions (schema activation, "
+                    "Bartlett 1932)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "title": {"type": "string"},
+                        "memory_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                        "limit": {"type": "integer"},
+                    },
+                    "required": ["title"],
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1614,6 +1635,12 @@ class MCPServer:
             return self.engine.plan_quality(
                 args["plan"],
                 context_memory_ids=args.get("context_memory_ids"),
+            )
+        if name == "project_brief":
+            return self.engine.project_brief(
+                args["title"],
+                memory_ids=args.get("memory_ids"),
+                limit=int(args.get("limit", 8)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")
