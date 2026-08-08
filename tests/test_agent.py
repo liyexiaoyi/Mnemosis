@@ -3325,6 +3325,56 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
             all(question["answer_hidden"] for question in via_mcp["questions"])
         )
 
+    def test_spacing_plan(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        now = utcnow()
+        plan = [
+            ("甲-1", "甲", 0.20, 0.7),
+            ("甲-2", "甲", 0.30, 0.9),
+            ("甲-3", "甲", 0.40, 0.8),
+            ("乙-1", "乙", 0.35, 0.7),
+            ("乙-2", "乙", 0.55, 0.7),
+            ("丙-1", "丙", 0.95, 0.7),
+        ]
+        for content, cue, strength, importance in plan:
+            engine.remember(
+                content,
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=[cue],
+                importance=importance,
+                strength=strength,
+                created_at=now - timedelta(days=1),
+                auto_cues=False,
+            )
+        report = engine.spacing_plan(days=7, limit=10)
+        self.assertEqual(report["total_scheduled"], 6)
+        populated = [
+            day["day"]
+            for day in report["daily_plan"]
+            if day["items"]
+        ]
+        self.assertEqual(populated, [1, 2, 3, 5])
+        day2 = next(
+            day for day in report["daily_plan"] if day["day"] == 2
+        )
+        day2_ids = [item["id"] for item in day2["items"]]
+        day2_topics = []
+        for memory_id in day2_ids:
+            item = engine.backend.get(memory_id)
+            day2_topics.append(item.cues[0])
+        self.assertEqual(day2_topics, ["甲", "乙", "甲"])
+        self.assertTrue(report["advice"])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "spacing_plan", {"days": 7, "limit": 10}
+        )
+        self.assertEqual(via_mcp["total_scheduled"], 6)
+        self.assertEqual(len(via_mcp["daily_plan"]), 7)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

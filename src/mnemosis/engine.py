@@ -3187,6 +3187,81 @@ class MemoryEngine:
             ),
         }
 
+    def spacing_plan(
+        self,
+        *,
+        days: int = 7,
+        limit: int = 20,
+        now: datetime | None = None,
+    ) -> dict:
+        """Build a spaced review schedule for the coming days.
+
+        Distributed practice with longer gaps improves long-term
+        retention (Cepeda et al., 2006). Memories close to fading are
+        scheduled early; stronger ones wait; topics are interleaved so
+        consecutive items in the same session differ.
+        """
+        days = max(1, int(days))
+        items = self.store.all_active()
+        items.sort(key=lambda item: -item.importance)
+        items = items[: max(1, int(limit))]
+        rows: list[dict] = []
+        for item in items:
+            r = self.curve.retrievability(item, now)
+            review_day = min(
+                days - 1,
+                max(0, int(round(r * (days - 1)))),
+            )
+            rows.append(
+                {
+                    "id": item.id,
+                    "preview": item.content[:32],
+                    "topic": item.cues[0] if item.cues else item.content[:10],
+                    "importance": round(item.importance, 3),
+                    "retrievability": round(r, 3),
+                    "review_day": review_day,
+                }
+            )
+        buckets: dict[int, list[dict]] = {day: [] for day in range(days)}
+        for row in rows:
+            buckets[row["review_day"]].append(row)
+        daily_plan: list[dict] = []
+        for day in range(days):
+            bucket = buckets[day]
+            bucket.sort(key=lambda row: -row["importance"])
+            by_topic: dict[str, list[dict]] = {}
+            for row in bucket:
+                by_topic.setdefault(row["topic"], []).append(row)
+            interleaved: list[dict] = []
+            while by_topic:
+                for topic in list(by_topic):
+                    interleaved.append(by_topic[topic].pop(0))
+                    if not by_topic[topic]:
+                        del by_topic[topic]
+            daily_plan.append(
+                {
+                    "day": day,
+                    "items": [
+                        {
+                            "id": row["id"],
+                            "preview": row["preview"],
+                            "importance": row["importance"],
+                            "retrievability": row["retrievability"],
+                        }
+                        for row in interleaved
+                    ],
+                }
+            )
+        return {
+            "days": days,
+            "total_scheduled": len(rows),
+            "daily_plan": daily_plan,
+            "advice": (
+                "间隔复习：快忘的先复习，熟的后复习，同主题交错开"
+                "（Cepeda et al. 2006）。"
+            ),
+        }
+
     def retrieval_assist(
         self,
         query: str,

@@ -1499,6 +1499,21 @@ class MCPServer:
                 },
             },
             {
+                "name": "spacing_plan",
+                "description": (
+                    "Build a spaced review schedule: fading memories "
+                    "early, strong ones later, topics interleaved "
+                    "(distributed practice; Cepeda et al., 2006)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "days": {"type": "integer"},
+                        "limit": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -2191,6 +2206,11 @@ class MCPServer:
                 topic=args.get("topic"),
                 memory_ids=args.get("memory_ids"),
                 count=int(args.get("count", 4)),
+            )
+        if name == "spacing_plan":
+            return self.engine.spacing_plan(
+                days=int(args.get("days", 7)),
+                limit=int(args.get("limit", 20)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")
