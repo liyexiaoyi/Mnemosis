@@ -689,6 +689,21 @@ class MCPServer:
                 },
             },
             {
+                "name": "interference_report",
+                "description": (
+                    "Report cue-crowded clusters (too many memories on "
+                    "one cue) that cause interference, with a suggestion "
+                    "to add differentiating cues (Wickens 1972)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "shared_cue_min": {"type": "integer"},
+                        "limit": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1176,6 +1191,11 @@ class MCPServer:
         if name == "recognition_check":
             return self.engine.recognition_check(
                 args["query"], args["memory_id"]
+            )
+        if name == "interference_report":
+            return self.engine.interference_report(
+                shared_cue_min=int(args.get("shared_cue_min", 3)),
+                limit=int(args.get("limit", 20)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")

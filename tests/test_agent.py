@@ -1357,6 +1357,53 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         )
         self.assertEqual(via_mcp["verdict"], "recollection")
 
+    def test_interference_report(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        for i in range(5):
+            engine.remember(
+                f"meeting item alpha {i}",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["会议"],
+                auto_cues=False,
+            )
+        for i in range(3):
+            engine.remember(
+                f"project item beta {i}",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["项目"],
+                auto_cues=False,
+            )
+        engine.remember(
+            "solo gamma", kind=MemoryKind.SEMANTIC, source=user,
+            cues=["唯一"], auto_cues=False,
+        )
+        engine.remember(
+            "solo delta", kind=MemoryKind.SEMANTIC, source=user,
+            cues=["独有"], auto_cues=False,
+        )
+        report = engine.interference_report(shared_cue_min=3)
+        by_cue = {c["cue"]: c for c in report["crowded_clusters"]}
+        self.assertIn("会议", by_cue)
+        self.assertIn("项目", by_cue)
+        self.assertEqual(by_cue["会议"]["memory_count"], 5)
+        self.assertEqual(by_cue["项目"]["memory_count"], 3)
+        self.assertEqual(
+            report["crowded_clusters"][0]["cue"], "会议"
+        )
+        self.assertTrue(report["suggestion"])
+        self.assertTrue(all(c["members"] for c in report["crowded_clusters"]))
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "interference_report", {"shared_cue_min": 3}
+        )
+        self.assertEqual(
+            {c["cue"] for c in via_mcp["crowded_clusters"]},
+            {"会议", "项目"},
+        )
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

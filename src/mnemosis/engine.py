@@ -688,6 +688,72 @@ class MemoryEngine:
             "reasons": reasons[:5],
         }
 
+    def interference_report(
+        self,
+        shared_cue_min: int = 3,
+        limit: int = 20,
+    ) -> dict:
+        """Report cue-crowded clusters that cause interference.
+
+        Proactive interference (Wickens, 1972): when too many memories
+        hang on the same cue, they compete and get confused. This tool
+        finds cues with >= shared_cue_min active memories and suggests
+        differentiating them with extra cues.
+        """
+        from collections import defaultdict
+        from .types import tokenize
+
+        cue_members: dict[str, list] = defaultdict(list)
+        for item in self.store.all_active():
+            for cue in item.cues:
+                cue_members[cue].append(item)
+        clusters = []
+        for cue, members in cue_members.items():
+            if len(members) < max(2, int(shared_cue_min)):
+                continue
+            total_overlap = 0.0
+            pairs = 0
+            for i in range(len(members)):
+                a_terms = set(tokenize(members[i].content))
+                for j in range(i + 1, len(members)):
+                    b_terms = set(tokenize(members[j].content))
+                    common = len(a_terms & b_terms)
+                    denominator = max(
+                        1, min(len(a_terms), len(b_terms))
+                    )
+                    total_overlap += common / denominator
+                    pairs += 1
+            avg_overlap = (
+                round(total_overlap / pairs, 3) if pairs else 0.0
+            )
+            members.sort(key=lambda it: it.seq, reverse=True)
+            clusters.append(
+                {
+                    "cue": cue,
+                    "memory_count": len(members),
+                    "avg_content_overlap": avg_overlap,
+                    "members": [
+                        {
+                            "id": item.id,
+                            "preview": item.content[:32],
+                        }
+                        for item in members[:5]
+                    ],
+                }
+            )
+        clusters.sort(
+            key=lambda c: (-c["memory_count"], c["cue"])
+        )
+        clusters = clusters[: max(1, int(limit))]
+        return {
+            "total_cues": len(cue_members),
+            "crowded_clusters": clusters,
+            "suggestion": (
+                "给同一线索下的记忆补上区别性线索（日期/对象/主题词），"
+                "降低互相抢答"
+            ),
+        }
+
     def recall_reasoning(
         self,
         query: str,
