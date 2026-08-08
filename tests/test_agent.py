@@ -392,6 +392,16 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
             any("历史成功率" in r.item.content for r in summary)
         )
 
+    def test_mcp_sleep_replay_tool(self) -> None:
+        engine = MemoryEngine()
+        for _ in range(3):
+            engine.record_outcome("旅行", "订机票", success=True)
+        engine.record_outcome("旅行", "订机票", success=False, note="航班取消")
+        server = MCPServer(engine=engine)
+        result = server._call_tool("sleep_replay", {})
+        self.assertEqual(result["replayed_surprising"], 1)
+        self.assertEqual(result["consolidated_steps"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

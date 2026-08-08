@@ -247,6 +247,15 @@ class MCPServer:
                     "required": ["step"],
                 },
             },
+            {
+                "name": "sleep_replay",
+                "description": (
+                    "Sleep replay: strengthen surprising outcome records "
+                    "and consolidate each step's experience into a "
+                    "'历史成功率' summary."
+                ),
+                "inputSchema": {"type": "object", "properties": {}},
+            },
         ]
 
     def handle_line(self, line: str) -> str | None:
@@ -498,6 +507,8 @@ class MCPServer:
             ]
         if name == "predict_step":
             return self.engine.predict_step(args["step"])
+        if name == "sleep_replay":
+            return self.engine.sleep_replay()
         raise ValueError(f"unknown tool: {name}")
 
     def _result(self, message_id: Any, result: Any) -> str:

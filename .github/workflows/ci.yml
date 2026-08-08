@@ -100,3 +100,9 @@ jobs:
           --out /tmp/replan_10k_smoke.json
         env:
           PYTHONPATH: src
+      - name: Sleep replay 10k smoke (post-replay stability, retrieval only)
+        run: >
+          python benchmarks/sleep_replay_10k_bench.py
+          --out /tmp/sleep_replay_10k_smoke.json
+        env:
+          PYTHONPATH: src

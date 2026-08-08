@@ -764,7 +764,7 @@ class MemoryEngine:
                 kind=MemoryKind.SEMANTIC,
                 source=source,
                 cues=[noun, "成功率"],
-                importance=0.7,
+                importance=0.5,
                 evidence_count=total,
                 created_at=now,
             )
