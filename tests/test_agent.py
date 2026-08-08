@@ -3682,6 +3682,57 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["next_steps"][0]["topic"], "物理")
         self.assertIn("developing", {t["flag"] for t in via_mcp["topics"]})
 
+    def test_attention_filter(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        engine.remember(
+            "Python 排序算法",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["编程"],
+            importance=0.8,
+            auto_cues=False,
+        )
+        engine.remember(
+            "Python 列表操作",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["编程"],
+            importance=0.7,
+            auto_cues=False,
+        )
+        shopping = engine.remember(
+            "明天买菜清单",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["买菜"],
+            importance=0.8,
+            strength=0.9,
+            auto_cues=False,
+        )
+        travel = engine.remember(
+            "旅游照片",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["旅游"],
+            importance=0.4,
+            strength=0.8,
+            auto_cues=False,
+        )
+        report = engine.attention_filter("写Python排序算法", top_k=3)
+        self.assertGreaterEqual(len(report["relevant"]), 1)
+        self.assertEqual(report["kept_count"], len(report["relevant"]))
+        suppressed_ids = [item["id"] for item in report["suppressed"]]
+        self.assertIn(shopping.id, suppressed_ids)
+        self.assertNotIn(travel.id, suppressed_ids)
+        self.assertTrue(report["advice"])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "attention_filter", {"task": "写Python排序算法", "top_k": 3}
+        )
+        self.assertGreaterEqual(len(via_mcp["relevant"]), 1)
+        self.assertGreaterEqual(via_mcp["suppressed_count"], 1)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

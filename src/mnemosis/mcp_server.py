@@ -1606,6 +1606,23 @@ class MCPServer:
                 },
             },
             {
+                "name": "attention_filter",
+                "description": (
+                    "Filter memories for the current task: keep relevant "
+                    "ones and flag strong-but-irrelevant distractors to "
+                    "stay out of the prompt (biased competition; Desimone "
+                    "& Duncan, 1995)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "task": {"type": "string"},
+                        "top_k": {"type": "integer"},
+                    },
+                    "required": ["task"],
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -2331,6 +2348,11 @@ class MCPServer:
             return self.engine.mastery_map(
                 threshold=float(args.get("threshold", 0.5)),
                 min_attempts=int(args.get("min_attempts", 3)),
+            )
+        if name == "attention_filter":
+            return self.engine.attention_filter(
+                task=str(args.get("task", "")),
+                top_k=int(args.get("top_k", 5)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")

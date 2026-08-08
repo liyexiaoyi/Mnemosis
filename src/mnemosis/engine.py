@@ -3721,6 +3721,61 @@ class MemoryEngine:
             "advice": advice,
         }
 
+    def attention_filter(
+        self,
+        task: str,
+        *,
+        top_k: int = 5,
+        now: datetime | None = None,
+    ) -> dict:
+        """Filter memories for the current task (biased competition).
+
+        Selective attention: task goals bias the competition so relevant
+        representations win while distractors are suppressed (Desimone &
+        Duncan, 1995). This tool recalls task-relevant memories and flags
+        strong-but-irrelevant memories that should stay out of the prompt.
+        """
+        results = self.recall(task, top_k=max(1, int(top_k)), now=now)
+        relevant = [
+            {
+                "id": result.item.id,
+                "preview": result.item.content[:36],
+                "score": round(result.score, 3),
+            }
+            for result in results
+        ]
+        relevant_ids = {item["id"] for item in relevant}
+        suppressed: list[dict] = []
+        for item in self.store.all_active():
+            if item.id in relevant_ids:
+                continue
+            if item.strength >= 0.7 and item.importance >= 0.6:
+                suppressed.append(
+                    {
+                        "id": item.id,
+                        "preview": item.content[:32],
+                        "strength": round(item.strength, 3),
+                        "importance": round(item.importance, 3),
+                        "reason": "很强但不相关：当前任务不要调出，避免分心",
+                    }
+                )
+        suppressed.sort(
+            key=lambda item: (-item["strength"], -item["importance"])
+        )
+        return {
+            "task": task,
+            "relevant": relevant,
+            "kept_count": len(relevant),
+            "suppressed": suppressed,
+            "suppressed_count": len(suppressed),
+            "advice": (
+                "聚焦成功：保留相关记忆，把强但不相关的记忆挡在工作集外"
+                "（偏向竞争，Desimone & Duncan 1995）。"
+                if suppressed
+                else "未发现强干扰记忆：按当前任务检索即可。"
+            ),
+        }
+
     def retrieval_assist(
         self,
         query: str,
