@@ -5866,6 +5866,108 @@ class MemoryEngine:
             "advice": advice,
         }
 
+    def analogy_prompt(
+        self,
+        *,
+        topic: str | None = None,
+        count: int = 3,
+        min_mastery: float = 0.7,
+        now: datetime | None = None,
+    ) -> dict:
+        """Generate same-structure / new-surface practice prompts.
+
+        Analogical encoding (Gentner, Loewenstein & Thompson, 2003):
+        comparing two cases that share structure but differ in surface
+        details promotes learning and transfer. This tool takes a
+        mastered memory, keeps its relation structure, and swaps people /
+        places / objects to produce a new question that tests whether
+        the structure (not the surface) was really learned.
+        """
+        mastery = self.mastery_map(now=now)
+        candidates = [
+            entry
+            for entry in mastery["topics"]
+            if entry["flag"] == "mastered"
+            and entry["mastery"] >= min_mastery
+        ]
+        if topic:
+            narrowed = [
+                entry for entry in candidates if entry["topic"] == topic
+            ]
+            if narrowed:
+                candidates = narrowed
+        if not candidates:
+            candidates = mastery["topics"][: max(1, int(count))]
+        chosen = candidates[: max(1, int(count))]
+        names = ["阿丽", "小波", "大壮", "小美", "阿强", "小月", "小禾"]
+        cities = ["成都", "北京", "上海", "广州", "西安", "杭州", "南京"]
+        objects = ["相机", "机票", "手机", "自行车", "吉他", "笔记本", "球鞋"]
+        prompts: list[dict] = []
+        for index, entry in enumerate(chosen):
+            items = [
+                item
+                for item in self.store.all_active()
+                if item.cues and item.cues[0] == entry["topic"]
+            ]
+            if not items:
+                continue
+            item = items[0]
+            original = item.content
+            surface_new = original
+            mapping: list[str] = []
+            for name in names:
+                if name in surface_new:
+                    alt = names[(names.index(name) + 1 + index) % len(names)]
+                    if alt != name:
+                        surface_new = surface_new.replace(name, alt)
+                        mapping.append(f"{name}→{alt}")
+                    break
+            for city in cities:
+                if city in surface_new:
+                    alt = cities[
+                        (cities.index(city) + 1 + index) % len(cities)
+                    ]
+                    if alt != city:
+                        surface_new = surface_new.replace(city, alt)
+                        mapping.append(f"{city}→{alt}")
+                    break
+            for obj in objects:
+                if obj in surface_new:
+                    alt = objects[
+                        (objects.index(obj) + 1 + index) % len(objects)
+                    ]
+                    if alt != obj:
+                        surface_new = surface_new.replace(obj, alt)
+                        mapping.append(f"{obj}→{alt}")
+                    break
+            prompts.append(
+                {
+                    "memory_id": item.id,
+                    "topic": entry["topic"],
+                    "original": original,
+                    "question": surface_new,
+                    "surface_mapping": mapping,
+                    "structure_note": (
+                        "结构不变（关系照旧），只换表面细节——"
+                        "看你能不能抓住真正的结构。"
+                    ),
+                    "answer_hidden": True,
+                }
+            )
+        return {
+            "topics": [
+                {"topic": entry["topic"], "mastery": entry["mastery"]}
+                for entry in chosen
+            ],
+            "prompts": prompts,
+            "advice": (
+                "类比题已生成：同一结构、换新表面，检验的是结构理解"
+                "而不是死记表面（Gentner et al., 2003）。"
+                if prompts
+                else "记忆库里还没有可出题的内容，先积累已掌握主题。"
+            ),
+        }
+
     def sleep_replay(self, now: datetime | None = None) -> dict:
         """Sleep replay: strengthen surprising events, consolidate experience.
 

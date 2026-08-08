@@ -4317,6 +4317,46 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["verdict"], "ready")
         self.assertEqual(via_mcp["law_used"]["source"], "memory")
 
+    def test_analogy_prompt(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        for content in (
+            "阿丽喜欢的城市是成都。",
+            "阿丽喜欢的食物是饺子。",
+            "阿丽喜欢的颜色是蓝色。",
+        ):
+            engine.remember(
+                content,
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["偏好"],
+                confidence=0.95,
+                strength=0.9,
+                importance=0.8,
+                auto_cues=False,
+            )
+        report = engine.analogy_prompt()
+        self.assertGreater(len(report["prompts"]), 0)
+        first = report["prompts"][0]
+        self.assertIn("喜欢", first["question"])
+        self.assertNotEqual(first["question"], first["original"])
+        self.assertTrue(first["surface_mapping"])
+        self.assertTrue(first["answer_hidden"])
+        self.assertEqual(first["topic"], "偏好")
+        self.assertIn("结构", report["advice"])
+        filtered = engine.analogy_prompt(topic="偏好")
+        self.assertGreater(len(filtered["prompts"]), 0)
+        empty = MemoryEngine().analogy_prompt()
+        self.assertEqual(empty["prompts"], [])
+        self.assertIn("记忆库", empty["advice"])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("analogy_prompt", {"count": 2})
+        self.assertGreater(len(via_mcp["prompts"]), 0)
+        self.assertNotEqual(
+            via_mcp["prompts"][0]["question"],
+            via_mcp["prompts"][0]["original"],
+        )
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

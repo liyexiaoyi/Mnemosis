@@ -1805,6 +1805,22 @@ class MCPServer:
                 },
             },
             {
+                "name": "analogy_prompt",
+                "description": (
+                    "Generate same-structure / new-surface practice "
+                    "prompts from mastered memories (analogical encoding; "
+                    "Gentner, Loewenstein & Thompson, 2003)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "topic": {"type": "string"},
+                        "count": {"type": "integer"},
+                        "min_mastery": {"type": "number"},
+                    },
+                },
+            },
+            {
                 "name": "retrieval_snapshot",
                 "description": (
                     "Capture a compact memory-state snapshot (knowledge "
@@ -2610,6 +2626,12 @@ class MCPServer:
             return self.engine.physics_simulate(
                 scene=str(args.get("scene", "")),
                 top_k=int(args.get("top_k", 4)),
+            )
+        if name == "analogy_prompt":
+            return self.engine.analogy_prompt(
+                topic=args.get("topic"),
+                count=int(args.get("count", 3)),
+                min_mastery=float(args.get("min_mastery", 0.7)),
             )
         if name == "retrieval_snapshot":
             return self.engine.retrieval_snapshot(
