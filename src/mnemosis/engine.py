@@ -218,6 +218,7 @@ class MemoryEngine:
         top_k: int = 10,
         now: datetime | None = None,
         zh_synonyms: bool = True,
+        plan_reuse: bool = True,
     ) -> list[RecallResult]:
         """Chain-of-thought step retrieval for process questions.
 
@@ -242,7 +243,8 @@ class MemoryEngine:
         )
         if not any(marker in query for marker in (
             "怎么", "如何", "为什么", "过程", "步骤", "准备", "计划", "安排",
-            "how", "why",
+            "第一步", "该做什么", "怎么做", "流程", "方法", "办法", "方式",
+            "how", "why", "step",
         )):
             return results[:top_k]
 
@@ -269,6 +271,28 @@ class MemoryEngine:
         others = [
             r for r in results if r.item.kind is not MemoryKind.EPISODIC
         ]
+        if plan_reuse:
+            import re as _re
+
+            match = _re.search(
+                r"(?:参考|参照|学|模仿|按照|像)([\u4e00-\u9fff]{2,3})",
+                query,
+            )
+            if match:
+                ref_person = match.group(1)[:2]
+                for r in episodic:
+                    if (
+                        ref_person in r.item.cues
+                        or ref_person in r.item.content
+                    ):
+                        r.score = round(r.score + 0.08, 4)
+                        if not any(
+                            "类比计划" in reason for reason in r.reasons
+                        ):
+                            r.reasons.append(
+                                "\u7c7b\u6bd4\u8ba1\u5212(\u53c2\u8003"
+                                f"{ref_person})"
+                            )
         episodic.sort(key=_event_date)
         ordered = episodic + others
         for result in episodic:

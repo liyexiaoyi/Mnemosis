@@ -74,6 +74,32 @@ class StepRetrievalTests(unittest.TestCase):
         plain = [r.item.content for r in engine.recall_reasoning(q, top_k=3)]
         self.assertEqual(steps, plain)
 
+    def test_step_marker_without_how_word(self) -> None:
+        engine = _process_engine()
+        results = engine.recall_steps(
+            "大壮想学阿丽去京都旅行，第一步该做什么？", top_k=6
+        )
+        contents = [r.item.content for r in results]
+        self.assertEqual(
+            contents[0],
+            "阿丽在2026年4月1日订了去京都的机票。",
+        )
+        self.assertTrue(
+            contents.index("阿丽在2026年4月1日订了去京都的机票。")
+            < contents.index("阿丽在2026年4月2日买了相机。")
+        )
+
+    def test_plan_reuse_reference_boost(self) -> None:
+        engine = _process_engine()
+        results = engine.recall_steps(
+            "大壮想去京都旅行，参考阿丽是怎么准备的？", top_k=6
+        )
+        top = results[0]
+        self.assertIn("阿丽在2026年4月1日订了去京都的机票。", top.item.content)
+        self.assertTrue(
+            any("\u7c7b\u6bd4\u8ba1\u5212" in reason for reason in top.reasons)
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
