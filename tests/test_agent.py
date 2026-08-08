@@ -2873,6 +2873,65 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertGreaterEqual(len(via_mcp["pre_sleep_review"]), 1)
         self.assertGreaterEqual(via_mcp["conflicts_to_resolve"], 1)
 
+    def test_emotion_advice(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        for i in range(3):
+            engine.remember(
+                f"happy memory {i}",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["快乐"],
+                affect="positive",
+                auto_cues=False,
+            )
+        engine.remember(
+            "failed launch", kind=MemoryKind.SEMANTIC, source=user,
+            cues=["失败项目"], affect="negative", auto_cues=False,
+        )
+        engine.remember(
+            "missed deadline", kind=MemoryKind.SEMANTIC, source=user,
+            cues=["失败项目"], affect="negative", auto_cues=False,
+        )
+        engine.remember(
+            "bad review", kind=MemoryKind.SEMANTIC, source=user,
+            cues=["差评"], affect="negative", auto_cues=False,
+        )
+        for i in range(2):
+            engine.remember(
+                f"plain note {i}",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=[f"普通{i}"],
+                affect="neutral",
+                auto_cues=False,
+            )
+        report = engine.emotion_advice()
+        self.assertEqual(report["total_memories"], 8)
+        self.assertEqual(
+            report["mood_profile"],
+            {
+                "positive": 3,
+                "negative": 3,
+                "neutral": 2,
+                "arousing": 0,
+                "mixed": 0,
+            },
+        )
+        self.assertEqual(report["negative_ratio"], 0.375)
+        self.assertTrue(
+            any(
+                topic["topic"] == "失败项目"
+                and topic["negative_count"] == 2
+                for topic in report["flagged_topics"]
+            )
+        )
+        self.assertTrue(report["advice"])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("emotion_advice", {})
+        self.assertEqual(via_mcp["negative_ratio"], 0.375)
+        self.assertEqual(via_mcp["mood_profile"]["negative"], 3)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

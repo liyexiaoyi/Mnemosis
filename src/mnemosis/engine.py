@@ -2481,6 +2481,69 @@ class MemoryEngine:
             "advice": advice,
         }
 
+    def emotion_advice(
+        self,
+        memory_ids: list[str] | None = None,
+    ) -> dict:
+        """Profile emotional tone of memories and advise regulation.
+
+        Emotion regulation (Gross, 2002) starts with awareness of the
+        emotional load: this tool counts positive/negative/neutral/
+        arousing traces, reports the negative ratio and suggests
+        reappraisal or spacing when negativity is high.
+        """
+        from collections import Counter
+
+        if memory_ids:
+            items = []
+            for memory_id in memory_ids:
+                item = self.backend.get(memory_id)
+                if item is not None:
+                    items.append(item)
+        else:
+            items = self.store.all_active()
+        counts = Counter(
+            item.affect or "neutral" for item in items
+        )
+        total = len(items)
+        negative = counts["negative"]
+        negative_ratio = round(negative / max(1, total), 3)
+        flagged_topics = []
+        topic_negative: dict[str, int] = {}
+        for item in items:
+            if item.affect == "negative" and item.cues:
+                topic = item.cues[0]
+                topic_negative[topic] = topic_negative.get(topic, 0) + 1
+        for topic, count in sorted(
+            topic_negative.items(), key=lambda kv: -kv[1]
+        )[:3]:
+            flagged_topics.append({"topic": topic, "negative_count": count})
+        if negative_ratio >= 0.4:
+            advice = (
+                "消极记忆占比偏高：先重评一次（换个角度看待），"
+                "重要的单独处理，避免整体情绪被带偏"
+            )
+        elif negative_ratio >= 0.2:
+            advice = (
+                "消极记忆有一定占比：建议逐条重评，"
+                "把“当时很糟”改写为“当时学到什么”"
+            )
+        else:
+            advice = "情绪分布较均衡，保持现状即可"
+        return {
+            "total_memories": total,
+            "mood_profile": {
+                "positive": counts["positive"],
+                "negative": counts["negative"],
+                "neutral": counts["neutral"],
+                "arousing": counts["arousing"],
+                "mixed": counts["mixed"],
+            },
+            "negative_ratio": negative_ratio,
+            "flagged_topics": flagged_topics,
+            "advice": advice,
+        }
+
     def retrieval_assist(
         self,
         query: str,

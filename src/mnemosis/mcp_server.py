@@ -1346,6 +1346,24 @@ class MCPServer:
                 "inputSchema": {"type": "object", "properties": {}},
             },
             {
+                "name": "emotion_advice",
+                "description": (
+                    "Profile the emotional tone of memories and advise "
+                    "regulation: positive/negative/neutral/arousing "
+                    "counts, negative ratio and reappraisal suggestions "
+                    "(emotion regulation, Gross 2002)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "memory_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1993,6 +2011,10 @@ class MCPServer:
             )
         if name == "sleep_advice":
             return self.engine.sleep_advice()
+        if name == "emotion_advice":
+            return self.engine.emotion_advice(
+                memory_ids=args.get("memory_ids"),
+            )
         if name == "practice_due":
             kind_value = args.get("kind")
             from .types import MemoryKind
