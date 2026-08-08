@@ -278,6 +278,7 @@ class MCPServer:
                         "adaptive_gap": {"type": "boolean"},
                         "interleave": {"type": "boolean"},
                         "vary_cues": {"type": "boolean"},
+                        "arousal_priority": {"type": "boolean"},
                         "kind": {"type": "string",
                                  "enum": ["semantic", "episodic"]},
                     },
@@ -597,6 +598,7 @@ class MCPServer:
                 adaptive_gap=bool(args.get("adaptive_gap", True)),
                 interleave=bool(args.get("interleave", True)),
                 vary_cues=bool(args.get("vary_cues", True)),
+                arousal_priority=bool(args.get("arousal_priority", True)),
                 kind=(
                     MemoryKind(kind_value)
                     if kind_value in ("semantic", "episodic")

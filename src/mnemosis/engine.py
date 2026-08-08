@@ -837,6 +837,7 @@ class MemoryEngine:
         adaptive_gap: bool = True,
         interleave: bool = True,
         vary_cues: bool = True,
+        arousal_priority: bool = True,
     ) -> list[dict]:
         """Active retrieval practice: due memories shown as cues only.
 
@@ -853,13 +854,35 @@ class MemoryEngine:
         first in the session. Encoding variability (Martin, 1968):
         practising through different cues each session makes the memory
         robust across query phrasings, so ``vary_cues`` rotates the shown
-        cue.
+        cue. Arousal-biased competition (Mather & Sutherland, 2011):
+        emotionally arousing memories compete harder for consolidation, so
+        ``arousal_priority`` rehearses them first within the quota.
         """
         items = self.review_due(
             limit=max(limit * 2, 12),
             now=now,
             desirable_difficulty=desirable_difficulty,
         )
+        if arousal_priority:
+            # Arousal-biased competition (Mather & Sutherland, 2011):
+            # arousing traces compete harder for rehearsal, so they enter
+            # the practice queue at a higher retrievability threshold
+            # (0.65 instead of 0.5).
+            extra = self.review_due(
+                limit=max(limit * 2, 12),
+                now=now,
+                desirable_difficulty=desirable_difficulty,
+                due_threshold=0.65,
+            )
+            extra_ids = {item.id for item in items}
+            items = items + [
+                item
+                for item in extra
+                if (
+                    item.id not in extra_ids
+                    and item.affect in ("positive", "negative", "arousing")
+                )
+            ]
         if min_gap_hours > 0:
             kept = []
             for item in items:
@@ -874,15 +897,34 @@ class MemoryEngine:
                         gap *= 1.3
                 if self.curve.hours_since_last_access(item, now) >= gap:
                     kept.append(item)
-            if kind is not None:
-                kept.sort(key=lambda item: item.kind is not kind)
+            if kind is not None or arousal_priority:
+                def _practice_key(item: MemoryItem) -> tuple:
+                    kind_mismatch = (
+                        item.kind is not kind if kind is not None else 0
+                    )
+                    arousal_mismatch = (
+                        item.affect not in ("positive", "negative", "arousing")
+                        if arousal_priority
+                        else 0
+                    )
+                    return (kind_mismatch, arousal_mismatch)
+
+                kept.sort(key=_practice_key)
             items = kept[:limit]
         else:
-            if kind is not None:
-                items = sorted(
-                    items,
-                    key=lambda item: item.kind is not kind,
-                )
+            if kind is not None or arousal_priority:
+                def _practice_key2(item: MemoryItem) -> tuple:
+                    kind_mismatch = (
+                        item.kind is not kind if kind is not None else 0
+                    )
+                    arousal_mismatch = (
+                        item.affect not in ("positive", "negative", "arousing")
+                        if arousal_priority
+                        else 0
+                    )
+                    return (kind_mismatch, arousal_mismatch)
+
+                items = sorted(items, key=_practice_key2)
             items = items[:limit]
         if interleave and len(items) > 1:
             items = self._interleave(items)
@@ -1086,6 +1128,7 @@ class MemoryEngine:
         importance_first: bool = True,
         desirable_difficulty: bool = False,
         difficulty_target: float = 0.45,
+        due_threshold: float = 0.5,
     ) -> list[MemoryItem]:
         return self.scheduler.due_items(
             self.store.all_active(),
@@ -1094,6 +1137,7 @@ class MemoryEngine:
             importance_first=importance_first,
             desirable_difficulty=desirable_difficulty,
             difficulty_target=difficulty_target,
+            due_threshold=due_threshold,
         )
 
     def review(

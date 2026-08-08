@@ -667,6 +667,53 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         )
         self.assertIn(" / ", via_mcp[0]["cue"])
 
+    def test_practice_arousal_priority(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        now = utcnow()
+        for i in range(2):
+            engine.remember(
+                f"中性记忆{i}：普通记录{i}。",
+                kind=MemoryKind.SEMANTIC,
+                source=SourceRecord(origin=SourceType.USER),
+                cues=[f"中性{i}"],
+                importance=0.8,
+                strength=0.4,
+                created_at=now - timedelta(days=20),
+            )
+            engine.remember(
+                f"情绪记忆{i}：那次很紧张。",
+                kind=MemoryKind.SEMANTIC,
+                source=SourceRecord(origin=SourceType.USER),
+                cues=[f"情绪{i}"],
+                affect="negative",
+                importance=0.8,
+                strength=0.4,
+                created_at=now - timedelta(days=20),
+            )
+        cards = engine.practice_due(
+            limit=4,
+            min_gap_hours=0,
+            adaptive_gap=False,
+            arousal_priority=True,
+        )
+        first_two = [engine.backend.get(c["id"]) for c in cards[:2]]
+        self.assertTrue(
+            all(item.affect == "negative" for item in first_two)
+        )
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "practice_due",
+            {
+                "limit": 4,
+                "min_gap_hours": 0,
+                "adaptive_gap": False,
+                "arousal_priority": True,
+            },
+        )
+        self.assertEqual(len(via_mcp), 4)
+
     def test_practice_suppress_competitors(self) -> None:
         from datetime import timedelta
 
