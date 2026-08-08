@@ -805,6 +805,7 @@ class MemoryEngine:
         now: datetime | None = None,
         importance_first: bool = True,
         desirable_difficulty: bool = False,
+        difficulty_target: float = 0.45,
     ) -> list[MemoryItem]:
         return self.scheduler.due_items(
             self.store.all_active(),
@@ -812,6 +813,7 @@ class MemoryEngine:
             limit=limit,
             importance_first=importance_first,
             desirable_difficulty=desirable_difficulty,
+            difficulty_target=difficulty_target,
         )
 
     def review(
