@@ -860,6 +860,40 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         via_mcp = server._call_tool("resolve_conflicts", {})
         self.assertIn("remaining", via_mcp)
 
+    def test_review_load(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        now = utcnow()
+        for i in range(2):
+            item = engine.remember(
+                f"逾期{i}：条目。",
+                kind=MemoryKind.SEMANTIC,
+                source=SourceRecord(origin=SourceType.USER),
+                cues=[f"逾期{i}"],
+                strength=0.3,
+                created_at=now - timedelta(days=20),
+            )
+            item.last_review_at = now - timedelta(days=3)
+            engine.backend.update(item)
+        for i in range(3):
+            engine.remember(
+                f"到期{i}：条目。",
+                kind=MemoryKind.SEMANTIC,
+                source=SourceRecord(origin=SourceType.USER),
+                cues=[f"到期{i}"],
+                strength=0.3,
+                created_at=now - timedelta(days=20),
+            )
+        load = engine.review_load(days=7, now=now)
+        self.assertEqual(load["overdue"], 2)
+        self.assertGreaterEqual(load["due_now"], 5)
+        self.assertGreaterEqual(load["weak"], 5)
+        self.assertGreaterEqual(load["load_index"], 5)
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("review_load", {"days": 7})
+        self.assertIn("load_index", via_mcp)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

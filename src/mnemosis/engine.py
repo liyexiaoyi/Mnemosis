@@ -1514,6 +1514,46 @@ class MemoryEngine:
             "remaining": remaining,
         }
 
+    def review_load(
+        self,
+        days: int = 7,
+        now: datetime | None = None,
+    ) -> dict:
+        """Estimate the upcoming review pressure.
+
+        Returns how many traces are due right now, how many are overdue,
+        how many will become due within ``days``, and how many are weak
+        (retrievability < 0.3). A weighted load index (overdue x2) tells
+        agents whether today needs a bigger quota.
+        """
+        from datetime import timedelta
+
+        now = now or utcnow()
+        items = self.store.all_active()
+        due_now = 0
+        overdue = 0
+        due_soon = 0
+        weak = 0
+        horizon = now + timedelta(days=max(1, int(days)))
+        for item in items:
+            retrievability = self.curve.retrievability(item, now)
+            if retrievability < 0.3:
+                weak += 1
+            next_review = self.scheduler.next_review_at(item, now)
+            if next_review <= horizon:
+                due_soon += 1
+            if next_review < now:
+                overdue += 1
+            if retrievability < 0.5:
+                due_now += 1
+        return {
+            "due_now": due_now,
+            "overdue": overdue,
+            "due_within_days": due_soon - overdue,
+            "weak": weak,
+            "load_index": due_soon + overdue,
+        }
+
     # -- sleep cycle ----------------------------------------------------------
 
     def sleep(

@@ -413,6 +413,20 @@ class MCPServer:
                 "inputSchema": {"type": "object", "properties": {}},
             },
             {
+                "name": "review_load",
+                "description": (
+                    "Estimate upcoming review pressure: due now, overdue, "
+                    "due within N days, weak traces, and a weighted load "
+                    "index."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "days": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -814,6 +828,10 @@ class MCPServer:
             return self.engine.dedupe_memories()
         if name == "resolve_conflicts":
             return self.engine.resolve_conflicts()
+        if name == "review_load":
+            return self.engine.review_load(
+                days=int(args.get("days", 7))
+            )
         if name == "practice_due":
             kind_value = args.get("kind")
             from .types import MemoryKind
