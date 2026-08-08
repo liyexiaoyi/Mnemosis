@@ -949,6 +949,46 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         via_mcp = server._call_tool("recall_log", {"limit": 5})
         self.assertGreaterEqual(len(via_mcp), 1)
 
+    def test_cleanup_preview(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        now = utcnow()
+        for i in range(2):
+            engine.remember(
+                f"可清理{i}：旧琐碎事件。",
+                kind=MemoryKind.EPISODIC,
+                source=SourceRecord(origin=SourceType.USER),
+                cues=[f"可清理{i}"],
+                importance=0.1,
+                created_at=now - timedelta(days=40),
+            )
+        engine.remember(
+            "重要旧事件。",
+            kind=MemoryKind.EPISODIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["重要旧"],
+            importance=0.8,
+            created_at=now - timedelta(days=40),
+        )
+        accessed = engine.remember(
+            "被访问过的旧事件。",
+            kind=MemoryKind.EPISODIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["访问旧"],
+            importance=0.1,
+            created_at=now - timedelta(days=40),
+        )
+        accessed.access_count = 3
+        engine.backend.update(accessed)
+        before = len(engine.store.all_active())
+        preview = engine.cleanup_preview(now=now)
+        self.assertEqual(len(preview), 2)
+        self.assertEqual(len(engine.store.all_active()), before)
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("cleanup_preview", {"limit": 10})
+        self.assertEqual(len(via_mcp), 2)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

@@ -463,6 +463,20 @@ class MCPServer:
                 },
             },
             {
+                "name": "cleanup_preview",
+                "description": (
+                    "Preview which episodic traces the sleep prune pass "
+                    "would recycle (unimportant, never accessed, old) - "
+                    "without deleting anything."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -877,6 +891,10 @@ class MCPServer:
         if name == "recall_log":
             return self.engine.get_recall_log(
                 limit=int(args.get("limit", 50))
+            )
+        if name == "cleanup_preview":
+            return self.engine.cleanup_preview(
+                limit=int(args.get("limit", 100))
             )
         if name == "practice_due":
             kind_value = args.get("kind")

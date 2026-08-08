@@ -1605,6 +1605,40 @@ class MemoryEngine:
             updated += 1
         return {"updated": updated, "added": added, "removed": removed}
 
+    def cleanup_preview(
+        self,
+        now: datetime | None = None,
+        limit: int = 100,
+    ) -> list[dict]:
+        """Preview which traces the sleep prune pass would recycle.
+
+        Episodic traces that are unimportant, never accessed and old are
+        prune candidates. This returns them without deleting anything, so
+        agents can review before committing.
+        """
+        now = now or utcnow()
+        preview = []
+        for item in self.store.all_active(MemoryKind.EPISODIC):
+            age_days = (
+                now - item.created_at
+            ).total_seconds() / 86400.0
+            if (
+                item.importance < self.consolidator.prune_importance
+                and item.access_count == 0
+                and age_days >= self.consolidator.prune_age_days
+            ):
+                preview.append(
+                    {
+                        "id": item.id,
+                        "preview": item.content[:60],
+                        "importance": round(item.importance, 3),
+                        "age_days": round(age_days, 1),
+                    }
+                )
+                if len(preview) >= max(1, int(limit)):
+                    break
+        return preview
+
     # -- sleep cycle ----------------------------------------------------------
 
     def sleep(
