@@ -2334,6 +2334,39 @@ class MemoryEngine:
             "verdict": verdict,
         }
 
+    def recall_trace(
+        self,
+        query: str,
+        top_k: int = 5,
+    ) -> dict:
+        """Explain why a query recalls what it recalls.
+
+        Metacognitive explanation (Koriat & Goldsmith, 1996): show how
+        many candidates were scanned, the top results with scores and
+        per-result reasons, so agents can audit their own retrieval.
+        """
+        candidates = self.store.all_active()
+        results = self.recall(query, top_k=max(1, int(top_k)))
+        traced = [
+            {
+                "id": result.item.id,
+                "preview": result.item.content[:40],
+                "score": round(result.score, 3),
+                "confident": result.confident,
+                "reasons": result.reasons[:6],
+            }
+            for result in results
+        ]
+        top = traced[0] if traced else None
+        return {
+            "query": query,
+            "candidates_scanned": len(candidates),
+            "results": traced,
+            "top_reason_summary": (
+                "; ".join(top["reasons"][:3]) if top else None
+            ),
+        }
+
     def retrieval_assist(
         self,
         query: str,

@@ -2738,6 +2738,48 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         )
         self.assertEqual(via_mcp["queries_evaluated"], 3)
 
+    def test_recall_trace(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        m1 = engine.remember(
+            "trace target memory",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["trace-key"],
+            auto_cues=False,
+        )
+        engine.remember(
+            "trace distractor one",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["trace-d1"],
+            auto_cues=False,
+        )
+        engine.remember(
+            "trace distractor two",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["trace-d2"],
+            auto_cues=False,
+        )
+        trace = engine.recall_trace("trace-key", top_k=3)
+        self.assertGreaterEqual(trace["candidates_scanned"], 3)
+        self.assertEqual(trace["results"][0]["id"], m1.id)
+        self.assertTrue(
+            any(
+                "overlap" in reason
+                for reason in trace["results"][0]["reasons"]
+            )
+        )
+        self.assertTrue(trace["results"][0]["confident"])
+        self.assertTrue(trace["top_reason_summary"])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "recall_trace", {"query": "trace-key", "top_k": 3}
+        )
+        self.assertEqual(via_mcp["results"][0]["id"], m1.id)
+        self.assertGreaterEqual(via_mcp["candidates_scanned"], 3)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

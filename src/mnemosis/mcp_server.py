@@ -1306,6 +1306,22 @@ class MCPServer:
                 },
             },
             {
+                "name": "recall_trace",
+                "description": (
+                    "Explain why a query recalls what it recalls: "
+                    "candidates scanned, top results with scores and "
+                    "reasons (metacognitive explanation)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"},
+                        "top_k": {"type": "integer"},
+                    },
+                    "required": ["query"],
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1941,6 +1957,11 @@ class MCPServer:
                 queries=args.get("queries"),
                 top_k=int(args.get("top_k", 5)),
                 limit=int(args.get("limit", 10)),
+            )
+        if name == "recall_trace":
+            return self.engine.recall_trace(
+                args["query"],
+                top_k=int(args.get("top_k", 5)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")
