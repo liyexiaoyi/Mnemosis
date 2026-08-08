@@ -218,6 +218,23 @@ class MCPServer:
                     "required": ["goal", "step", "success"],
                 },
             },
+            {
+                "name": "replan",
+                "description": (
+                    "Re-plan after a failed step: move the failing person's "
+                    "step to the end (avoided), keep successful "
+                    "alternatives, and store the re-planning decision."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "goal": {"type": "string"},
+                        "failed_step": {"type": "string"},
+                        "top_k": {"type": "integer"},
+                    },
+                    "required": ["goal", "failed_step"],
+                },
+            },
         ]
 
     def handle_line(self, line: str) -> str | None:
@@ -449,6 +466,24 @@ class MCPServer:
                 "content": item.content,
                 "evidence_count": item.evidence_count,
             }
+        if name == "replan":
+            results = self.engine.replan(
+                args["goal"],
+                args["failed_step"],
+                top_k=(
+                    int(args["top_k"])
+                    if args.get("top_k") is not None
+                    else None
+                ),
+            )
+            return [
+                {
+                    "content": r.item.content,
+                    "score": round(r.score, 3),
+                    "reasons": r.reasons,
+                }
+                for r in results
+            ]
         raise ValueError(f"unknown tool: {name}")
 
     def _result(self, message_id: Any, result: Any) -> str:

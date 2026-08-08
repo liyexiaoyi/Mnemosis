@@ -313,6 +313,26 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
                 for r in recall)
         )
 
+    def test_mcp_replan_tool(self) -> None:
+        server = MCPServer(engine=self._engine())
+        result = server._call_tool(
+            "replan",
+            {"goal": "大壮想去京都旅行，参考阿丽和小波",
+             "failed_step": "订机票"},
+        )
+        contents = [r["content"] for r in result]
+        self.assertEqual(
+            contents[-1],
+            "阿丽在2026年4月1日订了去京都的机票。",
+        )
+        self.assertTrue(
+            any(
+                "\u91cd\u89c4\u5212" in reason
+                for r in result
+                for reason in r["reasons"]
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -94,3 +94,9 @@ jobs:
           --out /tmp/plan_effort_smoke.json
         env:
           PYTHONPATH: src
+      - name: Re-plan 10k smoke (failed-step avoidance, retrieval only)
+        run: >
+          python benchmarks/replan_10k_bench.py
+          --out /tmp/replan_10k_smoke.json
+        env:
+          PYTHONPATH: src
