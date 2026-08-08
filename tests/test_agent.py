@@ -2123,6 +2123,48 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         via_mcp = server._call_tool("coverage_report", {"limit": 10})
         self.assertEqual(via_mcp["total_topics"], 3)
 
+    def test_source_calibration(self) -> None:
+        engine = MemoryEngine()
+
+        def _remember(text: str, origin: SourceType, trust: float,
+                      confidence: float, evidence: int,
+                      importance: float) -> None:
+            engine.remember(
+                text,
+                kind=MemoryKind.SEMANTIC,
+                source=SourceRecord(
+                    origin=origin, trust=trust
+                ),
+                cues=[f"sc-{text}"],
+                confidence=confidence,
+                evidence_count=evidence,
+                importance=importance,
+                auto_cues=False,
+            )
+
+        _remember("user fact 1", SourceType.USER, 1.0, 1.0, 5, 0.8)
+        _remember("user fact 2", SourceType.USER, 1.0, 1.0, 5, 0.8)
+        _remember("agent fact 1", SourceType.AGENT, 0.5, 0.6, 1, 0.4)
+        _remember("agent fact 2", SourceType.AGENT, 0.5, 0.6, 1, 0.4)
+        _remember("doc fact 1", SourceType.DOCUMENT, 0.9, 0.9, 3, 0.7)
+        _remember("doc fact 2", SourceType.DOCUMENT, 0.9, 0.9, 3, 0.7)
+        report = engine.source_calibration()
+        self.assertEqual(report["total_memories"], 6)
+        by_origin = {s["origin"]: s for s in report["sources"]}
+        self.assertEqual(set(by_origin), {"user", "agent", "document"})
+        self.assertGreater(
+            by_origin["user"]["trust_score"],
+            by_origin["agent"]["trust_score"],
+        )
+        self.assertEqual(by_origin["user"]["avg_confidence"], 1.0)
+        self.assertEqual(by_origin["user"]["avg_evidence"], 5.0)
+        self.assertEqual(by_origin["user"]["memory_count"], 2)
+        self.assertEqual(report["sources"][0]["origin"], "user")
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("source_calibration", {})
+        self.assertEqual(via_mcp["total_memories"], 6)
+        self.assertEqual(via_mcp["sources"][0]["origin"], "user")
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

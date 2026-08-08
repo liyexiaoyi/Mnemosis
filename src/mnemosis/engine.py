@@ -1245,6 +1245,56 @@ class MemoryEngine:
             "total_topics": len(topics),
         }
 
+    def source_calibration(self) -> dict:
+        """Score the trustworthiness of each memory source.
+
+        Source monitoring (Johnson, Hashtroudi & Lindsay, 1993): agents
+        should know which origins are reliable. This groups memories by
+        source origin and scores each source from its average confidence,
+        evidence and importance.
+        """
+        from collections import defaultdict
+
+        groups: dict[str, list] = defaultdict(list)
+        for item in self.store.all_active():
+            groups[item.source.origin.value].append(item)
+        sources = []
+        for origin, members in sorted(groups.items()):
+            count = len(members)
+            avg_confidence = (
+                sum(item.confidence for item in members) / count
+            )
+            avg_evidence = (
+                sum(item.evidence_count for item in members) / count
+            )
+            avg_importance = (
+                sum(item.importance for item in members) / count
+            )
+            avg_trust = sum(item.source.trust for item in members) / count
+            trust_score = round(
+                0.4 * avg_confidence
+                + 0.3 * min(1.0, avg_evidence / 3.0)
+                + 0.2 * avg_importance
+                + 0.1 * avg_trust,
+                3,
+            )
+            sources.append(
+                {
+                    "origin": origin,
+                    "memory_count": count,
+                    "avg_confidence": round(avg_confidence, 3),
+                    "avg_evidence": round(avg_evidence, 3),
+                    "avg_importance": round(avg_importance, 3),
+                    "avg_source_trust": round(avg_trust, 3),
+                    "trust_score": trust_score,
+                }
+            )
+        sources.sort(key=lambda s: -s["trust_score"])
+        return {
+            "sources": sources,
+            "total_memories": sum(s["memory_count"] for s in sources),
+        }
+
     def retrieval_assist(
         self,
         query: str,

@@ -968,6 +968,16 @@ class MCPServer:
                 },
             },
             {
+                "name": "source_calibration",
+                "description": (
+                    "Score the trustworthiness of each memory source "
+                    "from average confidence, evidence, importance and "
+                    "source trust (source monitoring, Johnson et al. "
+                    "1993)."
+                ),
+                "inputSchema": {"type": "object", "properties": {}},
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1533,6 +1543,8 @@ class MCPServer:
             return self.engine.coverage_report(
                 limit=int(args.get("limit", 20)),
             )
+        if name == "source_calibration":
+            return self.engine.source_calibration()
         if name == "practice_due":
             kind_value = args.get("kind")
             from .types import MemoryKind
