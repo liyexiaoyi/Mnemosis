@@ -291,6 +291,15 @@ class MCPServer:
                 "inputSchema": {"type": "object", "properties": {}},
             },
             {
+                "name": "memory_status",
+                "description": (
+                    "Return a memory-health snapshot: active counts by "
+                    "kind, average strength/importance, how many memories "
+                    "are due right now, and how many conflicts exist."
+                ),
+                "inputSchema": {"type": "object", "properties": {}},
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -669,6 +678,8 @@ class MCPServer:
                 }
                 for conflict in conflicts
             ]
+        if name == "memory_status":
+            return self.engine.memory_status()
         if name == "practice_due":
             kind_value = args.get("kind")
             from .types import MemoryKind

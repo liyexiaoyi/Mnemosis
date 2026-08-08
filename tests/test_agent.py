@@ -517,6 +517,49 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
             {"alpha says 1", "alpha says 2"},
         )
 
+    def test_mcp_memory_status(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        now = utcnow()
+        engine.remember(
+            "due fact",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["due"],
+            strength=0.3,
+            created_at=now - timedelta(days=20),
+        )
+        engine.remember(
+            "fresh event",
+            kind=MemoryKind.EPISODIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["fresh"],
+            strength=0.9,
+            created_at=now - timedelta(days=1),
+        )
+        engine.remember(
+            "conflict a",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["same"],
+            confidence=0.8,
+        )
+        engine.remember(
+            "conflict b",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["same"],
+            confidence=0.8,
+        )
+        server = MCPServer(engine=engine)
+        status = server._call_tool("memory_status", {})
+        self.assertEqual(status["stats"]["active"], 4)
+        self.assertEqual(status["stats"]["semantic"], 3)
+        self.assertEqual(status["stats"]["episodic"], 1)
+        self.assertGreaterEqual(status["due_now"], 1)
+        self.assertEqual(status["conflicts"], 1)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

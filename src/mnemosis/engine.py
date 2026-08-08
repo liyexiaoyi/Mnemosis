@@ -1308,6 +1308,29 @@ class MemoryEngine:
         forecast.sort(key=lambda entry: entry["due_at"])
         return forecast
 
+    def memory_status(self, now: datetime | None = None) -> dict:
+        """Return a compact memory-health snapshot.
+
+        Gives agents the same numbers a human would check: how many
+        memories (by kind), average strength/importance, how many are due
+        right now, and how many conflicts exist.
+        """
+        now = now or utcnow()
+        stats = self.backend.stats()
+        due = len(
+            self.scheduler.due_items(
+                self.store.all_active(),
+                now=now,
+                limit=10**6,
+            )
+        )
+        conflicts = len(self.consolidator.detect_conflicts())
+        return {
+            "stats": stats,
+            "due_now": due,
+            "conflicts": conflicts,
+        }
+
     # -- sleep cycle ----------------------------------------------------------
 
     def sleep(
