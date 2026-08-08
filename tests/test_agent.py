@@ -1954,6 +1954,46 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["total_memories"], 6)
         self.assertEqual(len(via_mcp["sessions"]), 4)
 
+    def test_session_summary(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        ids = []
+        for text, cue in (
+            ("fact alpha", "ss-a"),
+            ("fact beta", "ss-b"),
+            ("event one", "ss-e1"),
+            ("event two", "ss-e2"),
+            ("zzz conflict one", "session-conflict"),
+            ("qqq conflict two", "session-conflict"),
+        ):
+            item = engine.remember(
+                text,
+                kind=(
+                    MemoryKind.SEMANTIC
+                    if text.startswith(("fact", "zzz", "qqq"))
+                    else MemoryKind.EPISODIC
+                ),
+                source=user,
+                cues=[cue],
+                confidence=0.8 if cue == "session-conflict" else 1.0,
+                auto_cues=False,
+            )
+            ids.append(item.id)
+        summary = engine.session_summary(ids)
+        self.assertEqual(summary["total"], 6)
+        self.assertEqual(len(summary["facts"]), 4)
+        self.assertEqual(len(summary["events"]), 2)
+        self.assertEqual(len(summary["conflicts"]), 1)
+        self.assertEqual(len(summary["duplicates"]), 0)
+        self.assertTrue(summary["summary"])
+        self.assertIsNone(engine.session_summary(["missing-id"]))
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "session_summary", {"memory_ids": ids}
+        )
+        self.assertEqual(via_mcp["total"], 6)
+        self.assertEqual(len(via_mcp["conflicts"]), 1)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

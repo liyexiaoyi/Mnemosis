@@ -1028,6 +1028,66 @@ class MemoryEngine:
             "total_memories": len(picked),
         }
 
+    def session_summary(
+        self,
+        memory_ids: list[str],
+        compare_limit: int = 20,
+    ) -> dict | None:
+        """Summarize one work session's memories into facts/events/issues.
+
+        Post-session consolidation integrates new traces into knowledge:
+        this splits the memories into semantic facts and episodic events,
+        then flags conflict and duplicate pairs so the agent can resolve
+        them before moving on.
+        """
+        from itertools import combinations
+
+        items = []
+        for memory_id in memory_ids:
+            item = self.backend.get(memory_id)
+            if item is not None:
+                items.append(item)
+        if not items:
+            return None
+        facts = [
+            {"id": item.id, "preview": item.content[:40]}
+            for item in items if item.kind is MemoryKind.SEMANTIC
+        ]
+        events = [
+            {"id": item.id, "preview": item.content[:40]}
+            for item in items if item.kind is MemoryKind.EPISODIC
+        ]
+        conflicts = []
+        duplicates = []
+        compare_items = items[: max(2, int(compare_limit))]
+        for a, b in combinations(compare_items, 2):
+            verdict = self.compare_memories(a.id, b.id)["verdict"]
+            if verdict == "conflict" and len(conflicts) < 5:
+                conflicts.append(
+                    {"id_a": a.id, "id_b": b.id,
+                     "a_preview": a.content[:24],
+                     "b_preview": b.content[:24]}
+                )
+            elif verdict == "duplicate" and len(duplicates) < 5:
+                duplicates.append(
+                    {"id_a": a.id, "id_b": b.id,
+                     "a_preview": a.content[:24],
+                     "b_preview": b.content[:24]}
+                )
+        summary = (
+            f"共 {len(items)} 条记忆：事实 {len(facts)} 条、"
+            f"事件 {len(events)} 条、冲突 {len(conflicts)} 对、"
+            f"重复 {len(duplicates)} 对"
+        )
+        return {
+            "total": len(items),
+            "facts": facts,
+            "events": events,
+            "conflicts": conflicts,
+            "duplicates": duplicates,
+            "summary": summary,
+        }
+
     def retrieval_assist(
         self,
         query: str,

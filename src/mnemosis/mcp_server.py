@@ -902,6 +902,25 @@ class MCPServer:
                 },
             },
             {
+                "name": "session_summary",
+                "description": (
+                    "Summarize one work session's memories: semantic "
+                    "facts, episodic events, plus conflict and duplicate "
+                    "pairs for post-session consolidation."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "memory_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                        "compare_limit": {"type": "integer"},
+                    },
+                    "required": ["memory_ids"],
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1446,6 +1465,11 @@ class MCPServer:
                 hours_available=float(args.get("hours_available", 6.0)),
                 session_minutes=int(args.get("session_minutes", 30)),
                 limit=int(args.get("limit", 20)),
+            )
+        if name == "session_summary":
+            return self.engine.session_summary(
+                args["memory_ids"],
+                compare_limit=int(args.get("compare_limit", 20)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")
