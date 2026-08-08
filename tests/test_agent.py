@@ -644,6 +644,58 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         )
         self.assertEqual(imported2, 2)
 
+    def test_practice_session(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        now = utcnow()
+        items = []
+        for i in range(3):
+            item = engine.remember(
+                f"会话{i}：条目。",
+                kind=MemoryKind.SEMANTIC,
+                source=SourceRecord(origin=SourceType.USER),
+                cues=[f"会话{i}"],
+                importance=0.8,
+                strength=0.3,
+                created_at=now - timedelta(days=20),
+            )
+            items.append(item)
+        answers = [
+            {"id": item.id, "attempt": "测试"}
+            for item in items
+        ]
+        session = engine.practice_session(answers, limit=3, now=now)
+        self.assertEqual(len(session["plan"]), 3)
+        self.assertEqual(session["report"]["n"], 3)
+        self.assertIsNotNone(session["report"]["difficulty"])
+        self.assertTrue(
+            all(
+                "next_review_at" in d
+                for d in session["report"]["details"]
+            )
+        )
+        engine2 = MemoryEngine()
+        now2 = utcnow()
+        answers2 = []
+        for i in range(3):
+            item = engine2.remember(
+                f"会话b{i}：条目。",
+                kind=MemoryKind.SEMANTIC,
+                source=SourceRecord(origin=SourceType.USER),
+                cues=[f"会话b{i}"],
+                importance=0.8,
+                strength=0.3,
+                created_at=now2 - timedelta(days=20),
+            )
+            answers2.append({"id": item.id, "attempt": "测试"})
+        server = MCPServer(engine=engine2)
+        via_mcp = server._call_tool(
+            "practice_session",
+            {"limit": 3, "answers": answers2},
+        )
+        self.assertEqual(len(via_mcp["plan"]), 3)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

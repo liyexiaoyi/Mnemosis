@@ -347,6 +347,32 @@ class MCPServer:
                 },
             },
             {
+                "name": "practice_session",
+                "description": (
+                    "Run one complete practice session: returns the coming "
+                    "session plan plus the scored report for the answers "
+                    "(difficulty and next-review suggestions)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer"},
+                        "answers": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "id": {"type": "string"},
+                                    "attempt": {"type": "string"},
+                                },
+                                "required": ["id"],
+                            },
+                        },
+                    },
+                    "required": ["answers"],
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -733,6 +759,11 @@ class MCPServer:
             return self.engine.export_memories()
         if name == "import_memories":
             return self.engine.import_memories(args["payload"])
+        if name == "practice_session":
+            return self.engine.practice_session(
+                args["answers"],
+                limit=int(args.get("limit", 5)),
+            )
         if name == "practice_due":
             kind_value = args.get("kind")
             from .types import MemoryKind

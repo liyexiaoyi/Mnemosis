@@ -1411,6 +1411,23 @@ class MemoryEngine:
             imported += 1
         return imported
 
+    def practice_session(
+        self,
+        answers: list[dict],
+        limit: int = 5,
+        now: datetime | None = None,
+    ) -> dict:
+        """Run one complete practice session: plan + scored report.
+
+        Returns the coming session's plan and the report for the answers
+        just processed (difficulty, next-review suggestions), so agents
+        can run a full review loop in one call.
+        """
+        now = now or utcnow()
+        plan = self.practice_plan(limit=limit, now=now)
+        report = self.practice_report(answers, now=now)
+        return {"plan": plan, "report": report}
+
     # -- sleep cycle ----------------------------------------------------------
 
     def sleep(
