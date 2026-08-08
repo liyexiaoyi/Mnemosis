@@ -555,6 +555,25 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         )
         self.assertTrue(isinstance(result, list))
 
+    def test_practice_interleave(self) -> None:
+        engine = MemoryEngine()
+        for cat, i in (("颜色", 1), ("颜色", 2), ("食物", 3), ("食物", 4)):
+            engine.remember(
+                f"条目{cat}{i}",
+                kind=MemoryKind.SEMANTIC,
+                source=SourceRecord(origin=SourceType.USER),
+                cues=[cat],
+                importance=0.8,
+                strength=0.4,
+                created_at=utcnow() - timedelta(days=20),
+            )
+        cards = engine.practice_due(
+            limit=4, min_gap_hours=0, adaptive_gap=False, interleave=True
+        )
+        cats = [c["cue"].split(" / ")[0] for c in cards]
+        self.assertEqual(len(cats), 4)
+        self.assertTrue(all(a != b for a, b in zip(cats, cats[1:])))
+
 
 if __name__ == "__main__":
     unittest.main()

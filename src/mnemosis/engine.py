@@ -782,6 +782,7 @@ class MemoryEngine:
         desirable_difficulty: bool = True,
         min_gap_hours: float = 24.0,
         adaptive_gap: bool = True,
+        interleave: bool = True,
     ) -> list[dict]:
         """Active retrieval practice: due memories shown as cues only.
 
@@ -789,8 +790,10 @@ class MemoryEngine:
         and then receiving feedback strengthens a memory more than passive
         re-reading. Spacing effect (Cepeda et al., 2006): practice must be
         spaced - ``min_gap_hours`` prevents massed re-practice of the same
-        item. The agent sees only the cues (no content) and must recall the
-        answer before it is revealed.
+        item. Interleaving (Rohrer & Taylor, 2007): cards from different
+        categories are mixed so consecutive cards rarely repeat a category.
+        The agent sees only the cues (no content) and must recall the answer
+        before it is revealed.
         """
         items = self.review_due(
             limit=max(limit * 2, 12),
@@ -814,6 +817,8 @@ class MemoryEngine:
             items = kept[:limit]
         else:
             items = items[:limit]
+        if interleave and len(items) > 1:
+            items = self._interleave(items)
         return [
             {
                 "id": item.id,
@@ -821,6 +826,30 @@ class MemoryEngine:
             }
             for item in items
         ]
+
+    def _interleave(self, items: list[MemoryItem]) -> list[MemoryItem]:
+        """Order items so adjacent cards avoid the same category (cue)."""
+        buckets: dict[str, list[MemoryItem]] = {}
+        for item in items:
+            cat = item.cues[0] if item.cues else item.id
+            buckets.setdefault(cat, []).append(item)
+        out: list[MemoryItem] = []
+        last_cat = None
+        while buckets:
+            candidates = [
+                cat for cat in buckets
+                if cat != last_cat and buckets[cat]
+            ]
+            if not candidates:
+                candidates = [cat for cat in buckets if buckets[cat]]
+            if not candidates:
+                break
+            cat = candidates[0]
+            out.append(buckets[cat].pop(0))
+            if not buckets[cat]:
+                del buckets[cat]
+            last_cat = cat
+        return out
 
     def _success_rate(self, item: MemoryItem) -> float:
         total = item.retrieval_successes + item.retrieval_failures
