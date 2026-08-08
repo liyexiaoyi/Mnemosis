@@ -788,6 +788,31 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         via_mcp = server._call_tool("memory_audit", {})
         self.assertEqual(via_mcp["active"], 5)
 
+    def test_dedupe_memories(self) -> None:
+        engine = MemoryEngine()
+        source = SourceRecord(origin=SourceType.USER)
+        for _ in range(3):
+            engine.remember(
+                "重复事件：同一天去了公园。",
+                kind=MemoryKind.EPISODIC,
+                source=source,
+                cues=["公园", "同一天"],
+            )
+        engine.remember(
+            "唯一事件：去了图书馆。",
+            kind=MemoryKind.EPISODIC,
+            source=source,
+            cues=["图书馆"],
+        )
+        before = len(engine.store.all_active())
+        merged = engine.dedupe_memories()
+        after = len(engine.store.all_active())
+        self.assertEqual(merged, 2)
+        self.assertEqual(after, before - 2)
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("dedupe_memories", {})
+        self.assertIsInstance(via_mcp, int)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

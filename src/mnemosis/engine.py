@@ -1485,6 +1485,16 @@ class MemoryEngine:
             "avg_importance": stats["avg_importance"],
         }
 
+    def dedupe_memories(self, now: datetime | None = None) -> int:
+        """Merge near-duplicate traces on demand.
+
+        Complementary learning systems (McClelland et al., 1995): repeated
+        episodes collapse into one strengthened trace. Exposes the sleep
+        merge pass as an on-demand maintenance tool.
+        """
+        now = now or utcnow()
+        return self.consolidator._merge_duplicates(now)
+
     # -- sleep cycle ----------------------------------------------------------
 
     def sleep(

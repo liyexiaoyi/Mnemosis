@@ -396,6 +396,14 @@ class MCPServer:
                 "inputSchema": {"type": "object", "properties": {}},
             },
             {
+                "name": "dedupe_memories",
+                "description": (
+                    "Merge near-duplicate traces on demand; returns how "
+                    "many duplicates were merged."
+                ),
+                "inputSchema": {"type": "object", "properties": {}},
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -793,6 +801,8 @@ class MCPServer:
             )
         if name == "memory_audit":
             return self.engine.memory_audit()
+        if name == "dedupe_memories":
+            return self.engine.dedupe_memories()
         if name == "practice_due":
             kind_value = args.get("kind")
             from .types import MemoryKind
