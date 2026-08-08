@@ -5366,6 +5366,155 @@ class MemoryEngine:
             "source": "records",
         }
 
+    def plan_rehearsal(
+        self,
+        goal: str,
+        *,
+        top_k: int | None = None,
+        now: datetime | None = None,
+    ) -> dict:
+        """Mentally rehearse a plan before acting (episodic simulation).
+
+        Schacter & Addis (2007): the episodic memory system recombines
+        past episodes into imagined futures, so planning is simulated
+        experience; Momennejad et al. (2017) and Na et al. (2021): humans
+        value each step by its projected outcome (forward thinking).
+        This read-only tool pre-plays the plan: every step gets a success
+        probability from stored outcome history, the weakest link is
+        flagged, and a remembered successful alternative is offered as a
+        fallback.
+        """
+        plan = self.plan_for_goal(
+            goal, top_k=top_k, now=now, effort="high"
+        )
+        steps = []
+        for result in plan:
+            content = result.item.content
+            person = (
+                result.item.cues[0][:2]
+                if result.item.cues
+                else content[:2]
+            )
+            probe = self._plan_rehearsal_probe(content, person)
+            steps.append(
+                {
+                    "step": content,
+                    "person": person,
+                    "success_probability": probe["success_probability"],
+                    "confidence": probe["confidence"],
+                    "source": probe["source"],
+                }
+            )
+        weakest = min(
+            steps,
+            key=lambda s: s["success_probability"],
+            default=None,
+        )
+        fallback = (
+            self._plan_rehearsal_fallback(
+                weakest["step"], weakest["person"]
+            )
+            if weakest is not None
+            else None
+        )
+        if weakest is None:
+            advice = (
+                "记忆里还没有可预演的计划或资料，先记录目标步骤再预演。"
+            )
+            overall = 0.0
+        else:
+            overall = round(
+                min(s["success_probability"] for s in steps),
+                3,
+            )
+            if fallback:
+                advice = (
+                    "先在脑子里预演一遍全计划；最薄弱的是"
+                    f"“{weakest['step'][:22]}”（成功率"
+                    f"{weakest['success_probability']:.0%}）；"
+                    f"如果失败，记得的备选是“{fallback}”。"
+                )
+            else:
+                advice = (
+                    "先在脑子里预演一遍全计划；最薄弱的是"
+                    f"“{weakest['step'][:22]}”（成功率"
+                    f"{weakest['success_probability']:.0%}）；"
+                    "没有现成备选，先小步试一次再继续。"
+                )
+        return {
+            "goal": goal,
+            "steps": steps,
+            "step_count": len(steps),
+            "weakest_step": weakest,
+            "overall_success_probability": overall,
+            "fallback": fallback,
+            "rehearsal_advice": advice,
+        }
+
+    def _plan_rehearsal_probe(
+        self,
+        step: str,
+        person: str,
+    ) -> dict:
+        """Evidence-weighted success probe for one plan step."""
+        _ACTION_PREFIXES = "订买卖打包收拾请找定学搬选入"
+        success = failure = 0
+        for item in self.backend.list(kind=MemoryKind.EPISODIC):
+            if (
+                "执行成功" not in item.content
+                and "执行失败" not in item.content
+            ):
+                continue
+            if len(item.cues) < 3:
+                continue
+            if item.cues[0][:2] != person:
+                continue
+            step_cue = item.cues[1]
+            nouns = {step_cue, step_cue.lstrip(_ACTION_PREFIXES)}
+            if not any(noun and noun in step for noun in nouns):
+                continue
+            weight = max(1, item.evidence_count)
+            if "执行成功" in item.content:
+                success += weight
+            else:
+                failure += weight
+        total = success + failure
+        if total == 0:
+            pred = self.predict_step(step)
+            return {
+                "success_probability": pred["success_probability"],
+                "confidence": pred["confidence"],
+                "source": pred["source"],
+            }
+        ratio = success / total
+        return {
+            "success_probability": round(ratio, 3),
+            "confidence": round(abs(ratio - 0.5) * 2, 3),
+            "source": "records",
+        }
+
+    def _plan_rehearsal_fallback(
+        self,
+        step: str,
+        person: str,
+    ) -> str | None:
+        """Find a remembered successful alternative for the same person."""
+        _ACTION_PREFIXES = "订买卖打包收拾请找定学搬选入"
+        step_cue_alt = ""
+        for item in self.backend.list(kind=MemoryKind.EPISODIC):
+            if "执行成功" not in item.content or len(item.cues) < 3:
+                continue
+            if item.cues[0][:2] != person:
+                continue
+            step_cue = item.cues[1]
+            if step_cue in step or step_cue.lstrip(_ACTION_PREFIXES) in step:
+                continue
+            if step_cue_alt and step_cue_alt != step_cue:
+                continue
+            step_cue_alt = step_cue
+            return item.content[:48]
+        return None
+
     def sleep_replay(self, now: datetime | None = None) -> dict:
         """Sleep replay: strengthen surprising events, consolidate experience.
 

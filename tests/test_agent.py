@@ -4187,6 +4187,50 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertIsNotNone(via_mcp["diff"])
         self.assertIn("verdict", via_mcp["diff"])
 
+    def test_plan_rehearsal(self) -> None:
+        engine = self._engine()
+        report = engine.plan_rehearsal(
+            "大壮想去京都旅行，参考阿丽和小波谁的计划更好？",
+            top_k=8,
+        )
+        self.assertGreater(report["step_count"], 0)
+        self.assertIsNotNone(report["weakest_step"])
+        for step in report["steps"]:
+            self.assertTrue(0 <= step["success_probability"] <= 1)
+            self.assertIn("source", step)
+            self.assertIn("person", step)
+        self.assertEqual(
+            report["weakest_step"]["success_probability"],
+            min(s["success_probability"] for s in report["steps"]),
+        )
+        self.assertEqual(
+            report["overall_success_probability"],
+            min(s["success_probability"] for s in report["steps"]),
+        )
+        self.assertIn("预演", report["rehearsal_advice"])
+        self.assertIn("fallback", report)
+        # a plan built from the fully successful person ranks higher
+        strong = engine.plan_rehearsal("大壮想去京都旅行，参考小波")
+        self.assertGreaterEqual(
+            strong["overall_success_probability"],
+            report["overall_success_probability"],
+        )
+        # empty memory store is graceful, no crash
+        empty = MemoryEngine().plan_rehearsal("想从没出现过的奇怪地方旅行")
+        self.assertEqual(empty["step_count"], 0)
+        self.assertIsNone(empty["weakest_step"])
+        self.assertIn("预演", empty["rehearsal_advice"])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "plan_rehearsal",
+            {
+                "goal": "大壮想去京都旅行，参考阿丽和小波谁的计划更好？",
+                "top_k": 8,
+            },
+        )
+        self.assertGreater(via_mcp["step_count"], 0)
+        self.assertIsNotNone(via_mcp["weakest_step"])
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

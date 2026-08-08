@@ -1752,6 +1752,24 @@ class MCPServer:
                 },
             },
             {
+                "name": "plan_rehearsal",
+                "description": (
+                    "Mentally rehearse a plan before executing: predict "
+                    "each step's success probability from outcome "
+                    "history, flag the weakest step and offer a remembered "
+                    "fallback (constructive episodic simulation; Schacter "
+                    "& Addis, 2007)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "goal": {"type": "string"},
+                        "top_k": {"type": "integer"},
+                    },
+                    "required": ["goal"],
+                },
+            },
+            {
                 "name": "retrieval_snapshot",
                 "description": (
                     "Capture a compact memory-state snapshot (knowledge "
@@ -2542,6 +2560,11 @@ class MCPServer:
         if name == "goal_progress":
             return self.engine.goal_progress(
                 goal=str(args.get("goal", "")),
+            )
+        if name == "plan_rehearsal":
+            return self.engine.plan_rehearsal(
+                goal=str(args.get("goal", "")),
+                top_k=args.get("top_k"),
             )
         if name == "retrieval_snapshot":
             return self.engine.retrieval_snapshot(
