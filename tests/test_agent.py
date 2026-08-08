@@ -4121,6 +4121,37 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["total_emotional"], 3)
         self.assertIn("persistent", via_mcp["status_counts"])
 
+    def test_goal_progress(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        for i in range(2):
+            item = engine.remember(
+                f"物理题 {i}",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["物理"],
+                confidence=0.5,
+                strength=0.5,
+                auto_cues=False,
+            )
+            item.retrieval_successes = 5
+            item.retrieval_failures = 5
+            engine.backend.update(item)
+        report = engine.goal_progress("物理")
+        self.assertEqual(report["matched_topic"], "物理")
+        self.assertEqual(report["status"], "in_progress")
+        self.assertGreater(report["progress_ratio"], 0)
+        self.assertIn("下一步", report["advice"])
+        missing = engine.goal_progress("航天")
+        self.assertEqual(missing["status"], "not_started")
+        self.assertIsNone(missing["matched_topic"])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "goal_progress", {"goal": "物理"}
+        )
+        self.assertEqual(via_mcp["status"], "in_progress")
+        self.assertEqual(via_mcp["matched_topic"], "物理")
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

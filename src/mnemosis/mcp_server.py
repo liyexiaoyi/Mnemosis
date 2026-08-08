@@ -1737,6 +1737,21 @@ class MCPServer:
                 },
             },
             {
+                "name": "goal_progress",
+                "description": (
+                    "Measure progress toward a learning goal via the "
+                    "best-matching topic's mastery (self-regulated "
+                    "learning goal monitoring)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "goal": {"type": "string"},
+                    },
+                    "required": ["goal"],
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -2502,6 +2517,10 @@ class MCPServer:
         if name == "affect_decay":
             return self.engine.affect_decay(
                 limit=int(args.get("limit", 20)),
+            )
+        if name == "goal_progress":
+            return self.engine.goal_progress(
+                goal=str(args.get("goal", "")),
             )
         if name == "practice_due":
             kind_value = args.get("kind")

@@ -4289,6 +4289,69 @@ class MemoryEngine:
             ),
         }
 
+    def goal_progress(
+        self,
+        goal: str,
+        *,
+        now: datetime | None = None,
+    ) -> dict:
+        """Measure progress toward a learning goal via topic mastery.
+
+        Self-regulated learning requires setting goals and monitoring
+        progress (Zimmerman; goal-monitoring research). This tool maps
+        the goal to the best-matching topic in mastery_map and reports
+        the mastery ratio and status.
+        """
+        mastery = self.mastery_map(now=now)
+        goal_lower = goal.strip().lower()
+        matches: list[dict] = []
+        for topic in mastery["topics"]:
+            if (
+                goal_lower in topic["topic"].lower()
+                or topic["topic"].lower() in goal_lower
+            ):
+                matches.append(topic)
+        if not matches:
+            for topic in mastery["topics"]:
+                items = [
+                    item
+                    for item in self.store.all_active()
+                    if item.cues and item.cues[0] == topic["topic"]
+                ]
+                if any(
+                    goal_lower in item.content.lower()
+                    for item in items
+                ):
+                    matches.append(topic)
+        if matches:
+            best = max(matches, key=lambda topic: topic["mastery"])
+            progress_ratio = best["mastery"]
+            if best["flag"] == "mastered":
+                status = "mastered"
+            elif best["flag"] == "developing":
+                status = "in_progress"
+            else:
+                status = "not_started"
+            matched_topic = best["topic"]
+        else:
+            progress_ratio = 0.0
+            status = "not_started"
+            matched_topic = None
+        return {
+            "goal": goal,
+            "matched_topic": matched_topic,
+            "progress_ratio": progress_ratio,
+            "status": status,
+            "advice": (
+                "目标已有进度：继续按掌握度地图的下一步学，"
+                "定期复查（自我调节学习）。"
+                if status == "in_progress"
+                else "目标已掌握：换迁移题检验真理解。"
+                if status == "mastered"
+                else "目标未开始：先积累该主题的基础记忆。"
+            ),
+        }
+
     def retrieval_assist(
         self,
         query: str,
