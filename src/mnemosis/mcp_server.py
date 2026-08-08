@@ -235,6 +235,18 @@ class MCPServer:
                     "required": ["goal", "failed_step"],
                 },
             },
+            {
+                "name": "predict_step",
+                "description": (
+                    "Predict a step's success probability from its outcome "
+                    "history (prediction-error updated records)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {"step": {"type": "string"}},
+                    "required": ["step"],
+                },
+            },
         ]
 
     def handle_line(self, line: str) -> str | None:
@@ -484,6 +496,8 @@ class MCPServer:
                 }
                 for r in results
             ]
+        if name == "predict_step":
+            return self.engine.predict_step(args["step"])
         raise ValueError(f"unknown tool: {name}")
 
     def _result(self, message_id: Any, result: Any) -> str:

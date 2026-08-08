@@ -360,6 +360,14 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(pred["success_probability"], 0.5)
         self.assertEqual(pred["confidence"], 0.0)
 
+    def test_mcp_predict_step_tool(self) -> None:
+        engine = MemoryEngine()
+        for _ in range(3):
+            engine.record_outcome("旅行", "订机票", success=True)
+        server = MCPServer(engine=engine)
+        result = server._call_tool("predict_step", {"step": "订机票"})
+        self.assertEqual(result["success_probability"], 1.0)
+
 
 if __name__ == "__main__":
     unittest.main()
