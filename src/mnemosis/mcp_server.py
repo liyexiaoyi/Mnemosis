@@ -744,6 +744,16 @@ class MCPServer:
                 "inputSchema": {"type": "object", "properties": {}},
             },
             {
+                "name": "kg_export",
+                "description": (
+                    "Export the memory network as a knowledge-graph edge "
+                    "list (nodes + deduplicated undirected edges) for "
+                    "external visualization (semantic networks, Collins & "
+                    "Quillian 1969)."
+                ),
+                "inputSchema": {"type": "object", "properties": {}},
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1250,6 +1260,8 @@ class MCPServer:
             )
         if name == "memory_health":
             return self.engine.memory_health()
+        if name == "kg_export":
+            return self.engine.kg_export()
         if name == "practice_due":
             kind_value = args.get("kind")
             from .types import MemoryKind

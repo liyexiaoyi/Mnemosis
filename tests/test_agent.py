@@ -1543,6 +1543,42 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["memory_count"], 13)
         self.assertIn("penalties", via_mcp)
 
+    def test_kg_export(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        hub = engine.remember(
+            "zzz hub alpha.", kind=MemoryKind.SEMANTIC, source=user
+        )
+        nodes = [
+            engine.remember(
+                f"qqq nod {letter}.", kind=MemoryKind.SEMANTIC, source=user
+            )
+            for letter in ("x", "y", "z", "u")
+        ]
+        for node in nodes:
+            engine.backend.add_link(hub.id, node.id)
+        engine.remember("aaa lon m.", kind=MemoryKind.SEMANTIC, source=user)
+        engine.remember("aaa lon n.", kind=MemoryKind.SEMANTIC, source=user)
+        graph = engine.kg_export()
+        self.assertEqual(graph["node_count"], 7)
+        self.assertEqual(graph["edge_count"], 4)
+        self.assertIn(hub.id, {n["id"] for n in graph["nodes"]})
+        self.assertEqual(graph["nodes"][0]["kind"], "semantic")
+        pairs = {
+            frozenset((e["source"], e["target"])) for e in graph["edges"]
+        }
+        self.assertEqual(len(pairs), 4)
+        self.assertTrue(
+            all(
+                {"source", "target", "weight"} <= set(e)
+                for e in graph["edges"]
+            )
+        )
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("kg_export", {})
+        self.assertEqual(via_mcp["node_count"], 7)
+        self.assertEqual(via_mcp["edge_count"], 4)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

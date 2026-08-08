@@ -514,6 +514,47 @@ class MemoryEngine:
             "penalties": penalties,
         }
 
+    def kg_export(self) -> dict:
+        """Export the memory network as a knowledge-graph edge list.
+
+        Semantic-network organization (Collins & Quillian, 1969): related
+        facts form a graph. This returns nodes and deduplicated undirected
+        edges so external tools can visualize or analyze the store.
+        """
+        items = {
+            item.id: item for item in self.store.all_active()
+        }
+        nodes = [
+            {
+                "id": item.id,
+                "label": item.content[:24],
+                "kind": item.kind.value,
+            }
+            for item in items.values()
+        ]
+        edges = []
+        seen: set[frozenset[str]] = set()
+        for src, dst, weight in self.backend.all_links():
+            if src not in items or dst not in items:
+                continue
+            pair = frozenset((src, dst))
+            if pair in seen:
+                continue
+            seen.add(pair)
+            edges.append(
+                {
+                    "source": src,
+                    "target": dst,
+                    "weight": round(float(weight), 3),
+                }
+            )
+        return {
+            "nodes": nodes,
+            "edges": edges,
+            "node_count": len(nodes),
+            "edge_count": len(edges),
+        }
+
     def retrieval_assist(
         self,
         query: str,
