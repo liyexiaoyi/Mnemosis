@@ -1100,6 +1100,30 @@ class MCPServer:
                 },
             },
             {
+                "name": "dependency_map",
+                "description": (
+                    "Build a plan's dependency graph and critical path "
+                    "(hierarchical planning, Miller & Cohen 2001; "
+                    "critical-path method): levels, predecessors, "
+                    "parallel groups and the gating chain."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "plan": {
+                            "type": "array",
+                            "items": {
+                                "oneOf": [
+                                    {"type": "string"},
+                                    {"type": "object"},
+                                ]
+                            },
+                        },
+                    },
+                    "required": ["plan"],
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1696,6 +1720,8 @@ class MCPServer:
                 args["plan"],
                 top_k=int(args.get("top_k", 3)),
             )
+        if name == "dependency_map":
+            return self.engine.dependency_map(args["plan"])
         if name == "practice_due":
             kind_value = args.get("kind")
             from .types import MemoryKind

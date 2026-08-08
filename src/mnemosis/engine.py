@@ -1696,6 +1696,101 @@ class MemoryEngine:
             ),
         }
 
+    def dependency_map(
+        self,
+        plan: list,
+    ) -> dict:
+        """Build the dependency graph and critical path of a plan.
+
+        Plans are hierarchical and ordered (Miller & Cohen, 2001); the
+        critical-path method (CPM) finds which steps gate the finish.
+        Each step may declare "depends_on" (0-based indices); otherwise
+        references to earlier steps' keywords imply a dependency.
+        """
+        steps = []
+        for item in plan:
+            if isinstance(item, str):
+                text = item
+                declared = None
+            else:
+                text = item.get("step") or item.get("action") or ""
+                declared = item.get("depends_on")
+            text = str(text).strip()
+            if text:
+                steps.append((text, declared))
+        if not steps:
+            return {"steps": [], "critical_path": [], "parallel_groups": []}
+        resolved: list[set[int]] = []
+        anchors: list[str] = []
+        for i, (text, declared) in enumerate(steps):
+            deps: set[int] = set()
+            if declared:
+                for index in declared:
+                    if 0 <= int(index) < i:
+                        deps.add(int(index))
+            else:
+                for j, anchor in enumerate(anchors):
+                    if anchor and anchor in text:
+                        deps.add(j)
+            resolved.append(deps)
+            anchors.append(text[:8])
+        level = [0] * len(steps)
+        for i in range(len(steps)):
+            for dep in resolved[i]:
+                level[i] = max(level[i], level[dep] + 1)
+        successors: list[list[int]] = [[] for _ in steps]
+        for i, deps in enumerate(resolved):
+            for dep in deps:
+                successors[dep].append(i)
+        # longest path from any start (critical path)
+        starts = [i for i, deps in enumerate(resolved) if not deps]
+        best: list[int] = []
+        for start in starts:
+            path = [start]
+            while True:
+                candidates = [
+                    s for s in successors[path[-1]] if level[s] == level[path[-1]] + 1
+                ]
+                if not candidates:
+                    break
+                path.append(candidates[0])
+            if len(path) > len(best):
+                best = path
+        critical_path = [
+            {
+                "index": i,
+                "step": steps[i][0],
+                "level": level[i],
+            }
+            for i in best
+        ]
+        by_level: dict[int, list[int]] = {}
+        for i, lev in enumerate(level):
+            by_level.setdefault(lev, []).append(i)
+        parallel_groups = [
+            {
+                "level": lev,
+                "step_indices": indices,
+                "count": len(indices),
+            }
+            for lev, indices in sorted(by_level.items())
+            if len(indices) > 1
+        ]
+        return {
+            "steps": [
+                {
+                    "index": i,
+                    "step": text,
+                    "depends_on": sorted(deps),
+                    "level": level[i],
+                }
+                for i, (text, _declared) in enumerate(steps)
+            ],
+            "critical_path": critical_path,
+            "parallel_groups": parallel_groups,
+            "finish_level": max(level) if level else 0,
+        }
+
     def retrieval_assist(
         self,
         query: str,

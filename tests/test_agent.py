@@ -2431,6 +2431,41 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["total_supported"], 2)
         self.assertEqual(len(via_mcp["steps"]), 2)
 
+    def test_dependency_map(self) -> None:
+        engine = MemoryEngine()
+        plan = [
+            {"step": "调研需求", "depends_on": []},
+            {"step": "设计架构", "depends_on": [0]},
+            {"step": "开发功能", "depends_on": [1]},
+            {"step": "测试功能", "depends_on": [2]},
+            {"step": "部署上线", "depends_on": [3]},
+            {"step": "写文档", "depends_on": [1]},
+        ]
+        report = engine.dependency_map(plan)
+        self.assertEqual(len(report["steps"]), 6)
+        by_index = {s["index"]: s for s in report["steps"]}
+        self.assertEqual(by_index[2]["depends_on"], [1])
+        self.assertEqual(
+            [s["level"] for s in report["steps"]],
+            [0, 1, 2, 3, 4, 2],
+        )
+        self.assertTrue(
+            any(
+                group["level"] == 2
+                and set(group["step_indices"]) == {2, 5}
+                for group in report["parallel_groups"]
+            )
+        )
+        self.assertEqual(
+            [s["index"] for s in report["critical_path"]],
+            [0, 1, 2, 3, 4],
+        )
+        self.assertEqual(report["finish_level"], 4)
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("dependency_map", {"plan": plan})
+        self.assertEqual(len(via_mcp["critical_path"]), 5)
+        self.assertEqual(via_mcp["finish_level"], 4)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(
