@@ -656,6 +656,102 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         rival_after = engine.backend.get(rival.id)
         self.assertAlmostEqual(rival_after.strength, rival.strength)
 
+    def test_practice_generation_bonus(self) -> None:
+        from datetime import timedelta
+
+        def _fresh() -> tuple[MemoryEngine, object]:
+            engine = MemoryEngine()
+            now = utcnow()
+            item = engine.remember(
+                "阿丽最喜欢的城市是成都。",
+                kind=MemoryKind.SEMANTIC,
+                source=SourceRecord(origin=SourceType.USER),
+                cues=["阿丽", "城市"],
+                importance=0.8,
+                strength=0.5,
+                created_at=now - timedelta(days=20),
+            )
+            return engine, item
+
+        engine_v, item_v = _fresh()
+        res_v = engine_v.practice_answer(
+            item_v.id, "阿丽最喜欢的城市是成都。", now=utcnow()
+        )
+        self.assertTrue(res_v["success"])
+        self.assertFalse(res_v["generated"])
+        engine_g, item_g = _fresh()
+        res_g = engine_g.practice_answer(
+            item_g.id,
+            "我自己的话：阿丽最喜欢的城市是成都。",
+            now=utcnow(),
+        )
+        self.assertTrue(res_g["success"])
+        self.assertTrue(res_g["generated"])
+        r_v = engine_v.curve.retrievability(item_v, utcnow())
+        r_g = engine_g.curve.retrievability(item_g, utcnow())
+        self.assertGreater(r_g, r_v)
+
+    def test_mcp_generation_bonus_param(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        now = utcnow()
+        item = engine.remember(
+            "阿丽最喜欢的动物是猫。",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["阿丽", "动物"],
+            importance=0.8,
+            strength=0.5,
+            created_at=now - timedelta(days=20),
+        )
+        server = MCPServer(engine=engine)
+        result = server._call_tool(
+            "practice_answer",
+            {
+                "memory_id": item.id,
+                "attempt": "我自己的话：阿丽最喜欢的动物是猫。",
+                "generation_bonus": True,
+            },
+        )
+        self.assertTrue(result["success"])
+        self.assertTrue(result["generated"])
+
+    def test_suppression_only_uses_primary_cue(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        now = utcnow()
+        target = engine.remember(
+            "阿丽最喜欢的城市是成都。",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["城市"],
+            importance=0.8,
+            strength=0.5,
+            created_at=now - timedelta(days=20),
+        )
+        # different primary cue; content shares auto bigrams (阿丽/喜欢/成都)
+        # but does NOT contain the target's primary cue "城市"
+        other = engine.remember(
+            "阿丽喜欢在成都吃火锅。",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["火锅"],
+            importance=0.8,
+            strength=0.5,
+            created_at=now - timedelta(days=20),
+        )
+        other_before = other.strength
+        result = engine.practice_answer(
+            target.id, "阿丽最喜欢的城市是成都。", now=now
+        )
+        self.assertTrue(result["success"])
+        self.assertEqual(result["suppressed"], 0)
+        self.assertAlmostEqual(
+            engine.backend.get(other.id).strength, other_before
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

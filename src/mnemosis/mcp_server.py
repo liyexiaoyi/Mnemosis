@@ -293,6 +293,7 @@ class MCPServer:
                         "memory_id": {"type": "string"},
                         "attempt": {"type": "string"},
                         "suppress_competitors": {"type": "boolean"},
+                        "generation_bonus": {"type": "boolean"},
                     },
                     "required": ["memory_id", "attempt"],
                 },
@@ -596,6 +597,9 @@ class MCPServer:
                 args["attempt"],
                 suppress_competitors=bool(
                     args.get("suppress_competitors", True)
+                ),
+                generation_bonus=bool(
+                    args.get("generation_bonus", True)
                 ),
             )
         if name == "practice_report":

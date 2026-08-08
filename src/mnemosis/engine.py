@@ -868,16 +868,22 @@ class MemoryEngine:
         *,
         suppress_competitors: bool = True,
         suppression_factor: float = 0.97,
+        generation_bonus: bool = True,
     ) -> dict:
         """Score a retrieval attempt and apply testing-effect reinforcement.
 
         A successful recall applies effort-scaled reinforcement (the harder
         the retrieval, the stronger the gain); a failure resets the review
         streak so the item is practised again soon. On success, competing
-        memories that share a cue are gently suppressed (Anderson, Bjork &
-        Bjork, 1994 retrieval-induced forgetting): lowering the competing
-        items' accessibility makes the practised target easier to
-        discriminate later. The correct content is returned as feedback.
+        memories sharing the item's primary cue are gently suppressed
+        (Anderson, Bjork & Bjork, 1994 retrieval-induced forgetting):
+        lowering the competing items' accessibility makes the practised
+        target easier to discriminate later. Only the primary cue is used
+        so auto-extracted content bigrams never misfire suppression.
+        Generation effect (Slamecka & Graf, 1978): a successful recall
+        phrased in the agent's own words ("generated") strengthens more
+        than copying the stored sentence verbatim, so a small extra
+        reinforcement is applied unless disabled.
         """
         item = self.backend.get(memory_id)
         if item is None:
@@ -899,18 +905,23 @@ class MemoryEngine:
                 )
             )
         )
+        generated = success and norm_attempt != norm_content
         if success:
             retrievability = self.curve.retrievability(item, now)
             effort = max(0.0, min(1.0, 1.0 - retrievability))
+            delta = 0.12
+            if generation_bonus and generated:
+                delta *= 1.15
             self.curve.reinforce_review(
-                item, delta=0.12, now=now, effort=effort
+                item, delta=delta, now=now, effort=effort
             )
             self.scheduler.record_outcome(item, True, now)
             suppressed = 0
             if suppress_competitors:
                 seen = {item.id}
-                for cue in item.cues:
-                    for rival in self.backend.find_by_cue(cue):
+                primary = item.cues[0] if item.cues else ""
+                if primary:
+                    for rival in self.backend.find_by_cue(primary):
                         if (
                             rival.id in seen
                             or rival.status is not MemoryStatus.ACTIVE
@@ -938,6 +949,7 @@ class MemoryEngine:
         }
         if success:
             result["suppressed"] = suppressed
+            result["generated"] = generated
         return result
 
     def practice_report(
