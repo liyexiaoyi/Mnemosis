@@ -846,6 +846,8 @@ class MemoryEngine:
         interleave: bool = True,
         vary_cues: bool = True,
         arousal_priority: bool = True,
+        fresh_priority: bool = True,
+        fresh_window_hours: float = 6.0,
     ) -> list[dict]:
         """Active retrieval practice: due memories shown as cues only.
 
@@ -864,8 +866,12 @@ class MemoryEngine:
         robust across query phrasings, so ``vary_cues`` rotates the shown
         cue. Arousal-biased competition (Mather & Sutherland, 2011):
         emotionally arousing memories compete harder for consolidation, so
-        ``arousal_priority`` rehearses them first within the quota.
+        ``arousal_priority`` rehearses them first within the quota. Early
+        consolidation window (Gais et al., 2006): traces encoded within the
+        last few hours are preferentially rehearsed, so ``fresh_priority``
+        puts them first while they are still consolidating.
         """
+        now = now or utcnow()
         items = self.review_due(
             limit=max(limit * 2, 12),
             now=now,
@@ -891,6 +897,24 @@ class MemoryEngine:
                     and item.affect in ("positive", "negative", "arousing")
                 )
             ]
+        if fresh_priority:
+            fresh_extra = self.review_due(
+                limit=max(limit * 2, 12),
+                now=now,
+                desirable_difficulty=desirable_difficulty,
+                due_threshold=0.65,
+            )
+            existing = {item.id for item in items}
+            fresh_items = [
+                item
+                for item in fresh_extra
+                if (
+                    item.id not in existing
+                    and (now - item.created_at).total_seconds()
+                    < fresh_window_hours * 3600
+                )
+            ]
+            items = fresh_items + items
         if min_gap_hours > 0:
             kept = []
             for item in items:
@@ -903,10 +927,24 @@ class MemoryEngine:
                         gap *= 0.6
                     elif total > 0 and rate >= 0.9:
                         gap *= 1.3
-                if self.curve.hours_since_last_access(item, now) >= gap:
+                is_fresh = (
+                    fresh_priority
+                    and (now - item.created_at).total_seconds()
+                    < fresh_window_hours * 3600
+                )
+                if (
+                    is_fresh
+                    or self.curve.hours_since_last_access(item, now) >= gap
+                ):
                     kept.append(item)
             if kind is not None or arousal_priority:
                 def _practice_key(item: MemoryItem) -> tuple:
+                    fresh = (
+                        (now - item.created_at).total_seconds()
+                        < fresh_window_hours * 3600
+                        if fresh_priority
+                        else False
+                    )
                     kind_mismatch = (
                         item.kind is not kind if kind is not None else 0
                     )
@@ -915,13 +953,23 @@ class MemoryEngine:
                         if arousal_priority
                         else 0
                     )
-                    return (kind_mismatch, arousal_mismatch)
+                    return (
+                        0 if fresh else 1,
+                        kind_mismatch,
+                        arousal_mismatch,
+                    )
 
                 kept.sort(key=_practice_key)
             items = kept[:limit]
         else:
             if kind is not None or arousal_priority:
                 def _practice_key2(item: MemoryItem) -> tuple:
+                    fresh = (
+                        (now - item.created_at).total_seconds()
+                        < fresh_window_hours * 3600
+                        if fresh_priority
+                        else False
+                    )
                     kind_mismatch = (
                         item.kind is not kind if kind is not None else 0
                     )
@@ -930,7 +978,11 @@ class MemoryEngine:
                         if arousal_priority
                         else 0
                     )
-                    return (kind_mismatch, arousal_mismatch)
+                    return (
+                        0 if fresh else 1,
+                        kind_mismatch,
+                        arousal_mismatch,
+                    )
 
                 items = sorted(items, key=_practice_key2)
             items = items[:limit]

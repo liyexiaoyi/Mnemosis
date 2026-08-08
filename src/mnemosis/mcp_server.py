@@ -279,6 +279,7 @@ class MCPServer:
                         "interleave": {"type": "boolean"},
                         "vary_cues": {"type": "boolean"},
                         "arousal_priority": {"type": "boolean"},
+                        "fresh_priority": {"type": "boolean"},
                         "kind": {"type": "string",
                                  "enum": ["semantic", "episodic"]},
                     },
@@ -613,6 +614,7 @@ class MCPServer:
                 interleave=bool(args.get("interleave", True)),
                 vary_cues=bool(args.get("vary_cues", True)),
                 arousal_priority=bool(args.get("arousal_priority", True)),
+                fresh_priority=bool(args.get("fresh_priority", True)),
                 kind=(
                     MemoryKind(kind_value)
                     if kind_value in ("semantic", "episodic")

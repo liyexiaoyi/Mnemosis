@@ -755,6 +755,58 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         )
         self.assertEqual(len(via_mcp), 4)
 
+    def test_practice_fresh_priority(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        now = utcnow()
+        fresh = engine.remember(
+            "刚发生的事：今天的新记录。",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["新鲜"],
+            importance=0.5,
+            strength=0.4,
+            created_at=now - timedelta(hours=2),
+        )
+        old = engine.remember(
+            "很久以前的事：旧记录。",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["陈旧"],
+            importance=0.5,
+            strength=0.4,
+            created_at=now - timedelta(days=20),
+        )
+        cards = engine.practice_due(
+            limit=2,
+            min_gap_hours=0,
+            adaptive_gap=False,
+            desirable_difficulty=False,
+            fresh_priority=True,
+        )
+        self.assertEqual(cards[0]["id"], fresh.id)
+        cards_off = engine.practice_due(
+            limit=2,
+            min_gap_hours=0,
+            adaptive_gap=False,
+            desirable_difficulty=False,
+            fresh_priority=False,
+        )
+        self.assertEqual(cards_off[0]["id"], old.id)
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "practice_due",
+            {
+                "limit": 2,
+                "min_gap_hours": 0,
+                "adaptive_gap": False,
+                "desirable_difficulty": False,
+                "fresh_priority": True,
+            },
+        )
+        self.assertEqual(via_mcp[0]["id"], fresh.id)
+
     def test_practice_suppress_competitors(self) -> None:
         from datetime import timedelta
 
