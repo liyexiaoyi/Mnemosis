@@ -883,6 +883,25 @@ class MCPServer:
                 },
             },
             {
+                "name": "cramming_plan",
+                "description": (
+                    "Plan a last-minute review schedule before a deadline: "
+                    "short spaced sessions covering the most at-risk "
+                    "important memories first (spacing beats massing; "
+                    "Cepeda et al. 2006)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "target_at": {"type": "string"},
+                        "hours_available": {"type": "number"},
+                        "session_minutes": {"type": "integer"},
+                        "limit": {"type": "integer"},
+                    },
+                    "required": ["target_at"],
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1417,6 +1436,15 @@ class MCPServer:
             return self.engine.multi_hop_report(
                 args["start_id"],
                 depth=int(args.get("depth", 2)),
+                limit=int(args.get("limit", 20)),
+            )
+        if name == "cramming_plan":
+            from datetime import datetime
+
+            return self.engine.cramming_plan(
+                datetime.fromisoformat(args["target_at"]),
+                hours_available=float(args.get("hours_available", 6.0)),
+                session_minutes=int(args.get("session_minutes", 30)),
                 limit=int(args.get("limit", 20)),
             )
         if name == "practice_due":

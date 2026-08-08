@@ -974,6 +974,60 @@ class MemoryEngine:
             "reached_ids": sorted(seen - {start_id})[: max(1, int(limit))],
         }
 
+    def cramming_plan(
+        self,
+        target_at: datetime,
+        hours_available: float = 6.0,
+        session_minutes: int = 30,
+        limit: int = 20,
+    ) -> dict:
+        """Plan a last-minute review schedule before a deadline.
+
+        Even with little time, spacing beats massing (Cepeda et al.,
+        2006): the available hours are split into short sessions and the
+        most at-risk important memories are reviewed first.
+        """
+        from datetime import timedelta
+
+        scored = []
+        for item in self.store.all_active():
+            need = item.importance * (
+                1.0 - self.curve.retrievability(item, target_at)
+            )
+            scored.append((need, item))
+        scored.sort(key=lambda pair: -pair[0])
+        picked = scored[: max(1, int(limit))]
+        n_sessions = max(
+            1,
+            int(float(hours_available) * 60 // max(1, int(session_minutes))),
+        )
+        per_session = len(picked) // n_sessions
+        extra = len(picked) % n_sessions
+        sessions = []
+        for i in range(n_sessions):
+            start = i * per_session + min(i, extra)
+            size = per_session + (1 if i < extra else 0)
+            chunk = picked[start:start + size]
+            if not chunk:
+                break
+            start = target_at - timedelta(
+                minutes=max(1, int(session_minutes)) * (n_sessions - i)
+            )
+            sessions.append(
+                {
+                    "start_at": start.isoformat(),
+                    "duration_minutes": max(1, int(session_minutes)),
+                    "memory_ids": [item.id for _need, item in chunk],
+                    "count": len(chunk),
+                }
+            )
+        return {
+            "target_at": target_at.isoformat(),
+            "hours_available": round(float(hours_available), 2),
+            "sessions": sessions,
+            "total_memories": len(picked),
+        }
+
     def retrieval_assist(
         self,
         query: str,

@@ -1903,6 +1903,57 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         )
         self.assertEqual(via_mcp["total_reached"], 3)
 
+    def test_cramming_plan(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        high_ids = []
+        low_ids = []
+        for i in range(3):
+            item = engine.remember(
+                f"zzz high {i}",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=[f"ch-{i}"],
+                importance=0.9,
+                auto_cues=False,
+            )
+            high_ids.append(item.id)
+        for i in range(3):
+            item = engine.remember(
+                f"zzz low {i}",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=[f"cl-{i}"],
+                importance=0.3,
+                auto_cues=False,
+            )
+            low_ids.append(item.id)
+        target = utcnow() + timedelta(hours=3)
+        plan = engine.cramming_plan(
+            target_at=target,
+            hours_available=2.0,
+            session_minutes=30,
+            limit=6,
+        )
+        self.assertEqual(plan["total_memories"], 6)
+        self.assertEqual(len(plan["sessions"]), 4)
+        self.assertEqual(
+            sum(s["count"] for s in plan["sessions"]), 6
+        )
+        first_ids = set(plan["sessions"][0]["memory_ids"])
+        self.assertTrue(first_ids & set(high_ids))
+        self.assertIn("target_at", plan)
+        self.assertIn("hours_available", plan)
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "cramming_plan",
+            {"target_at": target.isoformat(), "hours_available": 2},
+        )
+        self.assertEqual(via_mcp["total_memories"], 6)
+        self.assertEqual(len(via_mcp["sessions"]), 4)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(
