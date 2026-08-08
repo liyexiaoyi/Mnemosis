@@ -67,6 +67,37 @@ def reasoning_question_kind(query: str) -> str | None:
     return None
 
 
+def suggested_pack_size(query: str) -> int:
+    """Estimate the working-memory set size a reasoning question needs.
+
+    Prefrontal working memory (Miller & Cohen, 2001) holds the task-relevant
+    premise set; a chain question ("A比B高，B比C高") or a multi-person
+    question needs more premises held simultaneously, so the premise pack
+    grows with the estimated premise count (bounded: 6..14).
+    """
+    size = 6
+    lowered = query
+    if lowered.count("比") >= 2:
+        size = max(size, 10)
+    for token, n in (
+        ("三个人", 10),
+        ("四个人", 12),
+        ("五个人", 14),
+        ("几个人", 10),
+        ("三位", 10),
+        ("四位", 12),
+    ):
+        if token in lowered:
+            size = max(size, n)
+    if ("、" in lowered) or ("分别" in lowered) or (
+        "和" in lowered and "都" in lowered
+    ):
+        size = max(size, 8)
+    if "差多少" in lowered or "单价" in lowered:
+        size = max(size, 8)
+    return min(size, 14)
+
+
 def _has_dimension(content: str, kind: str) -> bool:
     if kind in ("compare", "transitive"):
         return any(ch in content for ch in ("比", "最")) or any(
@@ -147,5 +178,6 @@ def apply_premise_pack(
 
 __all__ = [
     "reasoning_question_kind",
+    "suggested_pack_size",
     "apply_premise_pack",
 ]

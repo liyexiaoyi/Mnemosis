@@ -5,7 +5,7 @@ from __future__ import annotations
 import unittest
 
 from mnemosis import MemoryEngine
-from mnemosis.reasoning import reasoning_question_kind
+from mnemosis.reasoning import reasoning_question_kind, suggested_pack_size
 from mnemosis.types import MemoryKind, SourceRecord, SourceType
 
 
@@ -89,6 +89,28 @@ class ReasoningKindTests(unittest.TestCase):
 
 
 class PremisePackTests(unittest.TestCase):
+    def test_suggested_pack_size_chain(self) -> None:
+        self.assertGreaterEqual(
+            suggested_pack_size("阿丽、小波、小王三个人里谁最高？"), 10
+        )
+        self.assertGreaterEqual(
+            suggested_pack_size("阿丽比小波高，小波比小王高，谁最高？"), 10
+        )
+
+    def test_suggested_pack_size_math(self) -> None:
+        self.assertGreaterEqual(
+            suggested_pack_size("阿丽和小波买的笔记本，谁的单价更贵？"), 8
+        )
+        self.assertGreaterEqual(
+            suggested_pack_size("阿丽买相机和小波买手机，谁花的钱更多？差多少元？"),
+            8,
+        )
+
+    def test_suggested_pack_size_plain(self) -> None:
+        self.assertEqual(
+            suggested_pack_size("阿丽最喜欢的颜色是什么？"), 6
+        )
+
     def test_transitive_chain_surfaces(self) -> None:
         engine = _reasoning_engine()
         results = engine.recall_reasoning(

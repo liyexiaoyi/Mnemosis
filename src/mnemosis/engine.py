@@ -190,7 +190,7 @@ class MemoryEngine:
         self,
         query: str,
         *,
-        top_k: int = 8,
+        top_k: int | None = None,
         now: datetime | None = None,
     ) -> list[RecallResult]:
         """System-2 recall: assemble a reasoning premise pack.
@@ -200,9 +200,11 @@ class MemoryEngine:
         the full premise set reaches the LLM context (Kahneman 2011;
         Miller & Cohen 2001).
         """
+        from .reasoning import suggested_pack_size
+
         return self.recall(
             query,
-            top_k=top_k,
+            top_k=top_k or suggested_pack_size(query),
             now=now,
             reasoning_pack=True,
         )
