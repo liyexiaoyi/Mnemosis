@@ -290,6 +290,32 @@ class CognitionTest(unittest.TestCase):
         self.assertGreater(emotional_r, neutral_r)
         self.assertEqual(emotional.affect, "negative")
 
+    def test_emotion_regulation_normalizes_decay(self):
+        now = utcnow()
+        self.engine.curve.decay_rate = 0.01
+        hot = self.remember(
+            "The user was very anxious about the deadline.",
+            affect="negative",
+            created_at=now - timedelta(days=10),
+        )
+        processed = self.remember(
+            "The user was very anxious about the launch.",
+            affect="negative",
+            created_at=now - timedelta(days=10),
+        )
+        processed.review_streak = 3
+        self.assertAlmostEqual(
+            self.engine.curve.effective_decay_rate(hot),
+            self.engine.curve.decay_rate * 0.6,
+        )
+        self.assertAlmostEqual(
+            self.engine.curve.effective_decay_rate(processed),
+            self.engine.curve.decay_rate,
+        )
+        hot_r = self.engine.curve.retrievability(hot, now)
+        processed_r = self.engine.curve.retrievability(processed, now)
+        self.assertLess(processed_r, hot_r)
+
     def test_invalid_affect_is_rejected(self):
         item = self.remember("A note.", affect="not-a-real-affect")
         self.assertIsNone(item.affect)

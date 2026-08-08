@@ -15,6 +15,11 @@ from .types import MemoryItem, utcnow
 EMOTIONAL_DECAY_FACTOR = 0.6
 """Emotionally arousing memories decay slower (Cahill & McGaugh, 1998)."""
 
+EMOTION_PROCESSED_STREAK = 3
+"""After this many consecutive successful retrievals the emotional charge
+fades and decay returns to normal (emotion regulation / extinction-like
+processing; Gross, 2002)."""
+
 
 class ForgettingCurve:
     """Exponential strength decay with access-based reinforcement."""
@@ -28,8 +33,16 @@ class ForgettingCurve:
         self.decay_rate = decay_rate
 
     def effective_decay_rate(self, item: MemoryItem) -> float:
-        """Slower decay for emotionally salient memories."""
+        """Slower decay for emotionally salient memories.
+
+        Emotion regulation (Gross, 2002): repeatedly retrieving and
+        processing an emotional memory (3+ consecutive successes) reduces
+        its persistent emotional charge, so the trace stops decaying at the
+        slow "always hot" rate and returns to the normal forgetting curve.
+        """
         if item.affect in ("positive", "negative", "arousing"):
+            if item.review_streak >= EMOTION_PROCESSED_STREAK:
+                return self.decay_rate
             return self.decay_rate * EMOTIONAL_DECAY_FACTOR
         return self.decay_rate
 
