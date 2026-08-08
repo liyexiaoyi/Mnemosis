@@ -310,6 +310,7 @@ class MemoryEngine:
         top_k: int = 10,
         now: datetime | None = None,
         zh_synonyms: bool = True,
+        outcome_aware: bool = True,
     ) -> list[RecallResult]:
         """Agent planning: turn a goal into an ordered step plan.
 
@@ -317,18 +318,105 @@ class MemoryEngine:
         the goal and pulls the task-relevant schema - the person's own past
         steps or, when the goal references another person ("参考阿丽"),
         that person's steps as an analogical template (Gick & Holyoak, 1980).
+        Outcome-aware reranking (law of effect, Thorndike 1911; Smolen et
+        al., 2016): steps whose past executions succeeded more often get a
+        bounded boost, failed steps get demoted, so the plan prefers
+        what actually worked.
         Falls back to the reasoning premise pack for non-step goals.
         """
         if any(marker in goal for marker in (
             "想", "要", "打算", "计划", "准备", "希望", "怎么", "如何",
         )):
-            return self.recall_steps(
+            plan = self.recall_steps(
                 goal,
                 top_k=top_k,
                 now=now,
                 zh_synonyms=zh_synonyms,
             )
+            # outcome records are evidence, not plan steps: filter them out
+            plan = [
+                r for r in plan
+                if "执行成功" not in r.item.content
+                and "执行失败" not in r.item.content
+            ]
+            if outcome_aware:
+                self._apply_outcome_rerank(plan)
+            return plan
         return self.recall_reasoning(goal, top_k=top_k, now=now)
+
+    def _apply_outcome_rerank(
+        self,
+        results: list[RecallResult],
+        *,
+        bonus_scale: float = 0.08,
+    ) -> None:
+        """Boost steps whose outcome history is successful; demote failures.
+
+        Outcome records written by ``record_outcome`` carry cues
+        ``[goal[:8], step[:8], result]``. One lightweight pass over the
+        store collects evidence-weighted success/failure per step cue, then
+        each plan step that matches a step cue is nudged by
+        ``clamp((success_evidence - failure_evidence) * bonus_scale)``.
+        """
+        from .types import MemoryKind as _MemoryKind
+
+        if not results:
+            return
+        _ACTION_PREFIXES = "订买卖打包收拾请找定学搬选入"
+        outcome_by_step: dict[tuple[str, str], float] = {}
+        for item in self.backend.list(kind=_MemoryKind.EPISODIC):
+            if "执行成功" not in item.content and "执行失败" not in item.content:
+                continue
+            if len(item.cues) < 3:
+                continue
+            person = item.cues[0][:2]
+            step_cue = item.cues[1]
+            weight = max(1, item.evidence_count)
+            delta = weight if "执行成功" in item.content else -weight
+            nouns = {step_cue, step_cue.lstrip(_ACTION_PREFIXES)}
+            for noun in nouns:
+                key = (person, noun)
+                outcome_by_step[key] = (
+                    outcome_by_step.get(key, 0.0) + delta
+                )
+        if not outcome_by_step:
+            return
+        deltas: list[float] = []
+        for result in results:
+            content = result.item.content
+            person = (
+                result.item.cues[0][:2]
+                if result.item.cues
+                else content[:2]
+            )
+            match_key = ""
+            for (operson, noun), total in outcome_by_step.items():
+                if operson == person and noun and noun in content:
+                    match_key = (operson, noun)
+                    break
+            if not match_key:
+                deltas.append(0.0)
+                continue
+            delta = max(
+                -0.15,
+                min(0.15, outcome_by_step[match_key] * bonus_scale),
+            )
+            deltas.append(delta)
+            result.score = round(result.score + delta, 4)
+            if not any("结果加权" in reason for reason in result.reasons):
+                result.reasons.append(
+                    f"\u7ed3\u679c\u52a0\u6743({delta:+.2f},"
+                    f"\u6210\u529f\u8ba1\u5212\u4f18\u5148)"
+                )
+        # group by outcome delta (successful plans first), keep original
+        # chronological order inside each group
+        results[:] = [
+            results[i]
+            for i in sorted(
+                range(len(results)),
+                key=lambda i: (-deltas[i], i),
+            )
+        ]
 
     def record_outcome(
         self,
