@@ -2367,6 +2367,70 @@ class MemoryEngine:
             ),
         }
 
+    def community_report(
+        self,
+        limit: int = 10,
+    ) -> dict:
+        """Detect memory communities in the association network.
+
+        Semantic networks have modular structure (community detection):
+        strongly linked memories form clusters. This uses connected
+        components so agents can see which memories form a theme-cluster
+        and which are isolated.
+        """
+        from collections import Counter, defaultdict
+
+        items = self.store.all_active()
+        parent = {item.id: item.id for item in items}
+
+        def find(x: str) -> str:
+            while parent[x] != x:
+                parent[x] = parent[parent[x]]
+                x = parent[x]
+            return x
+
+        def union(a: str, b: str) -> None:
+            ra, rb = find(a), find(b)
+            if ra != rb:
+                parent[rb] = ra
+
+        for src, dst, _weight in self.backend.all_links():
+            if src in parent and dst in parent:
+                union(src, dst)
+        groups: dict[str, list] = defaultdict(list)
+        for item in items:
+            groups[find(item.id)].append(item)
+        communities = []
+        for root, members in groups.items():
+            cue_counts: Counter = Counter()
+            for member in members:
+                for cue in member.cues:
+                    cue_counts[cue] += 1
+            communities.append(
+                {
+                    "id": root,
+                    "size": len(members),
+                    "members": [
+                        {
+                            "id": member.id,
+                            "preview": member.content[:24],
+                        }
+                        for member in members[:4]
+                    ],
+                    "top_cues": [
+                        cue for cue, _count in cue_counts.most_common(3)
+                    ],
+                }
+            )
+        communities.sort(key=lambda community: -community["size"])
+        return {
+            "total_communities": len(communities),
+            "largest_size": (
+                communities[0]["size"] if communities else 0
+            ),
+            "communities": communities[: max(1, int(limit))],
+        }
+
     def retrieval_assist(
         self,
         query: str,

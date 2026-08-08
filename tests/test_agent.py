@@ -2780,6 +2780,48 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["results"][0]["id"], m1.id)
         self.assertGreaterEqual(via_mcp["candidates_scanned"], 3)
 
+    def test_community_report(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        for name in ("a1", "a2", "a3", "a4"):
+            engine.remember(
+                f"zzz {name}",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["社区A"],
+                auto_cues=False,
+            )
+        for name in ("b1", "b2"):
+            engine.remember(
+                f"zzz {name}",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["社区B"],
+                auto_cues=False,
+            )
+        engine.remember(
+            "zzz c1", kind=MemoryKind.SEMANTIC, source=user,
+            cues=["独一"], auto_cues=False,
+        )
+        engine.remember(
+            "zzz c2", kind=MemoryKind.SEMANTIC, source=user,
+            cues=["独二"], auto_cues=False,
+        )
+        report = engine.community_report()
+        self.assertEqual(report["total_communities"], 4)
+        self.assertEqual(report["largest_size"], 4)
+        sizes = sorted(c["size"] for c in report["communities"])
+        self.assertEqual(sizes, [1, 1, 2, 4])
+        community_a = next(c for c in report["communities"] if c["size"] == 4)
+        self.assertIn("社区a", community_a["top_cues"])
+        self.assertTrue(
+            all(c["members"] for c in report["communities"])
+        )
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("community_report", {"limit": 10})
+        self.assertEqual(via_mcp["largest_size"], 4)
+        self.assertEqual(via_mcp["total_communities"], 4)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

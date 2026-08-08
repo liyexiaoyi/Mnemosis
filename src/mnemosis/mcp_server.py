@@ -1322,6 +1322,20 @@ class MCPServer:
                 },
             },
             {
+                "name": "community_report",
+                "description": (
+                    "Detect memory communities in the association "
+                    "network (connected components): cluster sizes, "
+                    "members and top cues."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1962,6 +1976,10 @@ class MCPServer:
             return self.engine.recall_trace(
                 args["query"],
                 top_k=int(args.get("top_k", 5)),
+            )
+        if name == "community_report":
+            return self.engine.community_report(
+                limit=int(args.get("limit", 10)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")
