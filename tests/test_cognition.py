@@ -274,6 +274,49 @@ class CognitionTest(unittest.TestCase):
             any("复核" in r for r in looked[0].reasons)
         )
 
+    def test_conflict_flag(self):
+        def _build():
+            engine = MemoryEngine()
+            user = SourceRecord(origin=SourceType.USER)
+            now = utcnow() - timedelta(days=10)
+            weak = engine.remember(
+                "alpha old fact",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["alpha"],
+                importance=0.98,
+                strength=0.5,
+                evidence_count=1,
+                created_at=now,
+                auto_cues=False,
+            )
+            strong = engine.remember(
+                "alpha new fact",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["alpha"],
+                importance=0.5,
+                strength=0.5,
+                evidence_count=4,
+                created_at=now,
+                auto_cues=False,
+            )
+            return engine, weak.id, strong.id
+
+        engine_f, w_f, _ = _build()
+        flagged = engine_f.recall("alpha", top_k=3)
+        self.assertEqual(flagged[0].item.id, w_f)
+        self.assertFalse(flagged[0].confident)
+        self.assertTrue(
+            any("更强证据冲突" in r for r in flagged[0].reasons)
+        )
+        engine_n, w_n, _ = _build()
+        plain = engine_n.recall(
+            "alpha", top_k=3, conflict_flag=False
+        )
+        self.assertEqual(plain[0].item.id, w_n)
+        self.assertTrue(plain[0].confident)
+
     def test_weak_important_replay(self):
         now = utcnow()
         important = self.remember(

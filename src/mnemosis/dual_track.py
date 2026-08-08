@@ -20,6 +20,7 @@ from .temporal_reason import apply_time_cell_reasoning
 from .types import (
     MemoryItem,
     MemoryKind,
+    MemoryStatus,
     RecallResult,
     SourceRecord,
     normalize_cues,
@@ -132,6 +133,7 @@ class DualTrackStore:
         emotional_salience_boost: bool = True,
         emotional_salience_weight: float = 0.05,
         second_look: bool = False,
+        conflict_flag: bool = True,
         suppression_factor: float = 0.01,
         suppression_min_cues: int = 2,
         suppression_floor: float = 0.7,
@@ -484,6 +486,32 @@ class DualTrackStore:
             )
             if not results[0].confident:
                 results[0].reasons.append("低置信(与次选差距小)")
+        if conflict_flag and results:
+            # Conflict awareness (reconsolidation, Nader et al., 2000):
+            # when a clearly stronger-evidenced rival exists for the top
+            # answer's primary cue, tell the agent to hedge instead of
+            # asserting a stale fact.
+            top_item = results[0].item
+            primary = top_item.cues[0] if top_item.cues else None
+            if primary:
+                for rival in self.backend.find_by_cue(primary):
+                    if (
+                        rival.id == top_item.id
+                        or rival.status is not MemoryStatus.ACTIVE
+                    ):
+                        continue
+                    if (
+                        rival.evidence_count
+                        >= 3 * max(1, top_item.evidence_count)
+                        and rival.source.trust >= top_item.source.trust
+                    ):
+                        results[0].confident = False
+                        if not any(
+                            "更强证据冲突" in reason
+                            for reason in results[0].reasons
+                        ):
+                            results[0].reasons.append("存在更强证据冲突")
+                        break
         if reinforce:
             for score, overlap, item, _, matched in scored[:top_k]:
                 if not matched:
