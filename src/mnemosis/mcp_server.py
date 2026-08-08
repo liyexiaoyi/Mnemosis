@@ -1560,6 +1560,20 @@ class MCPServer:
                 },
             },
             {
+                "name": "metacog_report",
+                "description": (
+                    "Aggregate confidence vs retrieval accuracy per "
+                    "topic and flag overconfidence / underconfidence "
+                    "(metacognitive monitoring; Koriat, 1997)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "min_attempts": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -2272,6 +2286,10 @@ class MCPServer:
                     args.get("imbalance_ratio", 3.0)
                 ),
                 limit=int(args.get("limit", 10)),
+            )
+        if name == "metacog_report":
+            return self.engine.metacog_report(
+                min_attempts=int(args.get("min_attempts", 3)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")

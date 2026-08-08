@@ -3479,6 +3479,79 @@ class MemoryEngine:
             "advice": advice,
         }
 
+    def metacog_report(
+        self,
+        *,
+        min_attempts: int = 3,
+    ) -> dict:
+        """Report confidence vs retrieval accuracy (calibration).
+
+        Monitoring one's own knowledge (Koriat, 1997): good calibration
+        means confidence matches accuracy. This tool aggregates retrieval
+        attempts per topic, compares mean confidence with accuracy and
+        flags overconfidence / underconfidence.
+        """
+        from collections import defaultdict
+
+        min_attempts = max(1, int(min_attempts))
+        items = self.store.all_active()
+        stats: defaultdict[str, dict] = defaultdict(
+            lambda: {"attempts": 0, "successes": 0, "conf_sum": 0.0}
+        )
+        for item in items:
+            attempts = item.retrieval_successes + item.retrieval_failures
+            if attempts < min_attempts:
+                continue
+            topic = item.cues[0] if item.cues else item.content[:10]
+            s = stats[topic]
+            s["attempts"] += attempts
+            s["successes"] += item.retrieval_successes
+            s["conf_sum"] += item.confidence * attempts
+        topics: list[dict] = []
+        total_gap = 0.0
+        for topic, s in stats.items():
+            accuracy = round(s["successes"] / s["attempts"], 3)
+            mean_confidence = round(s["conf_sum"] / s["attempts"], 3)
+            gap = round(mean_confidence - accuracy, 3)
+            total_gap += abs(gap)
+            if gap >= 0.15:
+                flag = "overconfident"
+            elif gap <= -0.15:
+                flag = "underconfident"
+            else:
+                flag = "well_calibrated"
+            topics.append(
+                {
+                    "topic": topic,
+                    "attempts": s["attempts"],
+                    "accuracy": accuracy,
+                    "mean_confidence": mean_confidence,
+                    "gap": gap,
+                    "flag": flag,
+                }
+            )
+        topics.sort(key=lambda topic: -abs(topic["gap"]))
+        mean_abs_gap = (
+            round(total_gap / len(topics), 3) if topics else 0.0
+        )
+        calibration_score = round(
+            max(0.0, min(1.0, 1.0 - mean_abs_gap)), 3
+        )
+        flagged = [topic for topic in topics if topic["flag"] != "well_calibrated"]
+        if any(topic["flag"] == "overconfident" for topic in topics):
+            advice = "存在过度自信主题：多练自测、用真实成绩校准置信度。"
+        elif any(topic["flag"] == "underconfident" for topic in topics):
+            advice = "存在自信不足主题：回忆成绩已不错，可适当上调置信度。"
+        else:
+            advice = "校准良好：置信度与真实回忆成绩基本一致。"
+        return {
+            "topics": topics,
+            "mean_abs_gap": mean_abs_gap,
+            "calibration_score": calibration_score,
+            "flagged_count": len(flagged),
+            "advice": advice,
+        }
+
     def retrieval_assist(
         self,
         query: str,

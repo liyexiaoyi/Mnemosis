@@ -3537,6 +3537,53 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
             )["imbalanced"]
         )
 
+    def test_metacog_report(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        over = engine.remember(
+            "高数公式",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["数学"],
+            confidence=0.95,
+            auto_cues=False,
+        )
+        over.retrieval_successes = 7
+        over.retrieval_failures = 3
+        engine.backend.update(over)
+        under = engine.remember(
+            "英语单词",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["英语"],
+            confidence=0.5,
+            auto_cues=False,
+        )
+        under.retrieval_successes = 9
+        under.retrieval_failures = 1
+        engine.backend.update(under)
+        report = engine.metacog_report()
+        self.assertEqual(len(report["topics"]), 2)
+        math = next(
+            topic for topic in report["topics"] if topic["topic"] == "数学"
+        )
+        self.assertEqual(math["accuracy"], 0.7)
+        self.assertEqual(math["flag"], "overconfident")
+        english = next(
+            topic for topic in report["topics"] if topic["topic"] == "英语"
+        )
+        self.assertEqual(english["accuracy"], 0.9)
+        self.assertEqual(english["flag"], "underconfident")
+        self.assertTrue(0 <= report["calibration_score"] <= 1)
+        self.assertIn("过度自信", report["advice"])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("metacog_report", {})
+        self.assertEqual(via_mcp["flagged_count"], 2)
+        self.assertIn(
+            "overconfident",
+            {topic["flag"] for topic in via_mcp["topics"]},
+        )
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(
