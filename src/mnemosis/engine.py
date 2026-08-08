@@ -161,6 +161,7 @@ class MemoryEngine:
         temporal_boost: float = 1.0,
         temporal_reason: bool = True,
         reasoning_pack: bool = True,
+        zh_synonyms: bool = True,
         pattern_completion: bool = True,
         separation: bool = True,
         kind_preference: bool = True,
@@ -181,6 +182,7 @@ class MemoryEngine:
             temporal_boost=temporal_boost,
             temporal_reason=temporal_reason,
             reasoning_pack=reasoning_pack,
+            zh_synonyms=zh_synonyms,
             pattern_completion=pattern_completion,
             separation=separation,
             kind_preference=kind_preference,
@@ -215,6 +217,7 @@ class MemoryEngine:
         *,
         top_k: int = 10,
         now: datetime | None = None,
+        zh_synonyms: bool = True,
     ) -> list[RecallResult]:
         """Chain-of-thought step retrieval for process questions.
 
@@ -235,6 +238,7 @@ class MemoryEngine:
             top_k=max(top_k, 12),
             now=now,
             reasoning_pack=True,
+            zh_synonyms=zh_synonyms,
         )
         if not any(marker in query for marker in (
             "怎么", "如何", "为什么", "过程", "步骤", "准备", "计划", "安排",

@@ -26,6 +26,23 @@ _SYNONYM_GROUPS: tuple[frozenset[str], ...] = (
     frozenset({"搬家", "迁居"}),
     frozenset({"学习", "学会"}),
     frozenset({"开始", "坚持"}),
+    frozenset({"餐厅", "饭馆", "饭店"}),
+    frozenset({"酒店", "宾馆"}),
+    frozenset({"礼物", "礼品"}),
+    frozenset({"相机", "照相机"}),
+    frozenset({"手机", "电话"}),
+    frozenset({"电脑", "计算机"}),
+    frozenset({"背包", "书包"}),
+    frozenset({"唱歌", "演唱"}),
+    frozenset({"画画", "绘画"}),
+    frozenset({"跑步", "慢跑"}),
+    frozenset({"写字", "书写"}),
+    frozenset({"高兴", "开心"}),
+    frozenset({"美丽", "漂亮"}),
+    frozenset({"便宜", "廉价"}),
+    frozenset({"做饭", "做菜", "烹饪"}),
+    frozenset({"早晨", "早上"}),
+    frozenset({"晚上", "夜晚"}),
 )
 
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]")

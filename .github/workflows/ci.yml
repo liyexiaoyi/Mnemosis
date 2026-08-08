@@ -58,3 +58,15 @@ jobs:
           --retrieval-only --out /tmp/process_smoke.json
         env:
           PYTHONPATH: src
+      - name: Conflict resolution 10k smoke (8 scenarios, retrieval only)
+        run: >
+          python benchmarks/conflict_evidence_10k_bench.py
+          --out /tmp/conflict_10k_smoke.json
+        env:
+          PYTHONPATH: src
+      - name: Chinese synonym 10k smoke (3 scenarios, retrieval only)
+        run: >
+          python benchmarks/synonym_zh_10k_bench.py
+          --out /tmp/synonym_10k_smoke.json
+        env:
+          PYTHONPATH: src

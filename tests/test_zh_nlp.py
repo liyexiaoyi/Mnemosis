@@ -58,6 +58,22 @@ class SynonymRecallTests(unittest.TestCase):
             "琳琳在2026年6月1日找了搬家公司。",
         )
 
+    def test_hotel_synonym(self) -> None:
+        engine = MemoryEngine()
+        source = SourceRecord(origin=SourceType.USER)
+        engine.remember(
+            "小波在2026年5月2日订了宾馆。",
+            kind=MemoryKind.EPISODIC,
+            source=source,
+            cues=["小波", "2026-05-02"],
+        )
+        results = engine.recall("小波订的酒店叫什么？", top_k=3)
+        self.assertEqual(
+            results[0].item.content,
+            "小波在2026年5月2日订了宾馆。",
+        )
+
+
 
 if __name__ == "__main__":
     unittest.main()

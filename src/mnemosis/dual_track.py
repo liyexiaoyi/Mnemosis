@@ -104,6 +104,7 @@ class DualTrackStore:
         temporal_boost: float = 1.0,
         temporal_reason: bool = True,
         reasoning_pack: bool = True,
+        zh_synonyms: bool = True,
         pattern_completion: bool = True,
         pc_min_overlap: float = 0.25,
         pc_max_overlap: float = 0.95,
@@ -123,7 +124,7 @@ class DualTrackStore:
         now = now or utcnow()
         candidates = self.backend.list(kind=kind)
         query_terms = set(tokenize(query))
-        if any("\u4e00" <= ch <= "\u9fff" for ch in query):
+        if zh_synonyms and any("\u4e00" <= ch <= "\u9fff" for ch in query):
             # Chinese synonym expansion: questions often use different words
             # than the stored memory ("筹备/旅游" vs "准备/旅行").
             from .zh_nlp import expand_synonyms
