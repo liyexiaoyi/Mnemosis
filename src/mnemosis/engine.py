@@ -846,7 +846,7 @@ class MemoryEngine:
         interleave: bool = True,
         vary_cues: bool = True,
         arousal_priority: bool = True,
-        fresh_priority: bool = True,
+        fresh_priority: bool = False,
         fresh_window_hours: float = 6.0,
     ) -> list[dict]:
         """Active retrieval practice: due memories shown as cues only.
@@ -889,6 +889,7 @@ class MemoryEngine:
                 due_threshold=0.65,
             )
             extra_ids = {item.id for item in items}
+            extra_cap = max(1, limit // 2)
             items = items + [
                 item
                 for item in extra
@@ -896,7 +897,7 @@ class MemoryEngine:
                     item.id not in extra_ids
                     and item.affect in ("positive", "negative", "arousing")
                 )
-            ]
+            ][:extra_cap]
         if fresh_priority:
             fresh_extra = self.review_due(
                 limit=max(limit * 2, 12),
@@ -914,7 +915,8 @@ class MemoryEngine:
                     < fresh_window_hours * 3600
                 )
             ]
-            items = fresh_items + items
+            extra_cap = max(1, limit // 2)
+            items = fresh_items[:extra_cap] + items
         if min_gap_hours > 0:
             kept = []
             for item in items:

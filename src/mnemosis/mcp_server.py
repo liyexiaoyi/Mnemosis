@@ -614,7 +614,7 @@ class MCPServer:
                 interleave=bool(args.get("interleave", True)),
                 vary_cues=bool(args.get("vary_cues", True)),
                 arousal_priority=bool(args.get("arousal_priority", True)),
-                fresh_priority=bool(args.get("fresh_priority", True)),
+                fresh_priority=bool(args.get("fresh_priority", False)),
                 kind=(
                     MemoryKind(kind_value)
                     if kind_value in ("semantic", "episodic")
