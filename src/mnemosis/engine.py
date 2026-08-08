@@ -860,6 +860,7 @@ class MemoryEngine:
         arousal_priority: bool = True,
         fresh_priority: bool = False,
         fresh_window_hours: float = 6.0,
+        review_score_priority: bool = False,
     ) -> list[dict]:
         """Active retrieval practice: due memories shown as cues only.
 
@@ -882,6 +883,9 @@ class MemoryEngine:
         consolidation window (Gais et al., 2006): traces encoded within the
         last few hours are preferentially rehearsed, so ``fresh_priority``
         puts them first while they are still consolidating.
+        Review score (importance x forgetting): when enabled, due items are
+        ordered by how much they *need* review - important AND fading
+        traces first - instead of importance-first alone.
         """
         now = now or utcnow()
         items = self.review_due(
@@ -951,7 +955,11 @@ class MemoryEngine:
                     or self.curve.hours_since_last_access(item, now) >= gap
                 ):
                     kept.append(item)
-            if kind is not None or arousal_priority:
+            if (
+                kind is not None
+                or arousal_priority
+                or review_score_priority
+            ):
                 def _practice_key(item: MemoryItem) -> tuple:
                     fresh = (
                         (now - item.created_at).total_seconds()
@@ -967,6 +975,15 @@ class MemoryEngine:
                         if arousal_priority
                         else 0
                     )
+                    if review_score_priority:
+                        need = item.importance * (
+                            1.0 - self.curve.retrievability(item, now)
+                        )
+                        return (
+                            -need,
+                            kind_mismatch,
+                            arousal_mismatch,
+                        )
                     return (
                         0 if fresh else 1,
                         kind_mismatch,
@@ -976,7 +993,11 @@ class MemoryEngine:
                 kept.sort(key=_practice_key)
             items = kept[:limit]
         else:
-            if kind is not None or arousal_priority:
+            if (
+                kind is not None
+                or arousal_priority
+                or review_score_priority
+            ):
                 def _practice_key2(item: MemoryItem) -> tuple:
                     fresh = (
                         (now - item.created_at).total_seconds()
@@ -992,6 +1013,15 @@ class MemoryEngine:
                         if arousal_priority
                         else 0
                     )
+                    if review_score_priority:
+                        need = item.importance * (
+                            1.0 - self.curve.retrievability(item, now)
+                        )
+                        return (
+                            -need,
+                            kind_mismatch,
+                            arousal_mismatch,
+                        )
                     return (
                         0 if fresh else 1,
                         kind_mismatch,

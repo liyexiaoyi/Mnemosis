@@ -721,6 +721,46 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
             forecast.index(f_by_id[future.id]),
         )
 
+    def test_review_score_priority(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        now = utcnow()
+        important = engine.remember(
+            "重要但不急：高重要度记忆。",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["重要"],
+            importance=0.9,
+            strength=0.5,
+            created_at=now - timedelta(days=1),
+        )
+        fading = engine.remember(
+            "没那么重要但快忘：中重要度弱记忆。",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["快忘"],
+            importance=0.6,
+            strength=0.5,
+            created_at=now - timedelta(days=40),
+        )
+        score = engine.practice_due(
+            limit=2,
+            min_gap_hours=0,
+            adaptive_gap=False,
+            desirable_difficulty=False,
+            review_score_priority=True,
+        )
+        self.assertEqual(score[0]["id"], fading.id)
+        plain = engine.practice_due(
+            limit=2,
+            min_gap_hours=0,
+            adaptive_gap=False,
+            desirable_difficulty=False,
+            review_score_priority=False,
+        )
+        self.assertEqual(plain[0]["id"], important.id)
+
     def test_mcp_practice_report_tool(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(
