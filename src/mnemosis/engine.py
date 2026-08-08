@@ -198,6 +198,8 @@ class MemoryEngine:
         confidence_weight: float = 0.05,
         gist_preference: bool = True,
         gist_boost: float = 0.20,
+        emotional_salience_boost: bool = True,
+        emotional_salience_weight: float = 0.05,
         suppression_factor: float = 0.01,
         suppression_min_cues: int = 2,
         suppression_floor: float = 0.7,
@@ -229,6 +231,8 @@ class MemoryEngine:
             confidence_weight=confidence_weight,
             gist_preference=gist_preference,
             gist_boost=gist_boost,
+            emotional_salience_boost=emotional_salience_boost,
+            emotional_salience_weight=emotional_salience_weight,
             suppression_factor=suppression_factor,
             suppression_min_cues=suppression_min_cues,
             suppression_floor=suppression_floor,
@@ -1005,7 +1009,7 @@ class MemoryEngine:
         Generation effect (Slamecka & Graf, 1978): a successful recall
         phrased in the agent's own words ("generated") strengthens more
         than copying the stored sentence verbatim, so a small extra
-        reinforcement is applied unless disabled.
+        reinforcement is applied unless disabled. Emotionally enhanced
         """
         item = self.backend.get(memory_id)
         if item is None:

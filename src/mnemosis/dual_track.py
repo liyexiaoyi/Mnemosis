@@ -129,6 +129,8 @@ class DualTrackStore:
         confidence_weight: float = 0.05,
         gist_preference: bool = True,
         gist_boost: float = 0.20,
+        emotional_salience_boost: bool = True,
+        emotional_salience_weight: float = 0.05,
         suppression_factor: float = 0.01,
         suppression_min_cues: int = 2,
         suppression_floor: float = 0.7,
@@ -273,6 +275,16 @@ class DualTrackStore:
                 # it survives better than verbatim details over time.
                 gist_bonus = gist_boost
                 reasons.append("图式要点(旧)")
+            salience_bonus = 0.0
+            if (
+                emotional_salience_boost
+                and item.affect in ("positive", "negative", "arousing")
+            ):
+                # Emotionally enhanced memory (Kensinger, 2009): emotional
+                # content is prioritized in memory; among equal matches the
+                # emotional trace ranks first.
+                salience_bonus = emotional_salience_weight
+                reasons.append("情绪显著")
             if query_vector is not None:
                 item_vector = self._embedding(item, embedder)
                 semantic = embedder.cosine(query_vector, item_vector)
@@ -287,6 +299,7 @@ class DualTrackStore:
                     + mood_bonus
                     + confidence_bonus
                     + gist_bonus
+                    + salience_bonus
                 )
             else:
                 score = (
@@ -299,6 +312,7 @@ class DualTrackStore:
                     + mood_bonus
                     + confidence_bonus
                     + gist_bonus
+                    + salience_bonus
                 )
             if overlap > 0:
                 reasons.append(f"cue/keyword overlap {overlap:.2f}")

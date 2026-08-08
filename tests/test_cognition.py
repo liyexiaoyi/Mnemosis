@@ -183,6 +183,55 @@ class CognitionTest(unittest.TestCase):
         )
         self.assertEqual(plain[0].item.id, v_id)
 
+    def test_emotional_salience_boost(self):
+        def _build():
+            engine = MemoryEngine()
+            user = SourceRecord(origin=SourceType.USER)
+            now = utcnow() - timedelta(days=10)
+            emotional = engine.remember(
+                "阿丽那次很紧张。",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["阿丽"],
+                affect="negative",
+                importance=0.5,
+                strength=0.5,
+                created_at=now,
+            )
+            neutral = engine.remember(
+                "阿丽那次很普通。",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["阿丽"],
+                importance=0.5,
+                strength=0.5,
+                created_at=now,
+            )
+            return engine, emotional.id, neutral.id
+
+        engine_b, e_b, _ = _build()
+        boosted = engine_b.recall("阿丽", top_k=3)
+        self.assertEqual(boosted[0].item.id, e_b)
+        self.assertTrue(
+            any("情绪显著" in r for r in boosted[0].reasons)
+        )
+        engine_p, e_p, n_p = _build()
+        plain = engine_p.recall(
+            "阿丽", top_k=3, emotional_salience_boost=False
+        )
+        plain_emo = next(r.score for r in plain if r.item.id == e_p)
+        plain_neu = next(r.score for r in plain if r.item.id == n_p)
+        boosted_emo = next(
+            r.score for r in boosted if r.item.id == e_b
+        )
+        boosted_neu = next(
+            r.score for r in boosted if r.item.id != e_b
+        )
+        self.assertGreater(
+            boosted_emo - boosted_neu,
+            plain_emo - plain_neu,
+        )
+
     def test_weak_important_replay(self):
         now = utcnow()
         important = self.remember(
