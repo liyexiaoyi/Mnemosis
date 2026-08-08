@@ -1791,6 +1791,79 @@ class MemoryEngine:
             "finish_level": max(level) if level else 0,
         }
 
+    def project_risk(
+        self,
+        memory_ids: list[str] | None = None,
+        compare_limit: int = 20,
+    ) -> dict:
+        """Score project risk from memories and intention state.
+
+        Risk management is memory-driven: known problem traces, conflicts,
+        overdue intentions and clashing schedules all raise the risk score
+        (0-100), with suggestions for mitigation.
+        """
+        from itertools import combinations
+
+        if memory_ids:
+            items = []
+            for memory_id in memory_ids:
+                item = self.backend.get(memory_id)
+                if item is not None:
+                    items.append(item)
+        else:
+            items = self.store.all_active()
+        risk_memories = [
+            {"id": item.id, "preview": item.content[:40]}
+            for item in items
+            if any(
+                keyword in item.content
+                for keyword in ("风险", "问题", "担心", "冲突", "注意",
+                                "延期", "失败")
+            )
+        ]
+        conflicts = 0
+        compare_items = items[: max(2, int(compare_limit))]
+        for a, b in combinations(compare_items, 2):
+            verdict = self.compare_memories(a.id, b.id)["verdict"]
+            if verdict == "conflict":
+                conflicts += 1
+        queue = self.action_queue(limit=10)
+        overdue = queue["overdue"]
+        clashes = queue["clashes"]
+        score = min(
+            100,
+            len(risk_memories) * 10
+            + conflicts * 15
+            + overdue * 15
+            + clashes * 10,
+        )
+        verdict = (
+            "high" if score >= 60 else (
+                "moderate" if score >= 30 else "low"
+            )
+        )
+        suggestions = []
+        if risk_memories:
+            suggestions.append("有已知风险记忆，先逐条确认是否仍有效")
+        if conflicts:
+            suggestions.append("记忆之间存在冲突，需要查证并统一")
+        if overdue:
+            suggestions.append("有过期待办，先补上或明确取消")
+        if clashes:
+            suggestions.append("待办有时间/地点撞车，错开安排")
+        return {
+            "risk_score": score,
+            "verdict": verdict,
+            "factors": {
+                "risk_memories": len(risk_memories),
+                "conflicts": conflicts,
+                "overdue_intents": overdue,
+                "intent_clashes": clashes,
+            },
+            "risk_memory_previews": risk_memories[:5],
+            "suggestions": suggestions[:4],
+        }
+
     def retrieval_assist(
         self,
         query: str,

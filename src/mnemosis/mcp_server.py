@@ -1124,6 +1124,25 @@ class MCPServer:
                 },
             },
             {
+                "name": "project_risk",
+                "description": (
+                    "Score project risk from memories and intention "
+                    "state: known problem traces, conflicts, overdue "
+                    "intentions and clashing schedules (memory-driven "
+                    "risk management)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "memory_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                        "compare_limit": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1722,6 +1741,11 @@ class MCPServer:
             )
         if name == "dependency_map":
             return self.engine.dependency_map(args["plan"])
+        if name == "project_risk":
+            return self.engine.project_risk(
+                memory_ids=args.get("memory_ids"),
+                compare_limit=int(args.get("compare_limit", 20)),
+            )
         if name == "practice_due":
             kind_value = args.get("kind")
             from .types import MemoryKind

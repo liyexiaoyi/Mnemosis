@@ -2466,6 +2466,63 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(len(via_mcp["critical_path"]), 5)
         self.assertEqual(via_mcp["finish_level"], 4)
 
+    def test_project_risk(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        now = utcnow()
+        ids = []
+        for text, cue in (
+            ("风险：模型延迟高", "pr-1"),
+            ("注意：数据权限未确认", "pr-2"),
+            ("需求：支持中文多轮对话", "pr-3"),
+            ("记录了会议纪要", "pr-4"),
+            ("aaa conflict one", "conflict-key"),
+            ("bbb conflict two", "conflict-key"),
+        ):
+            item = engine.remember(
+                text,
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=[cue],
+                confidence=0.8 if cue == "conflict-key" else 1.0,
+                auto_cues=False,
+            )
+            ids.append(item.id)
+        engine.remember_intent(
+            "overdue task", due_at=now - timedelta(hours=1)
+        )
+        engine.remember_intent(
+            "clash a", due_at=now + timedelta(minutes=10)
+        )
+        engine.remember_intent(
+            "clash b", due_at=now + timedelta(minutes=20)
+        )
+        report = engine.project_risk(memory_ids=ids)
+        self.assertEqual(report["risk_score"], 70)
+        self.assertEqual(report["verdict"], "high")
+        self.assertEqual(
+            report["factors"],
+            {
+                "risk_memories": 2,
+                "conflicts": 1,
+                "overdue_intents": 1,
+                "intent_clashes": 2,
+            },
+        )
+        self.assertTrue(report["suggestions"])
+        self.assertGreaterEqual(len(report["risk_memory_previews"]), 2)
+        empty = MemoryEngine().project_risk()
+        self.assertEqual(empty["risk_score"], 0)
+        self.assertEqual(empty["verdict"], "low")
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "project_risk", {"memory_ids": ids}
+        )
+        self.assertEqual(via_mcp["verdict"], "high")
+        self.assertEqual(via_mcp["risk_score"], 70)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(
