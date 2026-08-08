@@ -1994,6 +1994,68 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["total"], 6)
         self.assertEqual(len(via_mcp["conflicts"]), 1)
 
+    def test_topic_drift_report(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        now = utcnow()
+        for i in range(3):
+            engine.remember(
+                f"drift work old {i}",
+                kind=MemoryKind.EPISODIC,
+                source=user,
+                cues=["工作"],
+                created_at=now - timedelta(days=40, hours=i),
+                auto_cues=False,
+            )
+        engine.remember(
+            "drift life old", kind=MemoryKind.EPISODIC, source=user,
+            cues=["生活"], created_at=now - timedelta(days=40),
+            auto_cues=False,
+        )
+        engine.remember(
+            "drift work new", kind=MemoryKind.EPISODIC, source=user,
+            cues=["工作"], created_at=now - timedelta(days=8),
+            auto_cues=False,
+        )
+        for i in range(2):
+            engine.remember(
+                f"drift life new {i}",
+                kind=MemoryKind.EPISODIC,
+                source=user,
+                cues=["生活"],
+                created_at=now - timedelta(days=8, hours=i),
+                auto_cues=False,
+            )
+        for i in range(2):
+            engine.remember(
+                f"drift trip new {i}",
+                kind=MemoryKind.EPISODIC,
+                source=user,
+                cues=["旅行"],
+                created_at=now - timedelta(days=8, hours=i),
+                auto_cues=False,
+            )
+        report = engine.topic_drift_report(period_days=30)
+        self.assertEqual(len(report["periods"]), 2)
+        by_topic = {t["topic"]: t for t in report["topics"]}
+        self.assertIn("工作", by_topic)
+        self.assertIn("生活", by_topic)
+        self.assertIn("旅行", by_topic)
+        self.assertEqual(by_topic["工作"]["delta"], -2)
+        self.assertEqual(by_topic["工作"]["status"], "shrank")
+        self.assertEqual(by_topic["生活"]["delta"], 1)
+        self.assertEqual(by_topic["生活"]["status"], "grew")
+        self.assertEqual(by_topic["旅行"]["delta"], 2)
+        self.assertEqual(by_topic["旅行"]["status"], "new")
+        self.assertEqual(report["total_drift"], 3)
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "topic_drift_report", {"period_days": 30}
+        )
+        self.assertEqual(via_mcp["total_drift"], 3)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

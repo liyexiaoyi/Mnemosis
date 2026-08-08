@@ -1088,6 +1088,65 @@ class MemoryEngine:
             "summary": summary,
         }
 
+    def topic_drift_report(
+        self,
+        period_days: int = 30,
+        limit: int = 20,
+    ) -> dict:
+        """Compare topic distribution between the two most recent periods.
+
+        Schemas are reconstructed and shift over time (Bartlett, 1932):
+        this compares the newest time bucket against the previous one and
+        reports which themes grew, shrank, appeared or disappeared.
+        """
+        story = self.life_story(
+            period_days=max(1, int(period_days)),
+            limit=max(2, int(limit)),
+        )
+        periods = story["periods"]
+        if len(periods) < 2:
+            return {
+                "periods": [p["period_start"] for p in periods],
+                "topics": [],
+                "total_drift": 0,
+            }
+        old, new = periods[-2], periods[-1]
+        old_counts = {t["cue"]: t["count"] for t in old["top_themes"]}
+        new_counts = {t["cue"]: t["count"] for t in new["top_themes"]}
+        all_topics = sorted(set(old_counts) | set(new_counts))
+        topics = []
+        for topic in all_topics:
+            old_count = old_counts.get(topic, 0)
+            new_count = new_counts.get(topic, 0)
+            delta = new_count - old_count
+            if old_count == 0:
+                status = "new"
+            elif new_count == 0:
+                status = "gone"
+            elif delta > 0:
+                status = "grew"
+            elif delta < 0:
+                status = "shrank"
+            else:
+                status = "same"
+            topics.append(
+                {
+                    "topic": topic,
+                    "old_count": old_count,
+                    "new_count": new_count,
+                    "delta": delta,
+                    "status": status,
+                }
+            )
+        total_drift = sum(
+            1 for t in topics if t["status"] not in ("same",)
+        )
+        return {
+            "periods": [old["period_start"], new["period_start"]],
+            "topics": topics,
+            "total_drift": total_drift,
+        }
+
     def retrieval_assist(
         self,
         query: str,

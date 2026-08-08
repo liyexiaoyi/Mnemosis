@@ -921,6 +921,22 @@ class MCPServer:
                 },
             },
             {
+                "name": "topic_drift_report",
+                "description": (
+                    "Compare topic distribution between the two most "
+                    "recent periods: which themes grew, shrank, appeared "
+                    "or disappeared (schema reconstruction, Bartlett "
+                    "1932)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "period_days": {"type": "integer"},
+                        "limit": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1470,6 +1486,11 @@ class MCPServer:
             return self.engine.session_summary(
                 args["memory_ids"],
                 compare_limit=int(args.get("compare_limit", 20)),
+            )
+        if name == "topic_drift_report":
+            return self.engine.topic_drift_report(
+                period_days=int(args.get("period_days", 30)),
+                limit=int(args.get("limit", 20)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")
