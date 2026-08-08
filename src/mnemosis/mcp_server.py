@@ -1638,6 +1638,20 @@ class MCPServer:
                 },
             },
             {
+                "name": "next_interval",
+                "description": (
+                    "Recommend each memory's next review interval from "
+                    "retrieval history (adaptive spacing; Karpicke & "
+                    "Bauernschmidt, 2011)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "memory_id": {"type": "string"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -2373,6 +2387,10 @@ class MCPServer:
             return self.engine.analogy_bridge(
                 min_structure=float(args.get("min_structure", 0.3)),
                 limit=int(args.get("limit", 5)),
+            )
+        if name == "next_interval":
+            return self.engine.next_interval(
+                memory_id=args.get("memory_id"),
             )
         if name == "practice_due":
             kind_value = args.get("kind")

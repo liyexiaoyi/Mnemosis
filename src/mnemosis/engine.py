@@ -3860,6 +3860,77 @@ class MemoryEngine:
             ),
         }
 
+    def next_interval(
+        self,
+        memory_id: str | None = None,
+        *,
+        now: datetime | None = None,
+    ) -> dict:
+        """Recommend each memory's next review interval (adaptive spacing).
+
+        Adaptive spacing schedules intervals just long enough for
+        effortful retrieval (Karpicke & Bauernschmidt, 2011; Cepeda et
+        al., 2006). Base 24h grows with success streak, stretches with
+        high accuracy and high retrievability, shrinks for failures,
+        low retrievability and high importance.
+        """
+        if memory_id:
+            item = self.backend.get(memory_id)
+            items = [item] if item is not None else []
+        else:
+            items = self.store.all_active()
+        rows: list[dict] = []
+        for item in items:
+            r = self.curve.retrievability(item, now)
+            base = 24.0
+            streak_mult = min(4.0, 1.5 ** item.review_streak)
+            attempts = item.retrieval_successes + item.retrieval_failures
+            if attempts >= 3:
+                accuracy = item.retrieval_successes / attempts
+                acc_mult = 1.2 if accuracy >= 0.8 else (
+                    0.5 if accuracy < 0.5 else 1.0
+                )
+            else:
+                accuracy = None
+                acc_mult = 1.0
+            imp_mult = 0.8 if item.importance >= 0.7 else 1.0
+            if r >= 0.7:
+                r_mult = 1.3
+            elif r < 0.3:
+                r_mult = 0.6
+            else:
+                r_mult = 1.0
+            interval = round(
+                base * streak_mult * acc_mult * imp_mult * r_mult,
+                1,
+            )
+            rows.append(
+                {
+                    "id": item.id,
+                    "preview": item.content[:32],
+                    "review_streak": item.review_streak,
+                    "accuracy": accuracy,
+                    "retrievability": round(r, 3),
+                    "next_interval_hours": interval,
+                    "reason": (
+                        "连对多、准确率高、还熟练：间隔拉长"
+                        if interval >= 100
+                        else "失败多/快忘/重要：间隔缩短，早点复习"
+                        if interval < 24
+                        else "中等状态：保持当前间隔"
+                    ),
+                }
+            )
+        rows.sort(key=lambda row: -row["next_interval_hours"])
+        return {
+            "count": len(rows),
+            "rows": rows,
+            "advice": (
+                "自适应间隔：按每次回忆表现调整下次复习时间，"
+                "让回忆“有点难但能想起来”（Karpicke & Bauernschmidt 2011）。"
+            ),
+        }
+
     def retrieval_assist(
         self,
         query: str,

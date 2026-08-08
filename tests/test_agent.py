@@ -3774,6 +3774,52 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         )
         self.assertGreaterEqual(via_mcp["analogy_count"], 1)
 
+    def test_next_interval(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        strong = engine.remember(
+            "连对公式",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["数学"],
+            importance=0.5,
+            strength=0.9,
+            auto_cues=False,
+        )
+        strong.review_streak = 3
+        strong.retrieval_successes = 9
+        strong.retrieval_failures = 1
+        engine.backend.update(strong)
+        weak = engine.remember(
+            "总错的单词",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["英语"],
+            importance=0.8,
+            strength=0.2,
+            auto_cues=False,
+        )
+        weak.review_streak = 0
+        weak.retrieval_successes = 1
+        weak.retrieval_failures = 5
+        engine.backend.update(weak)
+        report = engine.next_interval()
+        self.assertEqual(report["count"], 2)
+        self.assertEqual(report["rows"][0]["id"], strong.id)
+        self.assertGreater(report["rows"][0]["next_interval_hours"], 100)
+        self.assertLess(report["rows"][1]["next_interval_hours"], 24)
+        self.assertTrue(report["rows"][0]["reason"])
+        self.assertTrue(report["advice"])
+        single = engine.next_interval(memory_id=weak.id)
+        self.assertEqual(single["count"], 1)
+        self.assertEqual(single["rows"][0]["id"], weak.id)
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "next_interval", {"memory_id": weak.id}
+        )
+        self.assertEqual(via_mcp["count"], 1)
+        self.assertLess(via_mcp["rows"][0]["next_interval_hours"], 24)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(
