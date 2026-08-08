@@ -64,6 +64,36 @@ class MemoryEngine:
 
     # -- wake cycle ---------------------------------------------------------
 
+    @staticmethod
+    def _extract_context(content: str) -> str | None:
+        """Auto-tag the situational context of a memory (round 71).
+
+        Context-dependent memory (Godden & Baddeley, 1975): where something
+        happened is a powerful retrieval cue. Patterns like "在会议室里"
+        / "在公司" / "去家里" are extracted so later fuzzy-context recall
+        can use them without the caller tagging every memory by hand.
+        """
+        import re
+
+        match = re.search(
+            r"(?:在|去|到)([\u4e00-\u9fff]{2,6}?)"
+            r"(?:里|中|上|内|旁边)?",
+            content,
+        )
+        if not match:
+            return None
+        candidate = match.group(1)
+        if len(candidate) == 2:
+            following = content[match.end():match.end() + 1]
+            if following in "室馆店站楼场院厅":
+                candidate += following
+        if candidate in (
+            "这里", "那里", "这时", "当时", "今天", "昨天", "明天",
+            "现在", "这", "那", "现场", "家里家外",
+        ):
+            return None
+        return candidate
+
     def remember(
         self,
         content: str,
@@ -80,8 +110,11 @@ class MemoryEngine:
         evidence_count: int = 1,
         storage_strength: float = 1.0,
         auto_cues: bool = True,
+        auto_context: bool = True,
     ) -> MemoryItem:
         source = source or SourceRecord(origin=SourceType.USER)
+        if auto_context and context is None:
+            context = self._extract_context(content)
         if auto_cues:
             cues = normalize_cues(list(cues or []) + extract_cues(content))
         item = self.store.remember(

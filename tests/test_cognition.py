@@ -85,6 +85,18 @@ class CognitionTest(unittest.TestCase):
             plain_a - plain_b,
         )
 
+    def test_auto_context_extraction(self):
+        meeting = self.remember("阿丽在会议室里讨论了方案一。")
+        self.assertEqual(meeting.context, "会议室")
+        dated = self.remember("阿丽在2026年4月1日准备了行李。")
+        self.assertIsNone(dated.context)
+        generic = self.remember("阿丽在这里等了一会儿。")
+        self.assertIsNone(generic.context)
+        explicit = self.remember(
+            "阿丽讨论了方案二。", context="办公室"
+        )
+        self.assertEqual(explicit.context, "办公室")
+
     def test_elaborate_co_retrieval_links(self):
         def _build():
             engine = MemoryEngine()
