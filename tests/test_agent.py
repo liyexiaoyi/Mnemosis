@@ -3375,6 +3375,59 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["total_scheduled"], 6)
         self.assertEqual(len(via_mcp["daily_plan"]), 7)
 
+    def test_rumination_check(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        bad = engine.remember(
+            "答辩搞砸了",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["答辩"],
+            affect="negative",
+            auto_cues=False,
+        )
+        bad.access_count = 8
+        engine.backend.update(bad)
+        minor = engine.remember(
+            "小失误",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["日常"],
+            affect="negative",
+            auto_cues=False,
+        )
+        minor.access_count = 2
+        engine.backend.update(minor)
+        good = engine.remember(
+            "获奖",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["荣誉"],
+            affect="positive",
+            auto_cues=False,
+        )
+        good.access_count = 8
+        engine.backend.update(good)
+        report = engine.rumination_check()
+        self.assertEqual(report["negative_count"], 2)
+        self.assertEqual(len(report["risky_memories"]), 1)
+        self.assertEqual(report["risky_memories"][0]["id"], bad.id)
+        self.assertNotIn(
+            good.id, [item["id"] for item in report["risky_memories"]]
+        )
+        self.assertEqual(report["risk_level"], "medium")
+        self.assertTrue(
+            any(
+                topic["topic"] == "答辩"
+                for topic in report["rumination_topics"]
+            )
+        )
+        self.assertIn("重评", report["advice"])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("rumination_check", {})
+        self.assertEqual(via_mcp["risk_level"], "medium")
+        self.assertEqual(len(via_mcp["risky_memories"]), 1)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

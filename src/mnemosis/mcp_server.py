@@ -1514,6 +1514,21 @@ class MCPServer:
                 },
             },
             {
+                "name": "rumination_check",
+                "description": (
+                    "Detect repeated retrieval of negative/arousing "
+                    "memories (rumination risk) and suggest reappraisal "
+                    "plus memory update instead of another replay "
+                    "(Watkins, 2008; Nader et al., 2000)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "access_threshold": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -2211,6 +2226,10 @@ class MCPServer:
             return self.engine.spacing_plan(
                 days=int(args.get("days", 7)),
                 limit=int(args.get("limit", 20)),
+            )
+        if name == "rumination_check":
+            return self.engine.rumination_check(
+                access_threshold=int(args.get("access_threshold", 5)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")

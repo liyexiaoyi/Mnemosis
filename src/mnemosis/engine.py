@@ -3262,6 +3262,79 @@ class MemoryEngine:
             ),
         }
 
+    def rumination_check(
+        self,
+        *,
+        access_threshold: int = 5,
+    ) -> dict:
+        """Detect repeated retrieval of negative memories (rumination).
+
+        Repetitive negative thinking is a transdiagnostic risk factor
+        (Watkins, 2008; Ehring & Watkins, 2008), while reactivation makes
+        a memory labile so it can be updated rather than merely replayed
+        (Nader et al., 2000). This tool flags negative/arousing memories
+        that are accessed far too often and suggests reappraisal +
+        update instead of another replay.
+        """
+        from collections import defaultdict
+
+        threshold = max(1, int(access_threshold))
+        items = self.store.all_active()
+        risky: list[dict] = []
+        negative_count = 0
+        for item in items:
+            if item.affect not in ("negative", "arousing"):
+                continue
+            negative_count += 1
+            if item.access_count >= threshold:
+                risky.append(
+                    {
+                        "id": item.id,
+                        "preview": item.content[:36],
+                        "affect": item.affect,
+                        "access_count": item.access_count,
+                        "topic": item.cues[0] if item.cues else item.content[:10],
+                    }
+                )
+        topic_counts: defaultdict[str, int] = defaultdict(int)
+        for item in risky:
+            topic_counts[item["topic"]] += 1
+        rumination_topics = [
+            {"topic": topic, "risky_count": count}
+            for topic, count in sorted(
+                topic_counts.items(), key=lambda kv: -kv[1]
+            )
+        ]
+        if len(risky) >= 3 or any(
+            topic["risky_count"] >= 2 for topic in rumination_topics
+        ):
+            risk_level = "high"
+        elif risky:
+            risk_level = "medium"
+        else:
+            risk_level = "low"
+        if risk_level == "high":
+            advice = (
+                "反刍风险高：同一件负性事件被反复调出。别再重复回放，"
+                "先重评（换个角度），再借“提取后记忆可更新”的窗口"
+                "改写结论（Nader 2000）。"
+            )
+        elif risk_level == "medium":
+            advice = (
+                "有反刍苗头：这条负性记忆被访问偏多。"
+                "建议改为间隔复习 + 重评，而不是每次想起来就重放。"
+            )
+        else:
+            advice = "情绪记忆访问正常：保持间隔复习即可。"
+        return {
+            "total_memories": len(items),
+            "negative_count": negative_count,
+            "risky_memories": risky,
+            "rumination_topics": rumination_topics,
+            "risk_level": risk_level,
+            "advice": advice,
+        }
+
     def retrieval_assist(
         self,
         query: str,
