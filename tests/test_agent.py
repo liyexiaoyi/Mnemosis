@@ -4585,6 +4585,66 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
             "跳跃力度为 420。", [r.item.content for r in off]
         )
 
+    def test_concept_cover_tool_and_agent_chain(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        for content, cues in (
+            ("玩家移动速度为 320 像素/秒。", ["速度"]),
+            ("跳跃力度为 420。", ["跳跃"]),
+            ("主场景是 Main.tscn。", ["场景"]),
+            ("玩家移动速度测试记录：昨天调到 300。", ["速度"]),
+            ("玩家移动速度对比：周日 280，周一 300。", ["速度"]),
+        ):
+            engine.remember(
+                content,
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=cues,
+                auto_cues=False,
+            )
+        report = engine.concept_cover(
+            "玩家移动速度和跳跃力度分别是多少？", top_k=2
+        )
+        self.assertTrue(report["multi_concept"])
+        self.assertEqual(len(report["chunks"]), 2)
+        self.assertEqual(len(report["per_chunk"]), 2)
+        self.assertTrue(all(entry["covered"] for entry in report["per_chunk"]))
+        self.assertEqual(report["verdict"], "multi")
+        finals = [row["preview"] for row in report["final_top_k"]]
+        self.assertTrue(any("320" in row for row in finals))
+        self.assertTrue(any("420" in row for row in finals))
+        self.assertIn("覆盖", report["advice"])
+        single = engine.concept_cover("玩家移动速度是多少？", top_k=2)
+        self.assertEqual(single["verdict"], "single")
+        self.assertFalse(single["multi_concept"])
+        empty = MemoryEngine().concept_cover(
+            "玩家移动速度和跳跃力度分别是多少？"
+        )
+        self.assertEqual(empty["verdict"], "multi")
+        self.assertEqual(empty["final_top_k"], [])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "concept_cover",
+            {"query": "玩家移动速度和跳跃力度分别是多少？", "top_k": 2},
+        )
+        self.assertTrue(via_mcp["multi_concept"])
+        self.assertTrue(all(e["covered"] for e in via_mcp["per_chunk"]))
+        # the agent chain (search / context_pack) surfaces both concepts
+        via_search = server._call_tool(
+            "search",
+            {"query": "玩家移动速度和跳跃力度分别是多少？", "top_k": 2},
+        )
+        contents = [row["content"] for row in via_search]
+        self.assertTrue(any("320" in c for c in contents))
+        self.assertTrue(any("420" in c for c in contents))
+        via_pack = server._call_tool(
+            "context_pack",
+            {"queries": ["玩家移动速度和跳跃力度分别是多少？"], "top_k": 2},
+        )
+        packed = [row["content"] for row in via_pack["packed"]]
+        self.assertTrue(any("320" in c for c in packed))
+        self.assertTrue(any("420" in c for c in packed))
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

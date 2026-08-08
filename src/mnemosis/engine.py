@@ -336,28 +336,24 @@ class MemoryEngine:
             return results
         from .types import tokenize
 
-        generic = {
-            "多少", "分别", "是", "什么", "哪些", "怎么", "如何",
-            "一个", "那个", "这个", "还有", "哪些",
-        }
         seen = {result.item.id for result in results}
         for chunk in chunks:
-            terms = {
-                term
-                for term in tokenize(chunk)
-                if len(term) >= 2 and term not in generic
-            }
+            terms = self._concept_terms(chunk)
             if not terms:
                 continue
-            joined = " || ".join(
-                result.item.content + " " + " ".join(result.item.cues)
-                for result in results
+            candidates = self._chunk_top_candidates(
+                chunk,
+                terms,
+                kind=kind,
+                exclude_ids=exclude_ids,
+                limit=3,
             )
-            if all(term in joined for term in terms):
-                continue
-            for score, candidate in self._chunk_top_candidates(
-                chunk, terms, kind=kind, exclude_ids=exclude_ids
+            if any(
+                candidate.id in seen and score >= 0.35
+                for score, candidate in candidates
             ):
+                continue
+            for score, candidate in candidates:
                 if candidate.id in seen or score < 0.35:
                     continue
                 result = RecallResult(candidate, score)
@@ -399,6 +395,99 @@ class MemoryEngine:
             rows.append((round(score, 4), item))
         rows.sort(key=lambda pair: (-pair[0], pair[1].id))
         return rows[: max(1, int(limit))]
+
+    def _concept_terms(self, chunk: str) -> set[str]:
+        """Meaningful terms of one concept chunk (no function words)."""
+        from .types import tokenize
+
+        generic = {
+            "多少", "分别", "是", "什么", "哪些", "怎么", "如何",
+            "一个", "那个", "这个", "还有", "哪些", "多少",
+        }
+        return {
+            term
+            for term in tokenize(chunk)
+            if len(term) >= 2 and term not in generic
+        }
+
+    def concept_cover(
+        self,
+        query: str,
+        *,
+        top_k: int = 4,
+        now: datetime | None = None,
+    ) -> dict:
+        """Expose the concept-coverage retrieval path to agents.
+
+        For a multi-concept Chinese question ("A 和 B 分别是多少") this
+        returns the detected chunks, each chunk's best candidates,
+        whether each chunk is covered in the final top-k, and the final
+        context - so the agent can see why every concept is represented
+        (working-memory chunking; Miller, 1956). Read-only.
+        """
+        chunks = self._concept_chunks(query)
+        final = self.recall(query, top_k=top_k, now=now)
+        final_ids = {result.item.id for result in final}
+        per_chunk: list[dict] = []
+        for chunk in chunks:
+            terms = self._concept_terms(chunk)
+            candidates = [
+                {
+                    "id": item.id,
+                    "preview": item.content[:50],
+                    "score": score,
+                }
+                for score, item in self._chunk_top_candidates(
+                    chunk,
+                    terms,
+                    kind=None,
+                    exclude_ids=set(),
+                    limit=3,
+                )
+            ]
+            covered = any(
+                candidate["id"] in final_ids
+                and candidate["score"] >= 0.35
+                for candidate in candidates
+            )
+            per_chunk.append(
+                {
+                    "chunk": chunk,
+                    "terms": sorted(terms),
+                    "covered": covered,
+                    "candidates": candidates,
+                }
+            )
+        multi = len(chunks) >= 2
+        if multi and all(entry["covered"] for entry in per_chunk):
+            advice = (
+                "多概念问题：每个概念都已在最终上下文里覆盖到，"
+                "可以放心作答。"
+            )
+        elif multi:
+            advice = (
+                "多概念问题：还有概念没覆盖到，建议把缺失概念的候选"
+                "单独加入上下文，或换个说法再问。"
+            )
+        else:
+            advice = "单概念问题：不需要分块覆盖。"
+        return {
+            "query": query,
+            "multi_concept": multi,
+            "chunks": chunks,
+            "per_chunk": per_chunk,
+            "final_top_k": [
+                {
+                    "id": result.item.id,
+                    "preview": result.item.content[:60],
+                    "score": round(result.score, 3),
+                    "reasons": result.reasons,
+                }
+                for result in final
+            ],
+            "verdict": "multi" if multi else "single",
+            "advice": advice,
+        }
 
     def get_recall_log(self, limit: int = 50) -> list[dict]:
         """Return the most recent recall entries (bounded audit log)."""
@@ -746,7 +835,9 @@ class MemoryEngine:
         for query in queries:
             for result in self.recall(query, top_k=top_k, now=now):
                 if not any(
-                    "overlap" in r or "semantic" in r
+                    "overlap" in r
+                    or "semantic" in r
+                    or r.startswith("概念覆盖")
                     for r in result.reasons
                 ):
                     continue

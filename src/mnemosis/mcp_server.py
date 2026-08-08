@@ -1872,6 +1872,23 @@ class MCPServer:
                 },
             },
             {
+                "name": "concept_cover",
+                "description": (
+                    "Show how a multi-concept Chinese question is split "
+                    "into chunks, which memories cover each chunk and "
+                    "the final top-k (working-memory chunking; Miller, "
+                    "1956)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"},
+                        "top_k": {"type": "integer"},
+                    },
+                    "required": ["query"],
+                },
+            },
+            {
                 "name": "retrieval_snapshot",
                 "description": (
                     "Capture a compact memory-state snapshot (knowledge "
@@ -2694,6 +2711,11 @@ class MCPServer:
             return self.engine.agent_learning_session(
                 answers=args.get("answers"),
                 count=int(args.get("count", 1)),
+            )
+        if name == "concept_cover":
+            return self.engine.concept_cover(
+                query=str(args.get("query", "")),
+                top_k=int(args.get("top_k", 4)),
             )
         if name == "retrieval_snapshot":
             return self.engine.retrieval_snapshot(
