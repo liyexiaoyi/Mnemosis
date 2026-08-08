@@ -1553,6 +1553,104 @@ class MemoryEngine:
             "summary": summary,
         }
 
+    def numeric_reasoning(
+        self,
+        problem: str,
+        context_memory_ids: list[str] | None = None,
+    ) -> dict:
+        """Sanity-check numbers/units in a Chinese math or physics problem.
+
+        Number sense relies on approximate quantity processing (Dehaene,
+        1997) and physical intuition uses mental simulation
+        (Johnson-Laird, 1983). This extracts numbers with units, flags
+        unit mixes and division by zero, and cross-checks against known
+        facts in memory (e.g. speed x time = distance).
+        """
+        import re
+
+        pairs = re.findall(
+            r"(\d+(?:\.\d+)?)\s*"
+            r"(元|米|秒|千克|个|天|小时|公里|千米|分钟|%|斤|吨|升|毫升)",
+            problem,
+        )
+        numbers = [
+            {"value": float(value), "unit": unit}
+            for value, unit in pairs
+        ]
+        chinese_numbers = re.findall(
+            r"[零一二三四五六七八九十百千万]+", problem
+        )
+        checks = []
+        units = [entry["unit"] for entry in numbers]
+        if "米" in units and ("公里" in units or "千米" in units):
+            checks.append(
+                {
+                    "type": "unit_mix",
+                    "message": "同时出现米和公里/千米，注意 1 公里=1000 米",
+                    "ok": False,
+                }
+            )
+        if re.search(r"除以\s*0(?!\d)|÷\s*0(?!\d)", problem):
+            checks.append(
+                {
+                    "type": "zero_division",
+                    "message": "出现除以 0，结果无意义",
+                    "ok": False,
+                }
+            )
+        ctx_facts: list[dict] = []
+        if context_memory_ids:
+            for memory_id in context_memory_ids:
+                item = self.backend.get(memory_id)
+                if item is None:
+                    continue
+                speed_match = re.search(
+                    r"(\d+(?:\.\d+)?)\s*(千米每小时|公里每小时|米每秒)",
+                    item.content,
+                )
+                if speed_match:
+                    ctx_facts.append(
+                        {
+                            "type": "speed",
+                            "value": float(speed_match.group(1)),
+                            "unit": speed_match.group(2),
+                        }
+                    )
+        time_dist = re.search(
+            r"(\d+(?:\.\d+)?)\s*小时(?:行驶|走|前进)"
+            r"(\d+(?:\.\d+)?)\s*(千米|公里)",
+            problem,
+        )
+        speed_ok = True
+        if ctx_facts and time_dist:
+            hours = float(time_dist.group(1))
+            distance = float(time_dist.group(2))
+            speed = ctx_facts[0]["value"]
+            expected = speed * hours
+            speed_ok = abs(expected - distance) / max(1.0, distance) < 0.05
+            checks.append(
+                {
+                    "type": "memory_consistency",
+                    "message": (
+                        f"记忆速度 {speed:.0f}，{hours:.0f} 小时应走 "
+                        f"{expected:.0f}，题面 {distance:.0f}"
+                        + ("，一致" if speed_ok else "，不一致请复核")
+                    ),
+                    "ok": speed_ok,
+                }
+            )
+        verdict = (
+            "consistent"
+            if all(check["ok"] for check in checks)
+            else "review_needed"
+        )
+        return {
+            "numbers": numbers,
+            "chinese_numbers": chinese_numbers,
+            "checks": checks,
+            "verdict": verdict,
+        }
+
     def retrieval_assist(
         self,
         query: str,

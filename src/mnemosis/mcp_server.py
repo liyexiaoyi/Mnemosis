@@ -1056,6 +1056,26 @@ class MCPServer:
                 },
             },
             {
+                "name": "numeric_reasoning",
+                "description": (
+                    "Sanity-check numbers and units in a Chinese math or "
+                    "physics problem: unit mixes, division by zero, and "
+                    "consistency with known facts in memory (number sense, "
+                    "Dehaene 1997; mental models, Johnson-Laird 1983)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "problem": {"type": "string"},
+                        "context_memory_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                        },
+                    },
+                    "required": ["problem"],
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1641,6 +1661,11 @@ class MCPServer:
                 args["title"],
                 memory_ids=args.get("memory_ids"),
                 limit=int(args.get("limit", 8)),
+            )
+        if name == "numeric_reasoning":
+            return self.engine.numeric_reasoning(
+                args["problem"],
+                context_memory_ids=args.get("context_memory_ids"),
             )
         if name == "practice_due":
             kind_value = args.get("kind")

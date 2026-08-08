@@ -2345,6 +2345,55 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(len(via_mcp["background"]), 4)
         self.assertGreaterEqual(len(via_mcp["pending_actions"]), 1)
 
+    def test_numeric_reasoning(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        ctx = engine.remember(
+            "汽车速度 60 千米每小时",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["速度"],
+            auto_cues=False,
+        )
+        consistent = engine.numeric_reasoning(
+            "汽车3小时行驶180千米",
+            context_memory_ids=[ctx.id],
+        )
+        self.assertEqual(consistent["verdict"], "consistent")
+        self.assertTrue(
+            any(
+                check["type"] == "memory_consistency"
+                and check["ok"]
+                for check in consistent["checks"]
+            )
+        )
+        mixed = engine.numeric_reasoning("绳子长2米，又接上3公里")
+        self.assertEqual(mixed["verdict"], "review_needed")
+        self.assertTrue(
+            any(check["type"] == "unit_mix" for check in mixed["checks"])
+        )
+        zero = engine.numeric_reasoning("把10元除以0个人")
+        self.assertEqual(zero["verdict"], "review_needed")
+        self.assertTrue(
+            any(
+                check["type"] == "zero_division"
+                for check in zero["checks"]
+            )
+        )
+        self.assertEqual(
+            [entry["value"] for entry in consistent["numbers"]],
+            [3.0, 180.0],
+        )
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "numeric_reasoning",
+            {
+                "problem": "汽车3小时行驶180千米",
+                "context_memory_ids": [ctx.id],
+            },
+        )
+        self.assertEqual(via_mcp["verdict"], "consistent")
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(
