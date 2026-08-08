@@ -3776,6 +3776,90 @@ class MemoryEngine:
             ),
         }
 
+    def analogy_bridge(
+        self,
+        *,
+        min_structure: float = 0.3,
+        limit: int = 5,
+    ) -> dict:
+        """Find cross-topic memory pairs with shared structure (analogy).
+
+        Analogical thinking maps systems of relations between different
+        domains (structure-mapping; Gentner, 1983; Holyoak & Thagard,
+        1995). This tool scores pairs from different topics by shared
+        cues, shared terms and shared relation words, and suggests
+        analogies that aid transfer.
+        """
+        from itertools import combinations
+
+        from .types import tokenize
+
+        relation_words = {
+            "绕", "围绕", "大于", "小于", "等于", "导致", "因为",
+            "所以", "依赖", "推动", "阻止", "包含", "属于", "对应",
+            "orbit", "cause", "depend", "contain", "lead",
+        }
+        items = self.store.all_active()
+        rows: list[dict] = []
+        for a, b in combinations(items, 2):
+            topic_a = a.cues[0] if a.cues else a.content[:10]
+            topic_b = b.cues[0] if b.cues else b.content[:10]
+            if topic_a == topic_b:
+                continue
+            cue_overlap = (
+                len(set(a.cues) & set(b.cues))
+                / max(1, len(set(a.cues) | set(b.cues)))
+                if (a.cues or b.cues)
+                else 0.0
+            )
+            terms_a = set(tokenize(a.content))
+            terms_b = set(tokenize(b.content))
+            term_overlap = (
+                len(terms_a & terms_b) / max(1, len(terms_a | terms_b))
+                if (terms_a or terms_b)
+                else 0.0
+            )
+            relation_shared = int(
+                any(word in a.content for word in relation_words)
+                and any(word in b.content for word in relation_words)
+            )
+            structure = round(
+                min(
+                    1.0,
+                    0.4 * cue_overlap
+                    + 0.6 * term_overlap
+                    + 0.2 * relation_shared,
+                ),
+                3,
+            )
+            if structure < min_structure:
+                continue
+            rows.append(
+                {
+                    "topic_a": topic_a,
+                    "topic_b": topic_b,
+                    "a_preview": a.content[:36],
+                    "b_preview": b.content[:36],
+                    "structure_score": structure,
+                    "suggestion": (
+                        f"结构相似：用「{topic_a}」理解「{topic_b}」，"
+                        "关系可以迁移（结构映射）。"
+                    ),
+                }
+            )
+        rows.sort(key=lambda row: -row["structure_score"])
+        return {
+            "total_pairs_scanned": len(items) * (len(items) - 1) // 2,
+            "analogy_count": len(rows),
+            "analogies": rows[: max(1, int(limit))],
+            "advice": (
+                "找到类比桥：跨主题的结构相似记忆可以互相解释，"
+                "迁移学习更省力（Gentner 1983）。"
+                if rows
+                else "暂无跨主题类比：继续积累不同领域记忆后再看。"
+            ),
+        }
+
     def retrieval_assist(
         self,
         query: str,

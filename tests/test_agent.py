@@ -3733,6 +3733,47 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertGreaterEqual(len(via_mcp["relevant"]), 1)
         self.assertGreaterEqual(via_mcp["suppressed_count"], 1)
 
+    def test_analogy_bridge(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        engine.remember(
+            "行星绕太阳转",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["天文"],
+            auto_cues=False,
+        )
+        engine.remember(
+            "电子绕原子核转",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["物理"],
+            auto_cues=False,
+        )
+        engine.remember(
+            "买牛奶面包",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["购物"],
+            auto_cues=False,
+        )
+        report = engine.analogy_bridge(min_structure=0.2, limit=5)
+        self.assertGreaterEqual(report["analogy_count"], 1)
+        top = report["analogies"][0]
+        self.assertEqual({top["topic_a"], top["topic_b"]}, {"天文", "物理"})
+        self.assertGreaterEqual(top["structure_score"], 0.2)
+        self.assertNotIn(
+            "买牛奶面包",
+            [top["a_preview"], top["b_preview"]],
+        )
+        self.assertTrue(top["suggestion"])
+        self.assertTrue(report["advice"])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "analogy_bridge", {"min_structure": 0.2, "limit": 5}
+        )
+        self.assertGreaterEqual(via_mcp["analogy_count"], 1)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

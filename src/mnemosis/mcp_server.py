@@ -1623,6 +1623,21 @@ class MCPServer:
                 },
             },
             {
+                "name": "analogy_bridge",
+                "description": (
+                    "Find cross-topic memory pairs with shared structure "
+                    "for analogical transfer (structure-mapping; Gentner, "
+                    "1983; Holyoak & Thagard, 1995)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "min_structure": {"type": "number"},
+                        "limit": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -2353,6 +2368,11 @@ class MCPServer:
             return self.engine.attention_filter(
                 task=str(args.get("task", "")),
                 top_k=int(args.get("top_k", 5)),
+            )
+        if name == "analogy_bridge":
+            return self.engine.analogy_bridge(
+                min_structure=float(args.get("min_structure", 0.3)),
+                limit=int(args.get("limit", 5)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")
