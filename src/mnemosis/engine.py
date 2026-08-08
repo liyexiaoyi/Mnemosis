@@ -4148,6 +4148,80 @@ class MemoryEngine:
             ),
         }
 
+    def curve_fit(
+        self,
+        memory_id: str | None = None,
+        *,
+        horizon_days: int = 30,
+        threshold: float = 0.4,
+        now: datetime | None = None,
+    ) -> dict:
+        """Personalize each memory's forgetting forecast.
+
+        Forgetting rates vary across individuals and items (Murre &
+        Chessa, 2011): repeated successful retrieval builds storage
+        strength (Bjork & Bjork, 1992) and slows decay. This tool
+        estimates a per-memory decay rate from retrieval history and
+        predicts the day retrievability crosses a threshold.
+        """
+        import math
+
+        threshold = max(0.05, min(0.95, float(threshold)))
+        if memory_id:
+            item = self.backend.get(memory_id)
+            items = [item] if item is not None else []
+        else:
+            items = self.store.all_active()
+        rows: list[dict] = []
+        for item in items:
+            r = self.curve.retrievability(item, now)
+            attempts = item.retrieval_successes + item.retrieval_failures
+            if attempts:
+                success_rate = item.retrieval_successes / attempts
+                history_factor = min(2.0, 0.5 + success_rate)
+            else:
+                history_factor = 1.0
+            base_rate = self.curve.effective_decay_rate(item)
+            estimated_rate = base_rate / history_factor
+            if r > threshold:
+                days_to = round(
+                    math.log(r / threshold) / estimated_rate / 24.0,
+                    1,
+                )
+            else:
+                days_to = 0.0
+            days_to = min(float(horizon_days), days_to)
+            rows.append(
+                {
+                    "id": item.id,
+                    "preview": item.content[:32],
+                    "retrievability": round(r, 3),
+                    "attempts": attempts,
+                    "success_rate": (
+                        round(item.retrieval_successes / attempts, 3)
+                        if attempts
+                        else None
+                    ),
+                    "estimated_rate_per_hour": round(estimated_rate, 5),
+                    "days_to_threshold": days_to,
+                    "reason": (
+                        "回忆成功率越高，遗忘越慢"
+                        if history_factor > 1.0
+                        else "暂无历史记录，按默认速率预测"
+                    ),
+                }
+            )
+        rows.sort(key=lambda row: row["days_to_threshold"])
+        return {
+            "count": len(rows),
+            "threshold": threshold,
+            "rows": rows,
+            "advice": (
+                "个性化遗忘曲线：用每条记忆的真实回忆记录调衰减速率，"
+                "预测多久后会跌破复习阈值（Murre & Chessa 2011）。"
+            ),
+        }
+
     def retrieval_assist(
         self,
         query: str,

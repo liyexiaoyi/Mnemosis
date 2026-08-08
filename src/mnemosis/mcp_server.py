@@ -1706,6 +1706,23 @@ class MCPServer:
                 },
             },
             {
+                "name": "curve_fit",
+                "description": (
+                    "Personalize each memory's forgetting forecast from "
+                    "retrieval history and predict days until "
+                    "retrievability crosses a threshold (individual "
+                    "forgetting rates; Murre & Chessa, 2011)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "memory_id": {"type": "string"},
+                        "horizon_days": {"type": "integer"},
+                        "threshold": {"type": "number"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -2461,6 +2478,12 @@ class MCPServer:
             return self.engine.transfer_prompt(
                 count=int(args.get("count", 3)),
                 min_mastery=float(args.get("min_mastery", 0.7)),
+            )
+        if name == "curve_fit":
+            return self.engine.curve_fit(
+                memory_id=args.get("memory_id"),
+                horizon_days=int(args.get("horizon_days", 30)),
+                threshold=float(args.get("threshold", 0.4)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")

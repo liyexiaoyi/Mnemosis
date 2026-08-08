@@ -4025,6 +4025,51 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["topics"][0]["topic"], "数学")
         self.assertGreaterEqual(len(via_mcp["prompts"]), 1)
 
+    def test_curve_fit(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        fast = engine.remember(
+            "易忘内容",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["易忘"],
+            strength=0.9,
+            auto_cues=False,
+        )
+        fast.retrieval_successes = 1
+        fast.retrieval_failures = 5
+        engine.backend.update(fast)
+        slow = engine.remember(
+            "巩固内容",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["巩固"],
+            strength=0.9,
+            auto_cues=False,
+        )
+        slow.retrieval_successes = 10
+        slow.retrieval_failures = 0
+        engine.backend.update(slow)
+        report = engine.curve_fit(horizon_days=30, threshold=0.4)
+        self.assertEqual(report["count"], 2)
+        self.assertEqual(report["rows"][0]["id"], fast.id)
+        self.assertGreater(report["rows"][0]["days_to_threshold"], 0)
+        self.assertGreater(
+            report["rows"][1]["days_to_threshold"],
+            report["rows"][0]["days_to_threshold"],
+        )
+        self.assertTrue(report["rows"][0]["reason"])
+        self.assertTrue(report["advice"])
+        single = engine.curve_fit(memory_id=slow.id)
+        self.assertEqual(single["count"], 1)
+        self.assertEqual(single["rows"][0]["id"], slow.id)
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "curve_fit", {"memory_id": slow.id, "threshold": 0.4}
+        )
+        self.assertEqual(via_mcp["count"], 1)
+        self.assertGreater(via_mcp["rows"][0]["days_to_threshold"], 0)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(
