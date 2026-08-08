@@ -11,7 +11,7 @@ import unittest
 
 from mnemosis import MemoryEngine
 from mnemosis.mcp_server import MCPServer
-from mnemosis.types import MemoryKind, SourceRecord, SourceType
+from mnemosis.types import MemoryKind, SourceRecord, SourceType, utcnow
 
 
 def _project_engine() -> MemoryEngine:
@@ -401,6 +401,30 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         result = server._call_tool("sleep_replay", {})
         self.assertEqual(result["replayed_surprising"], 1)
         self.assertEqual(result["consolidated_steps"], 1)
+
+    def test_mcp_review_due_desirable(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        now = utcnow()
+        for i, strength in enumerate((0.5, 0.5, 0.5)):
+            engine.remember(
+                f"待复习{i}",
+                kind=MemoryKind.SEMANTIC,
+                source=SourceRecord(origin=SourceType.USER),
+                cues=[f"r{i}"],
+                strength=strength,
+                created_at=now - timedelta(days=(5 + i * 10)),
+            )
+        server = MCPServer(engine=engine)
+        plain = server._call_tool("review_due", {"limit": 3})
+        desirable = server._call_tool(
+            "review_due", {"limit": 3, "desirable_difficulty": True}
+        )
+        self.assertNotEqual(
+            [r["content"] for r in plain],
+            [r["content"] for r in desirable],
+        )
 
 
 if __name__ == "__main__":

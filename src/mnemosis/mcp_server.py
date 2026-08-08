@@ -143,10 +143,17 @@ class MCPServer:
             },
             {
                 "name": "review_due",
-                "description": "List memories due for spaced review.",
+                "description": (
+                    "List memories due for spaced review; optionally prefer "
+                    "desirable-difficulty items (hard but likely to succeed)."
+                ),
                 "inputSchema": {
                     "type": "object",
-                    "properties": {"limit": {"type": "integer"}},
+                    "properties": {
+                        "limit": {"type": "integer"},
+                        "desirable_difficulty": {"type": "boolean"},
+                        "difficulty_target": {"type": "number"},
+                    },
                 },
             },
             {
@@ -430,7 +437,13 @@ class MCPServer:
                     ),
                 }
                 for item in self.engine.review_due(
-                    limit=int(args.get("limit", 10))
+                    limit=int(args.get("limit", 10)),
+                    desirable_difficulty=bool(
+                        args.get("desirable_difficulty", False)
+                    ),
+                    difficulty_target=float(
+                        args.get("difficulty_target", 0.45)
+                    ),
                 )
             ]
         if name == "review":
