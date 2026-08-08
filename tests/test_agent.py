@@ -813,6 +813,53 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         via_mcp = server._call_tool("dedupe_memories", {})
         self.assertIsInstance(via_mcp, int)
 
+    def test_resolve_conflicts(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        engine.remember(
+            "强证据方：版本 5。",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["冲突a"],
+            confidence=0.8,
+            evidence_count=5,
+            auto_cues=False,
+        )
+        engine.remember(
+            "弱证据方：版本 1。",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["冲突a"],
+            confidence=0.8,
+            evidence_count=1,
+            auto_cues=False,
+        )
+        engine.remember(
+            "平衡甲：立场 A。",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["冲突b"],
+            confidence=0.8,
+            evidence_count=1,
+            auto_cues=False,
+        )
+        engine.remember(
+            "平衡乙：立场 B。",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["冲突b"],
+            confidence=0.8,
+            evidence_count=1,
+            auto_cues=False,
+        )
+        result = engine.resolve_conflicts()
+        self.assertGreaterEqual(result["accommodated"], 1)
+        self.assertGreaterEqual(result["rem_resolved"], 1)
+        self.assertGreaterEqual(result["remaining"], 1)
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("resolve_conflicts", {})
+        self.assertIn("remaining", via_mcp)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

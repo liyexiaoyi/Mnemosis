@@ -1495,6 +1495,25 @@ class MemoryEngine:
         now = now or utcnow()
         return self.consolidator._merge_duplicates(now)
 
+    def resolve_conflicts(self, now: datetime | None = None) -> dict:
+        """Resolve memory conflicts on demand.
+
+        Runs the same accommodation (lopsided evidence retires the stale
+        trace) and REM-style resolution (balanced conflicts lose
+        confidence) that sleep uses, without waiting for the sleep cycle
+        (Nader et al., 2000 reconsolidation; Walker & Stickgold, 2004).
+        """
+        now = now or utcnow()
+        accommodated = self.consolidator._accommodation_phase(now)
+        rem_links, rem_resolved = self.consolidator._rem_phase(now)
+        remaining = len(self.consolidator.detect_conflicts())
+        return {
+            "accommodated": accommodated,
+            "rem_resolved": rem_resolved,
+            "rem_links": rem_links,
+            "remaining": remaining,
+        }
+
     # -- sleep cycle ----------------------------------------------------------
 
     def sleep(

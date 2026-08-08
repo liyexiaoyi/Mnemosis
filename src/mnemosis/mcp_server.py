@@ -404,6 +404,15 @@ class MCPServer:
                 "inputSchema": {"type": "object", "properties": {}},
             },
             {
+                "name": "resolve_conflicts",
+                "description": (
+                    "Resolve memory conflicts on demand: lopsided-evidence "
+                    "conflicts retire the stale trace, balanced ones lose "
+                    "confidence (accommodation + REM-style resolution)."
+                ),
+                "inputSchema": {"type": "object", "properties": {}},
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -803,6 +812,8 @@ class MCPServer:
             return self.engine.memory_audit()
         if name == "dedupe_memories":
             return self.engine.dedupe_memories()
+        if name == "resolve_conflicts":
+            return self.engine.resolve_conflicts()
         if name == "practice_due":
             kind_value = args.get("kind")
             from .types import MemoryKind
