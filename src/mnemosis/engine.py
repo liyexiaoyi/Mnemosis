@@ -2637,6 +2637,114 @@ class MemoryEngine:
             "advice": advice,
         }
 
+    def memory_integration(
+        self,
+        limit: int = 10,
+        now: datetime | None = None,
+    ) -> dict:
+        """Suggest how related memories can be integrated or composed.
+
+        Compositional inference in the hippocampal-prefrontal circuit
+        (Schwartenbeck et al., 2023; Spens & Burgess, 2024): related
+        traces replayed together form higher-level schemas; nearby
+        episodes form event chains; unresolved contradictions block
+        clean integration.
+        """
+        from collections import defaultdict
+
+        items = self.store.all_active()
+        topic_groups: dict[str, list] = defaultdict(list)
+        for item in items:
+            topic = item.cues[0] if item.cues else item.content[:10]
+            topic_groups[topic].append(item)
+        member_links: set[frozenset[str]] = set()
+        for src, dst, _weight in self.backend.all_links():
+            member_links.add(frozenset({src, dst}))
+
+        schema_candidates: list[dict] = []
+        event_chains: list[dict] = []
+        for topic, members in topic_groups.items():
+            member_ids = {member.id for member in members}
+            linked_pairs = sum(
+                1
+                for pair in member_links
+                if pair <= member_ids and len(pair) == 2
+            )
+            if len(members) >= 2:
+                avg_importance = round(
+                    sum(member.importance for member in members)
+                    / len(members),
+                    3,
+                )
+                schema_candidates.append(
+                    {
+                        "topic": topic,
+                        "count": len(members),
+                        "avg_importance": avg_importance,
+                        "linked_pairs": linked_pairs,
+                        "suggestion": (
+                            "把同主题记忆重放并整合成一条总结记忆"
+                            "（组合推理），减少碎片化"
+                        ),
+                    }
+                )
+            episodes = [
+                member
+                for member in members
+                if member.kind == MemoryKind.EPISODIC
+                and member.source.occurred_at is not None
+            ]
+            episodes.sort(key=lambda member: member.source.occurred_at)  # type: ignore[arg-type]
+            chain = episodes
+            if len(chain) >= 2:
+                span_days = round(
+                    (
+                        chain[-1].source.occurred_at
+                        - chain[0].source.occurred_at
+                    ).total_seconds()
+                    / 86400.0,
+                    1,
+                )
+                if span_days <= 14:
+                    event_chains.append(
+                        {
+                            "topic": topic,
+                            "events": len(chain),
+                            "span_days": span_days,
+                            "suggestion": (
+                                "把这段时间内的事件串成一条事件链，"
+                                "回忆时按顺序重放"
+                            ),
+                        }
+                    )
+        schema_candidates.sort(
+            key=lambda candidate: (
+                -candidate["count"],
+                -candidate["avg_importance"],
+            )
+        )
+        event_chains.sort(key=lambda chain: -chain["events"])
+        conflicts = self.consolidator.detect_conflicts()
+        if conflicts:
+            advice = (
+                "先解决冲突再整合：同主题记忆互相矛盾时，"
+                "先裁定哪条更可信，再合成总结。"
+            )
+        elif schema_candidates:
+            advice = (
+                "整合时机已到：同主题记忆可以重放整合成高层图式，"
+                "近段事件可以串成事件链。"
+            )
+        else:
+            advice = "当前记忆较分散，暂无整合候选；持续记录后会自动出现。"
+        return {
+            "total_memories": len(items),
+            "schema_candidates": schema_candidates[: max(1, int(limit))],
+            "event_chains": event_chains[: max(1, int(limit))],
+            "conflicts": len(conflicts),
+            "advice": advice,
+        }
+
     def retrieval_assist(
         self,
         query: str,

@@ -1379,6 +1379,21 @@ class MCPServer:
                 },
             },
             {
+                "name": "memory_integration",
+                "description": (
+                    "Suggest how related memories can be integrated or "
+                    "composed: same-topic schema candidates, nearby "
+                    "episode chains and unresolved conflicts "
+                    "(compositional inference; Schwartenbeck et al., 2023)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -2032,6 +2047,10 @@ class MCPServer:
             )
         if name == "difficulty_estimator":
             return self.engine.difficulty_estimator(
+                limit=int(args.get("limit", 10)),
+            )
+        if name == "memory_integration":
+            return self.engine.memory_integration(
                 limit=int(args.get("limit", 10)),
             )
         if name == "practice_due":

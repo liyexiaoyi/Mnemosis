@@ -3010,6 +3010,76 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["buckets"]["sweet_spot"], 2)
         self.assertEqual(via_mcp["buckets"]["very_hard"], 1)
 
+    def test_memory_integration(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        for i in range(4):
+            engine.remember(
+                f"physics fact {i}",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["物理"],
+                importance=0.7,
+                auto_cues=False,
+            )
+        now = utcnow()
+        engine.remember(
+            "trip day one",
+            kind=MemoryKind.EPISODIC,
+            source=SourceRecord(
+                origin=SourceType.USER,
+                occurred_at=now - timedelta(days=2),
+            ),
+            cues=["旅行"],
+            auto_cues=False,
+        )
+        engine.remember(
+            "trip day two",
+            kind=MemoryKind.EPISODIC,
+            source=SourceRecord(
+                origin=SourceType.USER,
+                occurred_at=now,
+            ),
+            cues=["旅行"],
+            auto_cues=False,
+        )
+        engine.remember(
+            "meeting on monday",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["日期"],
+            confidence=0.9,
+            auto_cues=False,
+        )
+        engine.remember(
+            "meeting on tuesday",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["日期"],
+            confidence=0.9,
+            auto_cues=False,
+        )
+        report = engine.memory_integration()
+        physics = next(
+            candidate for candidate in report["schema_candidates"]
+            if candidate["topic"] == "物理"
+        )
+        self.assertEqual(physics["count"], 4)
+        trip = next(
+            chain for chain in report["event_chains"]
+            if chain["topic"] == "旅行"
+        )
+        self.assertEqual(trip["events"], 2)
+        self.assertEqual(trip["span_days"], 2.0)
+        self.assertGreaterEqual(report["conflicts"], 1)
+        self.assertIn("冲突", report["advice"])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("memory_integration", {})
+        self.assertGreaterEqual(len(via_mcp["schema_candidates"]), 1)
+        self.assertGreaterEqual(via_mcp["conflicts"], 1)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(
