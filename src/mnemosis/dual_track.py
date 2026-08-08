@@ -397,6 +397,17 @@ class DualTrackStore:
             RecallResult(item=item, score=score, reasons=reasons)
             for score, _, item, reasons, _ in scored[:top_k]
         ]
+        if results:
+            # Metacognitive flag (Koriat & Goldsmith, 1996): tell the agent
+            # when the top answer is shaky - low absolute score or a tiny
+            # gap to the runner-up means it should hedge ("我不太确定").
+            top_score = results[0].score
+            second_score = results[1].score if len(results) > 1 else -1.0
+            results[0].confident = bool(
+                top_score >= 0.45 and top_score - second_score >= 0.03
+            )
+            if not results[0].confident:
+                results[0].reasons.append("低置信(与次选差距小)")
         if reinforce:
             for score, overlap, item, _, matched in scored[:top_k]:
                 if not matched:

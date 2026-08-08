@@ -97,6 +97,51 @@ class CognitionTest(unittest.TestCase):
         )
         self.assertEqual(explicit.context, "办公室")
 
+    def test_recall_confidence_flag(self):
+        def _clear():
+            engine = MemoryEngine()
+            engine.remember(
+                "alpha two",
+                kind=MemoryKind.SEMANTIC,
+                source=SourceRecord(origin=SourceType.USER),
+                cues=["alpha"],
+                importance=0.9,
+                strength=0.5,
+                auto_cues=False,
+            )
+            engine.remember(
+                "alpha one",
+                kind=MemoryKind.SEMANTIC,
+                source=SourceRecord(origin=SourceType.USER),
+                cues=["alpha"],
+                importance=0.5,
+                strength=0.5,
+                auto_cues=False,
+            )
+            return engine
+
+        def _ambiguous():
+            engine = MemoryEngine()
+            for content in ("alpha one", "alpha two"):
+                engine.remember(
+                    content,
+                    kind=MemoryKind.SEMANTIC,
+                    source=SourceRecord(origin=SourceType.USER),
+                    cues=["alpha"],
+                    importance=0.5,
+                    strength=0.5,
+                    auto_cues=False,
+                )
+            return engine
+
+        clear = _clear().recall("alpha", top_k=3)[0]
+        self.assertTrue(clear.confident)
+        ambiguous = _ambiguous().recall("alpha", top_k=3)[0]
+        self.assertFalse(ambiguous.confident)
+        self.assertTrue(
+            any("低置信" in r for r in ambiguous.reasons)
+        )
+
     def test_elaborate_co_retrieval_links(self):
         def _build():
             engine = MemoryEngine()

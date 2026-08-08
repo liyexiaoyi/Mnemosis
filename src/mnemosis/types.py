@@ -224,6 +224,7 @@ class RecallResult:
     item: MemoryItem
     score: float
     reasons: list[str] = field(default_factory=list)
+    confident: bool = True
 
 
 def normalize_cues(cues: list[str]) -> list[str]:
