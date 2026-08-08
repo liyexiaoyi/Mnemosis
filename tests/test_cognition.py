@@ -408,6 +408,46 @@ class CognitionTest(unittest.TestCase):
         )
         self.assertIsNotNone(fresh)
 
+    def test_decay_flag(self):
+        user = SourceRecord(origin=SourceType.USER)
+        now = utcnow()
+        weak = self.engine.remember(
+            "weak fading fact",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["weak"],
+            importance=0.5,
+            strength=0.3,
+            created_at=now - timedelta(days=40),
+            auto_cues=False,
+        )
+        strong = self.engine.remember(
+            "strong fresh fact",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["strong"],
+            importance=0.5,
+            strength=0.9,
+            created_at=now - timedelta(days=1),
+            auto_cues=False,
+        )
+        res = self.engine.recall("weak", top_k=3)
+        self.assertTrue(
+            any("快遗忘" in r for r in res[0].reasons)
+        )
+        res2 = self.engine.recall("strong", top_k=3)
+        self.assertFalse(
+            any("快遗忘" in r for r in res2[0].reasons)
+        )
+        res3 = self.engine.recall(
+            "weak", top_k=3, decay_flag=False
+        )
+        self.assertFalse(
+            any("快遗忘" in r for r in res3[0].reasons)
+        )
+        self.assertIsNotNone(weak)
+        self.assertIsNotNone(strong)
+
     def test_weak_important_replay(self):
         now = utcnow()
         important = self.remember(

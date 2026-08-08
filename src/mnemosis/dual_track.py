@@ -137,6 +137,7 @@ class DualTrackStore:
         corroboration_boost: bool = True,
         corroboration_weight: float = 0.03,
         revision_flag: bool = True,
+        decay_flag: bool = True,
         suppression_factor: float = 0.01,
         suppression_min_cues: int = 2,
         suppression_floor: float = 0.7,
@@ -536,6 +537,18 @@ class DualTrackStore:
                     result.reasons.append(
                         f"已修订(版本{result.item.revision_count})"
                     )
+        if decay_flag:
+            for result in results:
+                if (
+                    self.curve.retrievability(result.item, now) < 0.3
+                    and not any(
+                        "快遗忘" in reason for reason in result.reasons
+                    )
+                ):
+                    # Decay warning (Ebbinghaus forgetting curve): the
+                    # trace is close to the forgetting threshold; the agent
+                    # should review it soon or answer with caution.
+                    result.reasons.append("低可提取(快遗忘)")
         if reinforce:
             for score, overlap, item, _, matched in scored[:top_k]:
                 if not matched:
