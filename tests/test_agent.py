@@ -3623,6 +3623,65 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertTrue(via_mcp["found"])
         self.assertGreaterEqual(len(via_mcp["conflicts"]), 1)
 
+    def test_mastery_map(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        for i in range(2):
+            item = engine.remember(
+                f"数学题 {i}",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["数学"],
+                confidence=0.9,
+                strength=0.9,
+                auto_cues=False,
+            )
+            item.retrieval_successes = 9
+            item.retrieval_failures = 1
+            engine.backend.update(item)
+        for i in range(2):
+            item = engine.remember(
+                f"物理题 {i}",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["物理"],
+                confidence=0.5,
+                strength=0.5,
+                auto_cues=False,
+            )
+            item.retrieval_successes = 5
+            item.retrieval_failures = 5
+            engine.backend.update(item)
+        engine.remember(
+            "新音乐知识",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["音乐"],
+            confidence=0.3,
+            strength=0.4,
+            auto_cues=False,
+        )
+        report = engine.mastery_map()
+        self.assertEqual(len(report["topics"]), 3)
+        math = next(
+            topic for topic in report["topics"] if topic["topic"] == "数学"
+        )
+        self.assertEqual(math["flag"], "mastered")
+        physics = next(
+            topic for topic in report["topics"] if topic["topic"] == "物理"
+        )
+        self.assertEqual(physics["flag"], "developing")
+        music = next(
+            topic for topic in report["topics"] if topic["topic"] == "音乐"
+        )
+        self.assertEqual(music["flag"], "new")
+        self.assertEqual(report["next_steps"][0]["topic"], "物理")
+        self.assertTrue(report["advice"])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("mastery_map", {})
+        self.assertEqual(via_mcp["next_steps"][0]["topic"], "物理")
+        self.assertIn("developing", {t["flag"] for t in via_mcp["topics"]})
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

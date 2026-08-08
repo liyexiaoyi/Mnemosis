@@ -1590,6 +1590,22 @@ class MCPServer:
                 },
             },
             {
+                "name": "mastery_map",
+                "description": (
+                    "Estimate per-topic mastery (accuracy + "
+                    "retrievability + coverage) and recommend the next "
+                    "topic in the developing band (zone of proximal "
+                    "development; Vygotsky, 1978)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "threshold": {"type": "number"},
+                        "min_attempts": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -2310,6 +2326,11 @@ class MCPServer:
         if name == "reconsolidation_plan":
             return self.engine.reconsolidation_plan(
                 memory_id=str(args.get("memory_id", "")),
+            )
+        if name == "mastery_map":
+            return self.engine.mastery_map(
+                threshold=float(args.get("threshold", 0.5)),
+                min_attempts=int(args.get("min_attempts", 3)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")
