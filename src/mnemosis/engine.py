@@ -493,6 +493,47 @@ class MemoryEngine:
             ],
         }
 
+    def schema_report(self, limit: int = 20) -> dict:
+        """Group memories into topic schemas by their primary cue.
+
+        Schema theory (Bartlett, 1932; event schemas, Gilboa & Marlatte,
+        2017): the mind organizes related experiences under shared
+        scripts/topics. This report clusters active memories by their
+        primary cue and shows each cluster's size, average importance,
+        kind mix and content samples, so agents can see what topics their
+        memory store actually covers.
+        """
+        groups: dict[str, dict] = {}
+        for item in self.store.all_active():
+            topic = item.cues[0] if item.cues else "（无标签）"
+            group = groups.setdefault(
+                topic,
+                {
+                    "topic": topic,
+                    "memory_count": 0,
+                    "avg_importance": 0.0,
+                    "kinds": {"semantic": 0, "episodic": 0},
+                    "samples": [],
+                },
+            )
+            group["memory_count"] += 1
+            group["avg_importance"] += item.importance
+            group["kinds"][item.kind.value] += 1
+            if len(group["samples"]) < 3:
+                group["samples"].append(item.content[:24])
+        out = []
+        for group in groups.values():
+            group["avg_importance"] = round(
+                group["avg_importance"] / group["memory_count"], 3
+            )
+            out.append(group)
+        out.sort(key=lambda g: (-g["memory_count"], g["topic"]))
+        return {
+            "total_memories": len(self.store.all_active()),
+            "group_count": len(out),
+            "top_groups": out[: max(1, int(limit))],
+        }
+
     def recall_reasoning(
         self,
         query: str,

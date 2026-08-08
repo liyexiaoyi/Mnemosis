@@ -1188,6 +1188,47 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
             "颜色偏好", [s["cue"] for s in via_mcp["suggestions"]]
         )
 
+    def test_schema_report(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        for i in range(3):
+            engine.remember(
+                f"work item {i}",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["工作"],
+                importance=0.8,
+                auto_cues=False,
+            )
+        engine.remember(
+            "life fact", kind=MemoryKind.SEMANTIC, source=user,
+            cues=["生活"], auto_cues=False,
+        )
+        engine.remember(
+            "life event", kind=MemoryKind.EPISODIC, source=user,
+            cues=["生活"], auto_cues=False,
+        )
+        engine.remember(
+            "zzz none", kind=MemoryKind.SEMANTIC, source=user,
+            auto_cues=False,
+        )
+        report = engine.schema_report(limit=10)
+        self.assertEqual(report["total_memories"], 6)
+        self.assertEqual(report["group_count"], 3)
+        top = report["top_groups"]
+        self.assertEqual(top[0]["topic"], "工作")
+        self.assertEqual(top[0]["memory_count"], 3)
+        life = next(g for g in top if g["topic"] == "生活")
+        self.assertEqual(life["memory_count"], 2)
+        self.assertEqual(life["kinds"], {"semantic": 1, "episodic": 1})
+        untagged = next(g for g in top if g["topic"] == "（无标签）")
+        self.assertEqual(untagged["memory_count"], 1)
+        self.assertTrue(all(g["samples"] for g in top))
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("schema_report", {"limit": 5})
+        self.assertEqual(via_mcp["group_count"], 3)
+        self.assertEqual(via_mcp["top_groups"][0]["topic"], "工作")
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

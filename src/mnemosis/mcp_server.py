@@ -603,6 +603,20 @@ class MCPServer:
                 },
             },
             {
+                "name": "schema_report",
+                "description": (
+                    "Group memories into topic schemas by their primary "
+                    "cue: cluster size, average importance, kind mix and "
+                    "samples (schema theory, Bartlett 1932)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1060,6 +1074,10 @@ class MCPServer:
             return self.engine.retrieval_assist(
                 args["query"],
                 limit=int(args.get("limit", 8)),
+            )
+        if name == "schema_report":
+            return self.engine.schema_report(
+                limit=int(args.get("limit", 20)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")
