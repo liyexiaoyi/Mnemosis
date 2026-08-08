@@ -634,6 +634,60 @@ class MemoryEngine:
             "end_date": out[-1]["date"] if out else None,
         }
 
+    def recognition_check(
+        self,
+        query: str,
+        memory_id: str,
+    ) -> dict:
+        """Classify a memory hit as recollection vs familiarity.
+
+        Dual-process theory (Yonelinas, 2002): recognition can rest on
+        recollection (specific evidence recovered) or familiarity (a
+        vague "I know it" without detail). This tool checks one candidate
+        memory against a query and reports which process supports it.
+        """
+        from .types import tokenize
+
+        item = self.backend.get(memory_id)
+        if item is None:
+            return {"memory_id": memory_id, "verdict": "missing"}
+        results = self.recall(query, top_k=10)
+        entry = next(
+            (r for r in results if r.item.id == memory_id), None
+        )
+        q_terms = set(tokenize(query))
+        item_terms = set(tokenize(item.content)) | set(item.cues)
+        common = len(q_terms & item_terms)
+        overlap = (
+            common / max(1, min(len(q_terms), len(item_terms)))
+            if q_terms and item_terms
+            else 0.0
+        )
+        if entry is None:
+            verdict = "unmatched"
+            score = 0.0
+            reasons = []
+        else:
+            score = entry.score
+            reasons = entry.reasons
+            evidence = any(
+                "overlap" in r or "semantic" in r for r in reasons
+            )
+            if overlap >= 0.6:
+                verdict = "recollection"
+            elif overlap > 0 and evidence:
+                verdict = "familiarity"
+            else:
+                verdict = "unmatched"
+        return {
+            "memory_id": memory_id,
+            "verdict": verdict,
+            "score": round(score, 3),
+            "overlap": round(overlap, 3),
+            "confidence": item.confidence,
+            "reasons": reasons[:5],
+        }
+
     def recall_reasoning(
         self,
         query: str,

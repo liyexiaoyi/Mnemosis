@@ -1323,6 +1323,40 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         via_mcp = server._call_tool("timeline_report", {"limit": 50})
         self.assertEqual(via_mcp["total"], 6)
 
+    def test_recognition_check(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        m1 = engine.remember(
+            "alpha unique zebra", kind=MemoryKind.SEMANTIC, source=user,
+            cues=["alpha-key"], auto_cues=False,
+        )
+        engine.remember(
+            "beta term", kind=MemoryKind.SEMANTIC, source=user,
+            cues=["beta-key"], auto_cues=False,
+        )
+        m3 = engine.remember(
+            "gamma unrelated", kind=MemoryKind.SEMANTIC, source=user,
+            cues=["gamma-key"], auto_cues=False,
+        )
+        rec = engine.recognition_check("alpha-key", m1.id)
+        self.assertEqual(rec["verdict"], "recollection")
+        self.assertGreaterEqual(rec["overlap"], 0.6)
+        fam = engine.recognition_check("alpha extra", m1.id)
+        self.assertEqual(fam["verdict"], "familiarity")
+        self.assertLess(fam["overlap"], 0.6)
+        miss = engine.recognition_check("alpha-key", m3.id)
+        self.assertEqual(miss["verdict"], "unmatched")
+        self.assertEqual(miss["overlap"], 0.0)
+        missing = engine.recognition_check("alpha-key", "nope")
+        self.assertEqual(missing["verdict"], "missing")
+        self.assertIn("score", rec)
+        self.assertIn("confidence", rec)
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "recognition_check", {"query": "alpha-key", "memory_id": m1.id}
+        )
+        self.assertEqual(via_mcp["verdict"], "recollection")
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

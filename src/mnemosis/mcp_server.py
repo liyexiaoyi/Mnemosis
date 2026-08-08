@@ -672,6 +672,23 @@ class MCPServer:
                 },
             },
             {
+                "name": "recognition_check",
+                "description": (
+                    "Classify one candidate memory against a query as "
+                    "recollection (specific evidence), familiarity (vague "
+                    "match) or unmatched (dual-process theory, Yonelinas "
+                    "2002)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"},
+                        "memory_id": {"type": "string"},
+                    },
+                    "required": ["query", "memory_id"],
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1155,6 +1172,10 @@ class MCPServer:
                     else None
                 ),
                 limit=int(args.get("limit", 200)),
+            )
+        if name == "recognition_check":
+            return self.engine.recognition_check(
+                args["query"], args["memory_id"]
             )
         if name == "practice_due":
             kind_value = args.get("kind")
