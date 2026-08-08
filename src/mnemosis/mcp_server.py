@@ -1787,6 +1787,24 @@ class MCPServer:
                 },
             },
             {
+                "name": "physics_simulate",
+                "description": (
+                    "Run a mental physics simulation: detect scene type, "
+                    "extract quantities, recall the applicable law from "
+                    "memory (or built-in rules) and play the scene "
+                    "forward in ordered phases (intuitive physics engine; "
+                    "Battaglia et al., 2013; Fischer et al., 2016)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "scene": {"type": "string"},
+                        "top_k": {"type": "integer"},
+                    },
+                    "required": ["scene"],
+                },
+            },
+            {
                 "name": "retrieval_snapshot",
                 "description": (
                     "Capture a compact memory-state snapshot (knowledge "
@@ -2586,6 +2604,11 @@ class MCPServer:
         if name == "math_ladder":
             return self.engine.math_ladder(
                 problem=str(args.get("problem", "")),
+                top_k=int(args.get("top_k", 4)),
+            )
+        if name == "physics_simulate":
+            return self.engine.physics_simulate(
+                scene=str(args.get("scene", "")),
                 top_k=int(args.get("top_k", 4)),
             )
         if name == "retrieval_snapshot":

@@ -4275,6 +4275,48 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["verdict"], "ready")
         self.assertIsNotNone(via_mcp["general"])
 
+    def test_physics_simulate(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        engine.remember(
+            "自由落体定律：下落时间≈√(2h/g)，g≈9.8米/秒²",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["物理", "定律"],
+            importance=0.9,
+            auto_cues=False,
+        )
+        report = engine.physics_simulate(
+            "一个球从10米高的地方落下，多久落地？"
+        )
+        self.assertIn("自由落体", report["types"])
+        self.assertEqual(len(report["quantities"]), 1)
+        self.assertIsNotNone(report["law_used"])
+        self.assertEqual(report["law_used"]["source"], "memory")
+        self.assertIn("自由落体", report["law_used"]["rule"])
+        self.assertEqual(len(report["phases"]), 4)
+        self.assertIn("秒", report["simulation"])
+        self.assertEqual(report["verdict"], "ready")
+        self.assertIn("记忆", report["advice"])
+        # without a stored law: built-in fallback still simulates
+        plain = MemoryEngine().physics_simulate(
+            "一个球从20米高的地方落下，多久落地？"
+        )
+        self.assertEqual(plain["law_used"]["source"], "builtin")
+        self.assertIn("秒", plain["simulation"])
+        self.assertEqual(plain["verdict"], "ready")
+        # unrecognized scene: review needed, no crash
+        weak = MemoryEngine().physics_simulate("今天天气怎么样？")
+        self.assertEqual(weak["verdict"], "review_needed")
+        self.assertIsNone(weak["law_used"])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "physics_simulate",
+            {"scene": "一个球从10米高的地方落下，多久落地？"},
+        )
+        self.assertEqual(via_mcp["verdict"], "ready")
+        self.assertEqual(via_mcp["law_used"]["source"], "memory")
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

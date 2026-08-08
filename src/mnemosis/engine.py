@@ -5679,6 +5679,193 @@ class MemoryEngine:
             "advice": advice,
         }
 
+    _PHYSICS_TYPES = (
+        ("落下", "自由落体"),
+        ("掉落", "自由落体"),
+        ("扔", "抛体"),
+        ("推", "推力"),
+        ("撞", "碰撞"),
+        ("滑", "滑动摩擦"),
+        ("滚", "滚动"),
+        ("浮", "浮力"),
+        ("沉", "浮力"),
+        ("杠杆", "杠杆"),
+        ("重力", "重力"),
+        ("摩擦", "摩擦力"),
+        ("能量", "能量守恒"),
+        ("动量", "动量守恒"),
+        ("加速度", "加速度"),
+        ("匀速", "匀速运动"),
+        ("每小时", "速度"),
+    )
+    _PHYSICS_RULES = {
+        "自由落体": "下落时间 ≈ √(2h/g)，g≈9.8米/秒²",
+        "抛体": "水平方向匀速，竖直方向自由落体",
+        "推力": "加速度 a = F/m（牛顿第二定律）",
+        "碰撞": "碰撞前后总动量守恒",
+        "滑动摩擦": "摩擦力 = 压力 × 摩擦系数",
+        "滚动": "滚动摩擦力一般小于滑动摩擦力",
+        "浮力": "浮力 = 排开液体的重量（阿基米德原理）",
+        "杠杆": "动力 × 动力臂 = 阻力 × 阻力臂",
+        "重力": "重力 = 质量 × 9.8",
+        "摩擦力": "摩擦力 = 压力 × 摩擦系数",
+        "能量守恒": "总能量守恒：动能 + 势能 + 内能不变",
+        "动量守恒": "碰撞前后总动量不变",
+        "加速度": "加速度 = 速度变化 ÷ 时间",
+        "匀速运动": "路程 = 速度 × 时间",
+        "速度": "速度 = 路程 ÷ 时间",
+    }
+
+    def physics_simulate(
+        self,
+        scene: str,
+        *,
+        top_k: int = 4,
+    ) -> dict:
+        """Run a mental physics simulation from stored laws.
+
+        Human intuitive physics works like an internal physics engine
+        (Battaglia, Hamrick & Tenenbaum, 2013) supported by dedicated
+        brain networks (Fischer et al., 2016). This read-only tool
+        detects the scene type, extracts quantities, recalls the
+        applicable law from memory (falling back to common built-in
+        rules), then plays the scene forward in ordered phases.
+        """
+        import math
+        import re
+
+        detected = [
+            label
+            for keyword, label in self._PHYSICS_TYPES
+            if keyword in scene
+        ]
+        numbers = [
+            {
+                "value": float(raw),
+                "raw": raw,
+            }
+            for raw in re.findall(r"\d+(?:\.\d+)?", scene)
+        ]
+        law_memories = []
+        for item in self.backend.list(kind=MemoryKind.SEMANTIC):
+            text = item.content
+            cue_text = " ".join(item.cues)
+            if "物理" not in cue_text and "定律" not in text:
+                continue
+            if "=" not in text and "≈" not in text:
+                continue
+            law_memories.append(
+                {
+                    "id": item.id,
+                    "rule": text[:80],
+                    "cues": item.cues[:3],
+                }
+            )
+        matched_law = None
+        if detected:
+            head = detected[0]
+            for law in law_memories:
+                if head in law["rule"] or head in " ".join(law["cues"]):
+                    matched_law = law
+                    break
+        if matched_law:
+            law_used = {
+                "rule": matched_law["rule"],
+                "source": "memory",
+                "memory_id": matched_law["id"],
+            }
+        elif detected:
+            law_used = {
+                "rule": self._PHYSICS_RULES[detected[0]],
+                "source": "builtin",
+                "memory_id": None,
+            }
+        else:
+            law_used = None
+
+        simulation = None
+        if detected and numbers:
+            head = detected[0]
+            if head == "自由落体":
+                height = next(
+                    (n["value"] for n in numbers if n["value"] > 0),
+                    None,
+                )
+                if height is not None:
+                    fall_time = math.sqrt(2 * height / 9.8)
+                    simulation = (
+                        f"脑内推演：{height:g} 米高处落下，"
+                        f"落地时间约 {fall_time:.2f} 秒。"
+                    )
+            elif head in ("匀速运动", "速度") and len(numbers) >= 2:
+                speed, hours = numbers[0]["value"], numbers[1]["value"]
+                if speed and hours:
+                    simulation = (
+                        f"脑内推演：{speed:g} × {hours:g} = "
+                        f"{speed * hours:g}（路程=速度×时间）。"
+                    )
+        if simulation is None and detected:
+            simulation = (
+                f"脑内推演：按“{law_used['rule']}”"
+                "把题面条件逐一代入核对。"
+            )
+
+        phases = [
+            {
+                "order": 1,
+                "phase": "初始状态",
+                "description": (
+                    f"场景类型：{'、'.join(detected) if detected else '未识别'}；"
+                    f"提取到的数量：{'、'.join(n['raw'] for n in numbers) or '无'}。"
+                ),
+            },
+            {
+                "order": 2,
+                "phase": "适用规律",
+                "description": (
+                    f"使用规律（来源：{law_used['source'] if law_used else '无'}）："
+                    f"{law_used['rule'] if law_used else '记忆与内置规律都没有命中'}。"
+                ),
+            },
+            {
+                "order": 3,
+                "phase": "脑内推演",
+                "description": simulation or "条件不足，无法推演。",
+            },
+            {
+                "order": 4,
+                "phase": "结果判断",
+                "description": (
+                    "推演完成，可以按这个预期去验证；若结果不符，"
+                    "回来补充物理规律记忆。"
+                ),
+            },
+        ]
+        verdict = "ready" if numbers and law_used else "review_needed"
+        if law_used and law_used["source"] == "memory":
+            advice = (
+                f"记忆里找到规律“{law_used['rule']}”，"
+                f"脑内推演完成：{simulation or '条件不足'}。"
+            )
+        elif law_used:
+            advice = (
+                f"记忆里没有这个物理规律，先用通用规律"
+                f"“{law_used['rule']}”推演；"
+                "建议把推演过程和结果存进记忆。"
+            )
+        else:
+            advice = "场景信息或物理规律不足，先补充条件再模拟。"
+        return {
+            "scene": scene,
+            "types": detected,
+            "quantities": numbers,
+            "law_used": law_used,
+            "phases": phases,
+            "simulation": simulation,
+            "verdict": verdict,
+            "advice": advice,
+        }
+
     def sleep_replay(self, now: datetime | None = None) -> dict:
         """Sleep replay: strengthen surprising events, consolidate experience.
 
