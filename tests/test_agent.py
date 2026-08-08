@@ -574,6 +574,51 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(len(cats), 4)
         self.assertTrue(all(a != b for a, b in zip(cats, cats[1:])))
 
+    def test_practice_kind_preference(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        now = utcnow()
+        for i in range(2):
+            engine.remember(
+                f"事实记忆{i}：某条稳定事实{i}。",
+                kind=MemoryKind.SEMANTIC,
+                source=SourceRecord(origin=SourceType.USER),
+                cues=[f"事实{i}"],
+                importance=0.8,
+                strength=0.4,
+                created_at=now - timedelta(days=20),
+            )
+            engine.remember(
+                f"事件记忆{i}：某次发生的事{i}。",
+                kind=MemoryKind.EPISODIC,
+                source=SourceRecord(origin=SourceType.USER),
+                cues=[f"事件{i}"],
+                importance=0.8,
+                strength=0.4,
+                created_at=now - timedelta(days=20),
+            )
+        cards = engine.practice_due(
+            limit=4,
+            min_gap_hours=0,
+            adaptive_gap=False,
+            kind=MemoryKind.SEMANTIC,
+        )
+        self.assertEqual(len(cards), 4)
+        self.assertTrue(cards[0]["cue"].startswith("事实"))
+        self.assertTrue(cards[1]["cue"].startswith("事实"))
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "practice_due",
+            {
+                "limit": 4,
+                "min_gap_hours": 0,
+                "adaptive_gap": False,
+                "kind": "semantic",
+            },
+        )
+        self.assertTrue(via_mcp[0]["cue"].startswith("事实"))
+
     def test_practice_suppress_competitors(self) -> None:
         from datetime import timedelta
 

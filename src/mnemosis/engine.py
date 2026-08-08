@@ -798,6 +798,7 @@ class MemoryEngine:
         limit: int = 5,
         now: datetime | None = None,
         *,
+        kind: MemoryKind | None = None,
         desirable_difficulty: bool = True,
         min_gap_hours: float = 24.0,
         adaptive_gap: bool = True,
@@ -812,7 +813,10 @@ class MemoryEngine:
         item. Interleaving (Rohrer & Taylor, 2007): cards from different
         categories are mixed so consecutive cards rarely repeat a category.
         The agent sees only the cues (no content) and must recall the answer
-        before it is revealed.
+        before it is revealed. Transfer-appropriate processing (Morris,
+        Bransford & Franks, 1977): practice in the same kind/format as the
+        upcoming test transfers best, so ``kind`` puts that kind of memory
+        first in the session.
         """
         items = self.review_due(
             limit=max(limit * 2, 12),
@@ -833,8 +837,15 @@ class MemoryEngine:
                         gap *= 1.3
                 if self.curve.hours_since_last_access(item, now) >= gap:
                     kept.append(item)
+            if kind is not None:
+                kept.sort(key=lambda item: item.kind is not kind)
             items = kept[:limit]
         else:
+            if kind is not None:
+                items = sorted(
+                    items,
+                    key=lambda item: item.kind is not kind,
+                )
             items = items[:limit]
         if interleave and len(items) > 1:
             items = self._interleave(items)
