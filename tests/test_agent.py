@@ -3080,6 +3080,55 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertGreaterEqual(len(via_mcp["schema_candidates"]), 1)
         self.assertGreaterEqual(via_mcp["conflicts"], 1)
 
+    def test_reasoning_trace(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        engine.remember(
+            "汽车速度 60 千米每小时",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["速度"],
+            auto_cues=False,
+        )
+        engine.remember(
+            "汽车行驶 3 小时",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["时间"],
+            auto_cues=False,
+        )
+        report = engine.reasoning_trace(
+            "汽车3小时行驶多少千米", topic="物理"
+        )
+        self.assertGreaterEqual(len(report["evidence_used"]), 1)
+        self.assertTrue(
+            any(number["value"] == 3.0 for number in report["numbers"])
+        )
+        self.assertTrue(
+            any(
+                number["value"] == 60.0
+                for number in report["numbers"]
+            )
+            or any(
+                "60" in item["preview"]
+                for item in report["evidence_used"]
+            )
+        )
+        self.assertEqual(len(report["steps"]), 4)
+        self.assertTrue(report["stored_memory_id"])
+        self.assertIsNotNone(
+            engine.backend.get(report["stored_memory_id"])
+        )
+        stored = engine.backend.get(report["stored_memory_id"])
+        self.assertEqual(stored.source.origin, SourceType.INFERENCE)
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "reasoning_trace",
+            {"problem": "汽车3小时行驶多少千米", "topic": "物理"},
+        )
+        self.assertTrue(via_mcp["stored_memory_id"])
+        self.assertEqual(len(via_mcp["steps"]), 4)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

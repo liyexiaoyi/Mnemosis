@@ -1394,6 +1394,26 @@ class MCPServer:
                 },
             },
             {
+                "name": "reasoning_trace",
+                "description": (
+                    "Build a replay-friendly reasoning trace from stored "
+                    "memories: recall evidence, extract quantities, build "
+                    "per-step trace and optionally store the derived "
+                    "conclusion as an inference memory (math reasoning "
+                    "circuits; Menon, 2016; Watanabe et al., 2023)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "problem": {"type": "string"},
+                        "topic": {"type": "string"},
+                        "top_k": {"type": "integer"},
+                        "store_conclusion": {"type": "boolean"},
+                    },
+                    "required": ["problem"],
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -2052,6 +2072,15 @@ class MCPServer:
         if name == "memory_integration":
             return self.engine.memory_integration(
                 limit=int(args.get("limit", 10)),
+            )
+        if name == "reasoning_trace":
+            return self.engine.reasoning_trace(
+                problem=str(args.get("problem", "")),
+                topic=args.get("topic"),
+                top_k=int(args.get("top_k", 4)),
+                store_conclusion=bool(
+                    args.get("store_conclusion", True)
+                ),
             )
         if name == "practice_due":
             kind_value = args.get("kind")

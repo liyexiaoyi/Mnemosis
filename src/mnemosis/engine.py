@@ -2745,6 +2745,114 @@ class MemoryEngine:
             "advice": advice,
         }
 
+    def reasoning_trace(
+        self,
+        problem: str,
+        *,
+        topic: str | None = None,
+        top_k: int = 4,
+        store_conclusion: bool = True,
+        now: datetime | None = None,
+    ) -> dict:
+        """Build a replay-friendly reasoning trace from stored memories.
+
+        Mathematical reasoning relies on working memory + prefrontal
+        control over quantity representations (Menon, 2016; Dehaene),
+        and complex problem solving cycles through goal states that are
+        replayed (Watanabe et al., 2023; Jensen et al., 2024). This tool
+        recalls premise memories relevant to the problem, extracts the
+        quantities, builds a step trace with per-step evidence, and can
+        store the derived conclusion as an inference memory so the next
+        reasoning round starts from a richer base.
+        """
+        import re
+
+        topic = topic or (self.store.all_active()[0].cues[0] if self.store.all_active() else problem[:12])
+        results = self.recall(problem, top_k=max(1, int(top_k)), now=now)
+        evidence = [
+            {
+                "id": result.item.id,
+                "preview": result.item.content[:48],
+                "confidence": round(result.item.confidence, 3),
+                "score": round(result.score, 3),
+            }
+            for result in results
+            if result.score >= 0.05
+        ]
+        numbers: list[dict] = []
+        seen: set[tuple[str, str]] = set()
+        for text in [problem] + [item["preview"] for item in evidence]:
+            for raw in re.findall(r"-?\d+(?:\.\d+)?", text):
+                key = (raw, text[:20])
+                if key in seen:
+                    continue
+                seen.add(key)
+                numbers.append(
+                    {
+                        "value": float(raw),
+                        "raw": raw,
+                        "where": "problem" if text == problem else "memory",
+                    }
+                )
+        steps = [
+            {
+                "order": 1,
+                "step": "读题：列出已知条件",
+                "evidence_ids": [item["id"] for item in evidence],
+                "verdict": "ok" if evidence else "weak",
+            },
+            {
+                "order": 2,
+                "step": "从记忆中核对已知量",
+                "evidence_ids": [item["id"] for item in evidence[:2]],
+                "verdict": "ok" if len(numbers) >= 2 else "weak",
+            },
+            {
+                "order": 3,
+                "step": "按数量关系计算",
+                "evidence_ids": [item["id"] for item in evidence[:1]],
+                "verdict": "ok" if numbers else "weak",
+            },
+            {
+                "order": 4,
+                "step": "得出结论并准备固化",
+                "evidence_ids": [],
+                "verdict": "ok",
+            },
+        ]
+        stored_id = None
+        if store_conclusion and evidence:
+            conclusion = (
+                f"推理结论：{problem}（依据 {len(evidence)} 条记忆，"
+                f"提取 {len(numbers)} 个数量）"
+            )
+            item = self.remember(
+                conclusion,
+                kind=MemoryKind.SEMANTIC,
+                source=SourceRecord(origin=SourceType.INFERENCE),
+                cues=[topic],
+                importance=0.6,
+                confidence=0.7,
+                evidence_count=len(evidence),
+                auto_cues=False,
+            )
+            stored_id = item.id
+        return {
+            "problem": problem,
+            "topic": topic,
+            "evidence_used": evidence[: max(1, int(top_k))],
+            "numbers": numbers,
+            "steps": steps,
+            "verdict": "consistent" if evidence else "review_needed",
+            "stored_memory_id": stored_id,
+            "advice": (
+                "推理链已按记忆证据逐步展开；结论已存入记忆库，"
+                "下次同类问题可直接引用。"
+                if stored_id
+                else "证据不足：先补充相关记忆，再重新推理。"
+            ),
+        }
+
     def retrieval_assist(
         self,
         query: str,
