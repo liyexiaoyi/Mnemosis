@@ -189,6 +189,16 @@ class DualTrackStore:
             if action_cued and item.kind is MemoryKind.EPISODIC:
                 score += 0.05
                 reasons.append("action-cued episodic preference")
+            if item.evidence_count > 1:
+                # Memory strength grows with confirmations (Anderson 1974):
+                # a small, bounded evidence bonus lets well-confirmed facts
+                # rank above weakly-supported same-pattern rivals even when
+                # the rival appears earlier in the store.
+                evidence_bonus = min(0.08, 0.02 * (item.evidence_count - 1))
+                score += evidence_bonus
+                reasons.append(
+                    f"\u8bc1\u636e\u52a0\u6743(+{evidence_bonus:.2f})"
+                )
             if kind_preference:
                 if semantic_cued and item.kind is MemoryKind.SEMANTIC:
                     score += kind_pref
@@ -400,7 +410,18 @@ class DualTrackStore:
                     # weak rival out of the default context so the LLM does
                     # not see a stale contradiction (belief updating /
                     # reconsolidation; Nader et al. 2000, Smolen et al. 2016).
-                    effective_penalty = penalty * 3
+                    scored[index] = (
+                        max(0.05, score * 0.3),
+                        overlap,
+                        item,
+                        reasons + [
+                            "\u5f31\u8bc1\u636e\u538b\u964d"
+                            "(\u88ab\u66f4\u5f3a\u8bc1\u636e\u53d6\u4ee3)"
+                        ],
+                        matched,
+                    )
+                    changed = True
+                    continue
                 else:
                     effective_penalty = penalty
                 scored[index] = (

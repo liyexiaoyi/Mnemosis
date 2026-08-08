@@ -48,7 +48,10 @@ class EvidenceConflictTests(unittest.TestCase):
         self.assertEqual(results[0].item.content, "阿丽最喜欢的颜色是琥珀色。")
         self.assertTrue(
             any(
-                "\u8bc1\u636e\u52a0\u6743\u4fdd\u62a4" in reason
+                (
+                    "\u8bc1\u636e\u52a0\u6743" in reason
+                    or "\u8bc1\u636e\u52a0\u6743\u4fdd\u62a4" in reason
+                )
                 for reason in results[0].reasons
             )
         )
