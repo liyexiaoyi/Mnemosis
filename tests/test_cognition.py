@@ -85,6 +85,36 @@ class CognitionTest(unittest.TestCase):
             plain_a - plain_b,
         )
 
+    def test_elaborate_co_retrieval_links(self):
+        def _build():
+            engine = MemoryEngine()
+            for cue in ("alpha", "beta", "gamma"):
+                engine.remember(
+                    f"note about {cue}",
+                    kind=MemoryKind.SEMANTIC,
+                    cues=[cue],
+                    importance=0.5,
+                    strength=0.5,
+                    auto_cues=False,
+                )
+            return engine
+
+        linked = _build()
+        linked.recall("alpha beta", top_k=5, elaborate_links=True)
+        res = linked.recall("alpha", top_k=3, elaborate_links=False)
+        ids = [r.item.id for r in res]
+        beta = next(r for r in res if "beta" in r.item.cues)
+        self.assertIn(beta.item.id, ids)
+        self.assertTrue(
+            any("linked to" in reason for reason in beta.reasons)
+        )
+
+        unlinked = _build()
+        unlinked.recall("alpha beta", top_k=5, elaborate_links=False)
+        res2 = unlinked.recall("alpha", top_k=3, elaborate_links=False)
+        beta2 = [r for r in res2 if "beta" in r.item.cues]
+        self.assertEqual(beta2, [])
+
     def test_emotional_memory_decays_slower(self):
         now = utcnow()
         self.engine.curve.decay_rate = 0.01

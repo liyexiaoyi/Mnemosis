@@ -94,6 +94,7 @@ class DualTrackStore:
         reinforce: bool = True,
         context: str | None = None,
         context_boost: bool = True,
+        elaborate_links: bool = True,
         suppression_factor: float = 0.01,
         suppression_min_cues: int = 2,
         suppression_floor: float = 0.7,
@@ -287,6 +288,25 @@ class DualTrackStore:
                 overlap_min=sep_overlap_min,
                 penalty=sep_penalty,
             )
+        matched_ids = [
+            item.id
+            for _, _, item, _, matched in scored[:top_k]
+            if matched
+        ][:5]
+        if elaborate_links and len(matched_ids) >= 2:
+            # Elaborative encoding (Craik & Tulving, 1975): memories that
+            # co-occur in one retrieval act become associated, so recalling
+            # one later primes the other (Collins & Loftus, 1975 spreading
+            # activation). Links are small and saturate to avoid dense graphs.
+            for i in range(len(matched_ids)):
+                for j in range(i + 1, len(matched_ids)):
+                    w = min(
+                        1.0,
+                        self.backend.link_weight(matched_ids[i], matched_ids[j])
+                        + 0.05,
+                    )
+                    self.backend.add_link(matched_ids[i], matched_ids[j], w)
+                    self.backend.add_link(matched_ids[j], matched_ids[i], w)
         results = [
             RecallResult(item=item, score=score, reasons=reasons)
             for score, _, item, reasons, _ in scored[:top_k]
