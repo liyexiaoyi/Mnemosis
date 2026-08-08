@@ -277,6 +277,7 @@ class MCPServer:
                         "min_gap_hours": {"type": "number"},
                         "adaptive_gap": {"type": "boolean"},
                         "interleave": {"type": "boolean"},
+                        "vary_cues": {"type": "boolean"},
                         "kind": {"type": "string",
                                  "enum": ["semantic", "episodic"]},
                     },
@@ -595,6 +596,7 @@ class MCPServer:
                 min_gap_hours=float(args.get("min_gap_hours", 24.0)),
                 adaptive_gap=bool(args.get("adaptive_gap", True)),
                 interleave=bool(args.get("interleave", True)),
+                vary_cues=bool(args.get("vary_cues", True)),
                 kind=(
                     MemoryKind(kind_value)
                     if kind_value in ("semantic", "episodic")

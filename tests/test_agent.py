@@ -619,6 +619,54 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         )
         self.assertTrue(via_mcp[0]["cue"].startswith("事实"))
 
+    def test_practice_vary_cues(self) -> None:
+        from datetime import timedelta
+
+        def _build() -> tuple[MemoryEngine, object]:
+            engine = MemoryEngine()
+            now = utcnow()
+            item = engine.remember(
+                "阿丽最喜欢的颜色是琥珀色。",
+                kind=MemoryKind.SEMANTIC,
+                source=SourceRecord(origin=SourceType.USER),
+                cues=["阿丽", "颜色", "琥珀"],
+                importance=0.8,
+                strength=0.4,
+                created_at=now - timedelta(days=20),
+            )
+            item.retrieval_successes = 2
+            engine.backend.update(item)
+            return engine, item
+
+        engine_v, _ = _build()
+        varied = engine_v.practice_due(
+            limit=5, min_gap_hours=0, adaptive_gap=False, vary_cues=True
+        )
+        self.assertEqual(varied[0]["cue"], "琥珀 / 喜欢")
+        engine_f, _ = _build()
+        fixed = engine_f.practice_due(
+            limit=5, min_gap_hours=0, adaptive_gap=False, vary_cues=False
+        )
+        self.assertEqual(fixed[0]["cue"], "阿丽 / 颜色")
+        engine_1, item_1 = _build()
+        item_1.retrieval_successes = 1
+        engine_1.backend.update(item_1)
+        varied1 = engine_1.practice_due(
+            limit=5, min_gap_hours=0, adaptive_gap=False, vary_cues=True
+        )
+        self.assertEqual(varied1[0]["cue"], "颜色 / 琥珀")
+        server = MCPServer(engine=engine_f)
+        via_mcp = server._call_tool(
+            "practice_due",
+            {
+                "limit": 5,
+                "min_gap_hours": 0,
+                "adaptive_gap": False,
+                "vary_cues": False,
+            },
+        )
+        self.assertIn(" / ", via_mcp[0]["cue"])
+
     def test_practice_suppress_competitors(self) -> None:
         from datetime import timedelta
 

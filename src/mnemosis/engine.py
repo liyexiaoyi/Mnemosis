@@ -836,6 +836,7 @@ class MemoryEngine:
         min_gap_hours: float = 24.0,
         adaptive_gap: bool = True,
         interleave: bool = True,
+        vary_cues: bool = True,
     ) -> list[dict]:
         """Active retrieval practice: due memories shown as cues only.
 
@@ -849,7 +850,10 @@ class MemoryEngine:
         before it is revealed. Transfer-appropriate processing (Morris,
         Bransford & Franks, 1977): practice in the same kind/format as the
         upcoming test transfers best, so ``kind`` puts that kind of memory
-        first in the session.
+        first in the session. Encoding variability (Martin, 1968):
+        practising through different cues each session makes the memory
+        robust across query phrasings, so ``vary_cues`` rotates the shown
+        cue.
         """
         items = self.review_due(
             limit=max(limit * 2, 12),
@@ -882,13 +886,25 @@ class MemoryEngine:
             items = items[:limit]
         if interleave and len(items) > 1:
             items = self._interleave(items)
-        return [
-            {
-                "id": item.id,
-                "cue": " / ".join(item.cues[:2]) if item.cues else item.content[:12],
-            }
-            for item in items
-        ]
+        out = []
+        for item in items:
+            if vary_cues and len(item.cues) >= 3:
+                total_reviews = (
+                    item.retrieval_successes + item.retrieval_failures
+                )
+                start = total_reviews % len(item.cues)
+                window = item.cues[start:start + 2]
+                if len(window) < 2:
+                    window = window + item.cues[:2 - len(window)]
+                cue = " / ".join(window)
+            else:
+                cue = (
+                    " / ".join(item.cues[:2])
+                    if item.cues
+                    else item.content[:12]
+                )
+            out.append({"id": item.id, "cue": cue})
+        return out
 
     def _interleave(self, items: list[MemoryItem]) -> list[MemoryItem]:
         """Order items so adjacent cards avoid the same category (cue)."""
