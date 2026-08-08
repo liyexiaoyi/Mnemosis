@@ -3918,6 +3918,62 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["total_memories"], 8)
         self.assertIn("fragile", via_mcp["level_counts"])
 
+    def test_weekly_review(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        for i in range(2):
+            engine.remember(
+                f"物理盲区 {i}",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["物理"],
+                importance=0.7,
+                auto_cues=False,
+            )
+        math = engine.remember(
+            "数学题",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["数学"],
+            confidence=0.95,
+            auto_cues=False,
+        )
+        math.retrieval_successes = 7
+        math.retrieval_failures = 3
+        engine.backend.update(math)
+        eng = engine.remember(
+            "英语单词",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["英语"],
+            confidence=0.5,
+            auto_cues=False,
+        )
+        eng.retrieval_successes = 9
+        eng.retrieval_failures = 1
+        engine.backend.update(eng)
+        report = engine.weekly_review()
+        self.assertEqual(report["week_summary"]["total_memories"], 4)
+        self.assertGreaterEqual(report["week_summary"]["topics"], 1)
+        self.assertTrue(
+            any(
+                topic["topic"] == "物理"
+                for topic in report["week_summary"]["weak_topics"]
+            )
+        )
+        self.assertGreaterEqual(
+            len(report["week_summary"]["riskiest_ids"]), 1
+        )
+        self.assertTrue(
+            0 <= report["week_summary"]["calibration_score"] <= 1
+        )
+        self.assertEqual(len(report["next_week_plan"]), 4)
+        self.assertTrue(report["advice"])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("weekly_review", {})
+        self.assertEqual(via_mcp["week_summary"]["total_memories"], 4)
+        self.assertGreaterEqual(len(via_mcp["next_week_plan"]), 1)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

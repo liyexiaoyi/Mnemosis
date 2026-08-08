@@ -4035,6 +4035,56 @@ class MemoryEngine:
             ),
         }
 
+    def weekly_review(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> dict:
+        """Compose a weekly memory health review.
+
+        Aggregates coverage (blind spots), forgetting risk, metacognitive
+        calibration and tonight's consolidation candidates into one
+        weekly summary plus a next-week plan.
+        """
+        coverage = self.coverage_report(now=now)
+        risk = self.forgetting_risk(now=now, limit=5)
+        meta = self.metacog_report()
+        stats = self.stats()
+        forecast = self.consolidation_forecast(limit=3, now=now)
+        weak_topics = [
+            {
+                "topic": topic["topic"],
+                "coverage": topic["coverage"],
+                "status": topic["status"],
+            }
+            for topic in coverage["topics"]
+            if topic["status"] in ("unreviewed", "partial")
+        ]
+        next_week_plan = [
+            "先复习遗忘风险最高的 5 条（重要且快忘）",
+            "补练未复习/只复习一半的主题（盲区）",
+            "校准过度自信主题（多自测、用真实成绩对齐）",
+            "每晚按夜间流程跑一遍（睡前复习 + 明早自测）",
+        ]
+        return {
+            "week_summary": {
+                "total_memories": stats["active"],
+                "topics": coverage["total_topics"],
+                "weak_topics": weak_topics,
+                "avg_risk": risk["avg_risk"],
+                "riskiest_ids": [
+                    entry["id"] for entry in risk["riskiest"]
+                ],
+                "calibration_score": meta["calibration_score"],
+                "tonight_candidates": len(forecast["tonight_candidates"]),
+            },
+            "next_week_plan": next_week_plan,
+            "advice": (
+                "周报生成：先补盲区和风险记忆，再校准置信度，"
+                "每天用夜间流程巩固。"
+            ),
+        }
+
     def retrieval_assist(
         self,
         query: str,

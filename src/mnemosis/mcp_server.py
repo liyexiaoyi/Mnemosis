@@ -1682,6 +1682,15 @@ class MCPServer:
                 },
             },
             {
+                "name": "weekly_review",
+                "description": (
+                    "Compose a weekly memory health review: coverage "
+                    "blind spots, forgetting risk, calibration score and "
+                    "tonight's candidates, plus a next-week plan."
+                ),
+                "inputSchema": {"type": "object", "properties": {}},
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -2431,6 +2440,8 @@ class MCPServer:
             return self.engine.cue_diversity(
                 limit=int(args.get("limit", 20)),
             )
+        if name == "weekly_review":
+            return self.engine.weekly_review()
         if name == "practice_due":
             kind_value = args.get("kind")
             from .types import MemoryKind
