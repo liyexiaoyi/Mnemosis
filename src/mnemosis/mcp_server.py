@@ -264,6 +264,24 @@ class MCPServer:
                 "inputSchema": {"type": "object", "properties": {}},
             },
             {
+                "name": "search",
+                "description": (
+                    "Retrieve memories for a query: returns the top-k "
+                    "matches with content, score, confidence flag and "
+                    "reasons (context-dependent recall and all retrieval "
+                    "mechanisms apply)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"},
+                        "top_k": {"type": "integer"},
+                        "context": {"type": "string"},
+                    },
+                    "required": ["query"],
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -614,6 +632,22 @@ class MCPServer:
             return self.engine.predict_step(args["step"])
         if name == "sleep_replay":
             return self.engine.sleep_replay()
+        if name == "search":
+            results = self.engine.recall(
+                args["query"],
+                top_k=int(args.get("top_k", 5)),
+                context=args.get("context") or None,
+            )
+            return [
+                {
+                    "id": result.item.id,
+                    "content": result.item.content,
+                    "score": round(result.score, 4),
+                    "confident": result.confident,
+                    "reasons": result.reasons,
+                }
+                for result in results
+            ]
         if name == "practice_due":
             kind_value = args.get("kind")
             from .types import MemoryKind

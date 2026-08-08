@@ -470,6 +470,29 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         )
         self.assertTrue(result["success"])
 
+    def test_mcp_search_tool(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        engine.remember(
+            "阿丽喜欢的城市是成都。",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["阿丽", "城市"],
+            importance=0.8,
+            strength=0.5,
+            created_at=utcnow() - timedelta(days=20),
+        )
+        server = MCPServer(engine=engine)
+        results = server._call_tool(
+            "search", {"query": "阿丽喜欢的城市", "top_k": 3}
+        )
+        self.assertTrue(results)
+        self.assertIn("成都", results[0]["content"])
+        self.assertIn("confident", results[0])
+        self.assertIn("reasons", results[0])
+        self.assertIn("score", results[0])
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(
