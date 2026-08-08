@@ -1652,6 +1652,22 @@ class MCPServer:
                 },
             },
             {
+                "name": "nightly_routine",
+                "description": (
+                    "Compose the nightly memory routine: tonight's review "
+                    "candidates, sleep-inference pairs and tomorrow's "
+                    "quiz (sleep consolidation; Rasch & Born, 2013; "
+                    "testing effect; Roediger & Karpicke, 2006)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "review_limit": {"type": "integer"},
+                        "quiz_count": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -2391,6 +2407,11 @@ class MCPServer:
         if name == "next_interval":
             return self.engine.next_interval(
                 memory_id=args.get("memory_id"),
+            )
+        if name == "nightly_routine":
+            return self.engine.nightly_routine(
+                review_limit=int(args.get("review_limit", 3)),
+                quiz_count=int(args.get("quiz_count", 3)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")

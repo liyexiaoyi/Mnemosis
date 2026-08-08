@@ -3161,6 +3161,7 @@ class MemoryEngine:
                 )
                 qtype = "cue_prompt"
             else:
+                blank = "____"
                 if len(content) > 8:
                     blank_len = min(4, max(2, len(content) // 3))
                     blank = "____" * max(1, blank_len // 4)
@@ -3928,6 +3929,45 @@ class MemoryEngine:
             "advice": (
                 "自适应间隔：按每次回忆表现调整下次复习时间，"
                 "让回忆“有点难但能想起来”（Karpicke & Bauernschmidt 2011）。"
+            ),
+        }
+
+    def nightly_routine(
+        self,
+        *,
+        review_limit: int = 3,
+        quiz_count: int = 3,
+        now: datetime | None = None,
+    ) -> dict:
+        """Compose tonight's review, sleep inference and tomorrow's quiz.
+
+        Sleep consolidates memory and pre-sleep rehearsal of important
+        material strengthens it (Rasch & Born, 2013); retrieval practice
+        the next day verifies and locks it in (testing effect; Roediger
+        & Karpicke, 2006). This pipeline ties consolidation_forecast +
+        sleep_inference + test_generator into one nightly routine.
+        """
+        forecast = self.consolidation_forecast(
+            limit=max(1, int(review_limit)),
+            now=now,
+        )
+        inference = self.sleep_inference(limit=1, now=now)
+        quiz = self.test_generator(count=max(1, int(quiz_count)))
+        tonight = [
+            {
+                "id": candidate["id"],
+                "preview": candidate["preview"],
+                "score": candidate["consolidation_score"],
+            }
+            for candidate in forecast["tonight_candidates"]
+        ]
+        return {
+            "tonight_review": tonight,
+            "sleep_inference_pairs": inference["ready_pairs"],
+            "tomorrow_quiz": quiz["questions"],
+            "advice": (
+                "夜间流程：今晚复习候选 → 睡眠整合推断对 → "
+                "明早自测验证（睡眠巩固 + 测试效应）。"
             ),
         }
 
