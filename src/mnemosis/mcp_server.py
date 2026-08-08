@@ -784,6 +784,22 @@ class MCPServer:
                 },
             },
             {
+                "name": "encoding_quality",
+                "description": (
+                    "Score how well one memory was encoded (0-100): cues, "
+                    "context, affect, importance, strength, length - with "
+                    "improvement suggestions (elaborative encoding, Craik "
+                    "& Tulving 1975)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "memory_id": {"type": "string"},
+                    },
+                    "required": ["memory_id"],
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1300,6 +1316,8 @@ class MCPServer:
                 top_k=int(args.get("top_k", 3)),
                 max_chars=int(args.get("max_chars", 1200)),
             )
+        if name == "encoding_quality":
+            return self.engine.encoding_quality(args["memory_id"])
         if name == "practice_due":
             kind_value = args.get("kind")
             from .types import MemoryKind

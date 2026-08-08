@@ -1660,6 +1660,45 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         )
         self.assertEqual(via_mcp["unique_found"], 2)
 
+    def test_encoding_quality(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        good = engine.remember(
+            "今天在办公室完成预算报告，讨论了三个方案",
+            kind=MemoryKind.EPISODIC,
+            source=user,
+            cues=["预算", "方案"],
+            context="办公室",
+            affect="positive",
+            importance=0.8,
+            strength=0.7,
+            auto_cues=False,
+        )
+        weak = engine.remember(
+            "zzz", kind=MemoryKind.EPISODIC, source=user, auto_cues=False
+        )
+        mid = engine.remember(
+            "mid quality memory", kind=MemoryKind.EPISODIC, source=user,
+            cues=["中间"], affect="positive", auto_cues=False,
+        )
+        good_q = engine.encoding_quality(good.id)
+        self.assertGreaterEqual(good_q["score"], 80)
+        self.assertEqual(good_q["verdict"], "well_encoded")
+        weak_q = engine.encoding_quality(weak.id)
+        self.assertLess(weak_q["score"], 60)
+        self.assertEqual(weak_q["verdict"], "weak")
+        self.assertTrue(weak_q["suggestions"])
+        mid_q = engine.encoding_quality(mid.id)
+        self.assertGreaterEqual(mid_q["score"], 60)
+        self.assertLess(mid_q["score"], 80)
+        self.assertEqual(mid_q["verdict"], "adequate")
+        self.assertIsNone(engine.encoding_quality("missing-id"))
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "encoding_quality", {"memory_id": good.id}
+        )
+        self.assertEqual(via_mcp["verdict"], "well_encoded")
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

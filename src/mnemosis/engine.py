@@ -664,6 +664,72 @@ class MemoryEngine:
             "packed": packed,
         }
 
+    def encoding_quality(self, memory_id: str) -> dict | None:
+        """Score how well one memory was encoded.
+
+        Elaborative encoding (Craik & Tulving, 1975): deeper encoding
+        (more cues, context, emotion, importance) makes a memory more
+        retrievable. This scores 0-100 and suggests what is missing.
+        """
+        item = self.backend.get(memory_id)
+        if item is None:
+            return None
+        cue_count = len(item.cues)
+        has_context = bool(item.context)
+        has_affect = bool(item.affect)
+        content_length = len(item.content)
+        score = 0.0
+        suggestions = []
+        if cue_count >= 2:
+            score += 25
+        elif cue_count == 1:
+            score += 15
+            suggestions.append("再补 1 个线索（日期/对象/主题）")
+        else:
+            suggestions.append("没有线索，先加 2 个检索线索")
+        if has_context:
+            score += 20
+        else:
+            suggestions.append("缺少情景上下文，补一句当时的环境")
+        if has_affect:
+            score += 10
+        if item.importance >= 0.6:
+            score += 15
+        elif item.importance >= 0.3:
+            score += 10
+            suggestions.append("重要度偏低，确认是否值得长期保留")
+        if item.strength >= 0.5:
+            score += 15
+        else:
+            suggestions.append("记忆强度偏低，建议尽快复习一次")
+        if 10 <= content_length <= 200:
+            score += 15
+        elif content_length > 200:
+            score += 8
+            suggestions.append("内容偏长，考虑拆成几条")
+        else:
+            score += 5
+            suggestions.append("内容太短，补充一点细节")
+        score = min(100, int(round(score)))
+        if score >= 80:
+            verdict = "well_encoded"
+        elif score >= 60:
+            verdict = "adequate"
+        else:
+            verdict = "weak"
+        return {
+            "memory_id": memory_id,
+            "score": score,
+            "verdict": verdict,
+            "cue_count": cue_count,
+            "has_context": has_context,
+            "has_affect": has_affect,
+            "importance": round(item.importance, 3),
+            "strength": round(item.strength, 3),
+            "content_length": content_length,
+            "suggestions": suggestions[:4],
+        }
+
     def retrieval_assist(
         self,
         query: str,
