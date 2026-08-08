@@ -470,6 +470,45 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         )
         self.assertTrue(result["success"])
 
+    def test_practice_report(self) -> None:
+        engine = MemoryEngine()
+        item = engine.remember(
+            "阿丽喜欢的城市是成都。",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["阿丽", "城市"],
+            importance=0.8,
+            strength=0.5,
+            created_at=utcnow() - timedelta(days=20),
+        )
+        report = engine.practice_report(
+            [
+                {"id": item.id, "attempt": "成都"},
+                {"id": item.id, "attempt": "错误"},
+            ]
+        )
+        self.assertEqual(report["successes"], 1)
+        self.assertEqual(report["failures"], 1)
+        self.assertEqual(report["success_rate"], 0.5)
+
+    def test_mcp_practice_report_tool(self) -> None:
+        engine = MemoryEngine()
+        item = engine.remember(
+            "阿丽喜欢的运动是游泳。",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["阿丽", "运动"],
+            importance=0.8,
+            strength=0.5,
+            created_at=utcnow() - timedelta(days=20),
+        )
+        server = MCPServer(engine=engine)
+        result = server._call_tool(
+            "practice_report",
+            {"answers": [{"id": item.id, "attempt": "游泳"}]},
+        )
+        self.assertEqual(result["successes"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

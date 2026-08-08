@@ -293,6 +293,30 @@ class MCPServer:
                     "required": ["memory_id", "attempt"],
                 },
             },
+            {
+                "name": "practice_report",
+                "description": (
+                    "Score a whole practice round (list of id/attempt) and "
+                    "return one session report with per-card feedback."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "answers": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "id": {"type": "string"},
+                                    "attempt": {"type": "string"},
+                                },
+                                "required": ["id"],
+                            },
+                        }
+                    },
+                    "required": ["answers"],
+                },
+            },
         ]
 
     def handle_line(self, line: str) -> str | None:
@@ -563,6 +587,8 @@ class MCPServer:
             return self.engine.practice_answer(
                 args["memory_id"], args["attempt"]
             )
+        if name == "practice_report":
+            return self.engine.practice_report(args["answers"])
         raise ValueError(f"unknown tool: {name}")
 
     def _result(self, message_id: Any, result: Any) -> str:

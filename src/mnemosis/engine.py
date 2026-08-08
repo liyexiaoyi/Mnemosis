@@ -856,6 +856,32 @@ class MemoryEngine:
             ),
         }
 
+    def practice_report(
+        self,
+        answers: list[dict],
+        now: datetime | None = None,
+    ) -> dict:
+        """Score a whole practice round and return a session report.
+
+        Each answer is ``{"id": memory_id, "attempt": str}``; results are
+        aggregated so the agent gets one summary (success rate, per-card
+        feedback) instead of calling ``practice_answer`` card by card.
+        """
+        details = [
+            self.practice_answer(a["id"], a.get("attempt", ""), now=now)
+            for a in answers
+        ]
+        successes = sum(1 for d in details if d["success"])
+        return {
+            "n": len(details),
+            "successes": successes,
+            "failures": len(details) - successes,
+            "success_rate": round(
+                successes / len(details), 3
+            ) if details else 0.0,
+            "details": details,
+        }
+
     # -- sleep cycle ----------------------------------------------------------
 
     def sleep(
