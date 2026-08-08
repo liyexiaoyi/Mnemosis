@@ -1639,6 +1639,43 @@ class MemoryEngine:
                     break
         return preview
 
+    def similarity_report(
+        self,
+        threshold: float = 0.6,
+        limit: int = 20,
+    ) -> list[dict]:
+        """Find confusable memory pairs by content-token overlap.
+
+        Helps agents spot near-duplicates that dedupe may have missed or
+        pairs that need better separation (pattern separation; Yassa &
+        Stark, 2011).
+        """
+        from .types import tokenize
+
+        items = self.store.all_active()
+        pairs = []
+        for i in range(len(items)):
+            a = items[i]
+            a_terms = set(tokenize(a.content))
+            for j in range(i + 1, len(items)):
+                b = items[j]
+                b_terms = set(tokenize(b.content))
+                common = len(a_terms & b_terms)
+                denominator = max(1, min(len(a_terms), len(b_terms)))
+                overlap = common / denominator
+                if overlap >= threshold:
+                    pairs.append(
+                        {
+                            "a_id": a.id,
+                            "b_id": b.id,
+                            "overlap": round(overlap, 3),
+                            "a_preview": a.content[:40],
+                            "b_preview": b.content[:40],
+                        }
+                    )
+        pairs.sort(key=lambda p: p["overlap"], reverse=True)
+        return pairs[: max(1, int(limit))]
+
     # -- sleep cycle ----------------------------------------------------------
 
     def sleep(

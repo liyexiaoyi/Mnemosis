@@ -477,6 +477,20 @@ class MCPServer:
                 },
             },
             {
+                "name": "similarity_report",
+                "description": (
+                    "Find confusable memory pairs by content-token overlap "
+                    "(near-duplicates or pairs needing better separation)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "threshold": {"type": "number"},
+                        "limit": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -895,6 +909,11 @@ class MCPServer:
         if name == "cleanup_preview":
             return self.engine.cleanup_preview(
                 limit=int(args.get("limit", 100))
+            )
+        if name == "similarity_report":
+            return self.engine.similarity_report(
+                threshold=float(args.get("threshold", 0.6)),
+                limit=int(args.get("limit", 20)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")

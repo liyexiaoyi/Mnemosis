@@ -989,6 +989,36 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         via_mcp = server._call_tool("cleanup_preview", {"limit": 10})
         self.assertEqual(len(via_mcp), 2)
 
+    def test_similarity_report(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        a = engine.remember(
+            "阿丽喜欢红色。",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["相似a"],
+        )
+        b = engine.remember(
+            "阿丽喜欢红色！",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["相似b"],
+        )
+        engine.remember(
+            "小明去了北京。",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["不同c"],
+        )
+        report = engine.similarity_report(threshold=0.6)
+        self.assertEqual(len(report), 1)
+        self.assertEqual({report[0]["a_id"], report[0]["b_id"]}, {a.id, b.id})
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "similarity_report", {"threshold": 0.6}
+        )
+        self.assertEqual(len(via_mcp), 1)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(
