@@ -1462,6 +1462,23 @@ class MCPServer:
                 },
             },
             {
+                "name": "working_set_budget",
+                "description": (
+                    "Check whether the working set fits working-memory "
+                    "capacity and recommend topic chunking when overloaded "
+                    "(7±2 chunks, Miller 1956; 4±1 focus, Cowan 2001; "
+                    "cognitive load, Sweller 1988)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer"},
+                        "capacity": {"type": "integer"},
+                        "optimal": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -2142,6 +2159,12 @@ class MCPServer:
         if name == "schema_fit":
             return self.engine.schema_fit(
                 limit=int(args.get("limit", 20)),
+            )
+        if name == "working_set_budget":
+            return self.engine.working_set_budget(
+                limit=int(args.get("limit", 8)),
+                capacity=int(args.get("capacity", 7)),
+                optimal=int(args.get("optimal", 4)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")

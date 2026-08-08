@@ -3250,6 +3250,46 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["schema_count"], 1)
         self.assertIn("assimilate", via_mcp["verdict_counts"])
 
+    def test_working_set_budget(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        for topic in ("物理", "数学", "化学"):
+            for i in range(3):
+                item = engine.remember(
+                    f"{topic} 知识点 {i}",
+                    kind=MemoryKind.SEMANTIC,
+                    source=user,
+                    cues=[topic],
+                    auto_cues=False,
+                )
+                item.last_access_at = utcnow()
+                engine.backend.update(item)
+        report = engine.working_set_budget(limit=20)
+        self.assertEqual(report["count"], 9)
+        self.assertEqual(report["verdict"], "overloaded")
+        self.assertEqual(report["load_ratio"], round(9 / 7, 3))
+        self.assertGreaterEqual(len(report["chunks"]), 3)
+        self.assertIn("分批", report["advice"])
+        small = MemoryEngine()
+        for i in range(3):
+            item = small.remember(
+                f"light item {i}",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["light"],
+                auto_cues=False,
+            )
+            item.last_access_at = utcnow()
+            small.backend.update(item)
+        small_report = small.working_set_budget()
+        self.assertEqual(small_report["verdict"], "underutilized")
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "working_set_budget", {"limit": 20}
+        )
+        self.assertEqual(via_mcp["verdict"], "overloaded")
+        self.assertGreaterEqual(len(via_mcp["chunks"]), 3)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

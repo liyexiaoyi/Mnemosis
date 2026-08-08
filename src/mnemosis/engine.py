@@ -5085,6 +5085,66 @@ class MemoryEngine:
         touched.sort(key=lambda item: item.last_access_at, reverse=True)
         return touched[:limit]
 
+    def working_set_budget(
+        self,
+        *,
+        limit: int = 8,
+        capacity: int = 7,
+        optimal: int = 4,
+    ) -> dict:
+        """Check whether the working set fits the agent's working memory.
+
+        Working memory is limited to roughly 7±2 chunks (Miller, 1956),
+        with a more realistic focus of 4±1 (Cowan, 2001); cognitive load
+        theory says overload hurts learning and planning (Sweller, 1988).
+        This tool compares the current working set against capacity and
+        recommends chunking by topic when overloaded.
+        """
+        from collections import defaultdict
+
+        items = self.working_set(limit=max(1, int(limit)))
+        count = len(items)
+        capacity = max(1, int(capacity))
+        optimal = min(max(1, int(optimal)), capacity)
+        load_ratio = round(count / capacity, 3)
+        if count > capacity:
+            verdict = "overloaded"
+        elif count > optimal:
+            verdict = "optimal"
+        else:
+            verdict = "underutilized"
+        topic_chunks: dict[str, list[str]] = defaultdict(list)
+        for item in items:
+            topic = item.cues[0] if item.cues else item.content[:10]
+            topic_chunks[topic].append(item.id)
+        chunks = [
+            {
+                "topic": topic,
+                "count": len(memory_ids),
+                "memory_ids": memory_ids,
+            }
+            for topic, memory_ids in topic_chunks.items()
+        ]
+        chunks.sort(key=lambda chunk: -chunk["count"])
+        if verdict == "overloaded":
+            advice = (
+                "一次装不下：按主题分批（每批不超过 4 条），"
+                "先处理最重要的主题，降低认知负荷。"
+            )
+        elif verdict == "optimal":
+            advice = "负载合适：保持当前节奏，先做最重要主题即可。"
+        else:
+            advice = "负载偏低：可以把最相关的记忆也放进工作集，充分用满。"
+        return {
+            "count": count,
+            "capacity": capacity,
+            "optimal": optimal,
+            "load_ratio": load_ratio,
+            "verdict": verdict,
+            "chunks": chunks,
+            "advice": advice,
+        }
+
     # -- metacognition ----------------------------------------------------------
 
     def check(
