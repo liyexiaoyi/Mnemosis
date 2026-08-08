@@ -173,6 +173,49 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
             )
         )
 
+    def test_suggested_plan_size(self) -> None:
+        engine = MemoryEngine()
+        self.assertEqual(engine._suggested_plan_size("大壮想去京都旅行"), 8)
+        self.assertEqual(
+            engine._suggested_plan_size("大壮想去京都旅行，参考阿丽"), 8
+        )
+        self.assertEqual(
+            engine._suggested_plan_size(
+                "大壮想去京都旅行，参考阿丽和小波"
+            ),
+            10,
+        )
+        self.assertEqual(
+            engine._suggested_plan_size(
+                "大壮想去京都旅行，参考阿丽和小波，把完整计划按顺序列出"
+            ),
+            12,
+        )
+
+    def test_auto_capacity_keeps_full_plan(self) -> None:
+        engine = MemoryEngine()
+        source = SourceRecord(origin=SourceType.USER)
+        steps = [
+            ("阿丽在2026年4月1日订了去京都的机票。", "2026-04-01"),
+            ("阿丽在2026年4月2日买了相机。", "2026-04-02"),
+            ("阿丽在2026年4月3日收拾了行李。", "2026-04-03"),
+            ("阿丽在2026年4月4日订了酒店。", "2026-04-04"),
+            ("阿丽在2026年4月5日去了京都。", "2026-04-05"),
+        ]
+        for content, iso in steps:
+            engine.remember(
+                content,
+                kind=MemoryKind.EPISODIC,
+                source=source,
+                cues=["阿丽", iso],
+            )
+        auto = engine.plan_for_goal(
+            "大壮想去京都旅行，参考阿丽，把完整计划按顺序列出",
+            outcome_aware=False,
+        )
+        contents = [r.item.content for r in auto]
+        self.assertTrue(all(s in contents for s, _ in steps))
+
 
 if __name__ == "__main__":
     unittest.main()

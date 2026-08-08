@@ -361,7 +361,7 @@ class MemoryEngine:
         self,
         goal: str,
         *,
-        top_k: int = 10,
+        top_k: int | None = None,
         now: datetime | None = None,
         zh_synonyms: bool = True,
         outcome_aware: bool = True,
@@ -378,6 +378,8 @@ class MemoryEngine:
         what actually worked.
         Falls back to the reasoning premise pack for non-step goals.
         """
+        if top_k is None:
+            top_k = self._suggested_plan_size(goal)
         if any(marker in goal for marker in (
             "想", "要", "打算", "计划", "准备", "希望", "怎么", "如何",
         )):
@@ -397,6 +399,31 @@ class MemoryEngine:
                 self._apply_outcome_rerank(plan)
             return plan
         return self.recall_reasoning(goal, top_k=top_k, now=now)
+
+    def _suggested_plan_size(self, goal: str) -> int:
+        """Working-memory capacity matching (Miller, 1956).
+
+        Plans need enough context slots to hold the whole step sequence:
+        base 8, +2 per referenced person ("参考阿丽和小波"), +2 for chain
+        or multi-step hints, capped at 14.
+        """
+        import re as _re
+
+        size = 8
+        refs = _re.findall(
+            r"(?:参考|参照|学|模仿|按照|像)([\u4e00-\u9fff]{2})"
+            r"|和([\u4e00-\u9fff]{2})",
+            goal,
+        )
+        refs = [a or b for a, b in refs if (a or b)]
+        if refs:
+            size += 2 * (len(refs) - 1)
+        if any(token in goal for token in (
+            "三个步骤", "四个步骤", "五个步骤", "三步", "四步", "五步",
+            "完整", "全部", "按顺序",
+        )):
+            size += 2
+        return min(size, 14)
 
     def _apply_outcome_rerank(
         self,

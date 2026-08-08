@@ -76,3 +76,15 @@ jobs:
           --out /tmp/outcome_10k_smoke.json
         env:
           PYTHONPATH: src
+      - name: Plan choice smoke (1 goal, retrieval only)
+        run: >
+          python benchmarks/plan_choice_bench.py
+          --out /tmp/plan_choice_smoke.json
+        env:
+          PYTHONPATH: src
+      - name: Plan capacity 10k smoke (5-step plan, retrieval only)
+        run: >
+          python benchmarks/plan_capacity_bench.py
+          --out /tmp/plan_capacity_smoke.json
+        env:
+          PYTHONPATH: src
