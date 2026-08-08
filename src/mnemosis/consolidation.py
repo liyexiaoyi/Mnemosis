@@ -38,6 +38,7 @@ class ConsolidationReport:
     emotion_boosted: int = 0
     emotion_links: int = 0
     accommodated: int = 0
+    weak_replayed: int = 0
     total_before: int = 0
     total_after: int = 0
 
@@ -50,6 +51,7 @@ class ConsolidationReport:
             f"emotion_boosted {self.emotion_boosted}, "
             f"emotion_links {self.emotion_links}, "
             f"accommodated {self.accommodated}, "
+            f"weak_replayed {self.weak_replayed}, "
             f"conflicts {len(self.conflicts)} "
             f"({self.total_before} -> {self.total_after} active memories)"
         )
@@ -71,6 +73,9 @@ class Consolidator:
         replay_window: int = 64,
         replay_min_importance: float = 0.4,
         replay_recency_days: float = 7.0,
+        weak_replay_importance: float = 0.6,
+        weak_replay_threshold: float = 0.35,
+        weak_replay_max: int = 100,
     ) -> None:
         self.store = store
         self.backend = backend
@@ -84,6 +89,9 @@ class Consolidator:
         self.replay_window = max(1, int(replay_window))
         self.replay_min_importance = replay_min_importance
         self.replay_recency_days = max(1.0, replay_recency_days)
+        self.weak_replay_importance = weak_replay_importance
+        self.weak_replay_threshold = weak_replay_threshold
+        self.weak_replay_max = weak_replay_max
 
     def sleep(
         self,
@@ -93,6 +101,7 @@ class Consolidator:
         now = now or utcnow()
         total_before = len(self.store.all_active())
         replayed = self._replay_recent(now)
+        weak_replayed = self._replay_weak_important(now)
         merged = self._merge_duplicates(now)
         promoted = self._promote_episodic(now)
         recycled = self._prune_noise(now)
@@ -114,9 +123,40 @@ class Consolidator:
             emotion_boosted=emotion_boosted,
             emotion_links=emotion_links,
             accommodated=accommodated,
+            weak_replayed=weak_replayed,
             total_before=total_before,
             total_after=total_after,
         )
+
+    def _replay_weak_important(self, now: datetime) -> int:
+        """Replay important-but-fading traces during sleep.
+
+        Sleep-dependent consolidation prioritises salient content
+        (Stickgold & Walker, 2013): a high-importance memory that is about
+        to fade gets a bounded durable gain even if it is old and outside
+        the recency window. This protects important knowledge from silent
+        forgetting.
+        """
+        candidates = [
+            item
+            for item in self.store.all_active()
+            if item.importance >= self.weak_replay_importance
+            and self.store.curve.retrievability(item, now)
+            < self.weak_replay_threshold
+        ]
+        candidates.sort(
+            key=lambda item: (item.importance, item.seq),
+            reverse=True,
+        )
+        replayed = 0
+        for item in candidates[: self.weak_replay_max]:
+            gain = 0.03 * (0.5 + item.importance)
+            item.storage_strength = min(2.0, item.storage_strength + gain)
+            item.strength = min(1.0, item.strength + gain)
+            item.touch(now)
+            self.backend.update(item)
+            replayed += 1
+        return replayed
 
     def _accommodation_phase(self, now: datetime) -> int:
         """Constructivist accommodation (Piaget via CAM; Li et al., 2025).

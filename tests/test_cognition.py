@@ -183,6 +183,22 @@ class CognitionTest(unittest.TestCase):
         )
         self.assertEqual(plain[0].item.id, v_id)
 
+    def test_weak_important_replay(self):
+        now = utcnow()
+        important = self.remember(
+            "Important fading fact about the launch.",
+            kind=MemoryKind.SEMANTIC,
+            cues=["launch"],
+            importance=0.8,
+            strength=0.3,
+            created_at=now - timedelta(days=60),
+        )
+        strength_before = important.strength
+        report = self.engine.sleep(now=now)
+        self.assertGreaterEqual(report.weak_replayed, 1)
+        refreshed = self.engine.backend.get(important.id)
+        self.assertGreater(refreshed.strength, strength_before)
+
     def test_elaborate_co_retrieval_links(self):
         def _build():
             engine = MemoryEngine()
