@@ -2066,6 +2066,67 @@ class MemoryEngine:
             "lessons": lessons[: max(1, int(limit))],
         }
 
+    def effort_estimate(
+        self,
+        plan: list,
+        base_hours: float = 2.0,
+    ) -> dict:
+        """Estimate per-step and total effort for a plan.
+
+        Humans systematically underestimate duration (planning fallacy;
+        Buehler, Griffin & Ross, 1994). This tool assigns base hours per
+        standard step type, sums totals and critical-path hours, then
+        adds a 20% buffer.
+        """
+        dep = self.dependency_map(plan)
+        base_rules = (
+            ("需求", 4.0),
+            ("设计", 6.0),
+            ("架构", 6.0),
+            ("开发", 8.0),
+            ("实现", 8.0),
+            ("测试", 5.0),
+            ("功能", 8.0),
+            ("部署", 3.0),
+            ("上线", 3.0),
+            ("文档", 3.0),
+            ("复盘", 2.0),
+            ("总结", 2.0),
+        )
+
+        def _hours(step: str) -> float:
+            for keyword, hours in base_rules:
+                if keyword in step:
+                    return hours
+            return float(base_hours)
+
+        estimates = []
+        for step in dep["steps"]:
+            hours = _hours(step["step"])
+            if len(step["step"]) > 12:
+                hours *= 1.2
+            estimates.append(
+                {
+                    "index": step["index"],
+                    "step": step["step"],
+                    "estimated_hours": round(hours, 1),
+                }
+            )
+        by_index = {entry["index"]: entry for entry in estimates}
+        total = sum(entry["estimated_hours"] for entry in estimates)
+        critical = dep["critical_path"]
+        critical_hours = sum(
+            by_index[entry["index"]]["estimated_hours"]
+            for entry in critical
+        )
+        return {
+            "steps": estimates,
+            "total_hours": round(total, 1),
+            "critical_path_hours": round(critical_hours, 1),
+            "buffered_total_hours": round(total * 1.2, 1),
+            "note": "按规划谬误加 20% 缓冲（Buehler et al. 1994）",
+        }
+
     def retrieval_assist(
         self,
         query: str,

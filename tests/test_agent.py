@@ -2617,6 +2617,29 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["total"], 3)
         self.assertEqual(via_mcp["tags"]["success"], 1)
 
+    def test_effort_estimate(self) -> None:
+        engine = MemoryEngine()
+        plan = [
+            {"step": "调研需求", "depends_on": []},
+            {"step": "设计架构", "depends_on": [0]},
+            {"step": "开发功能", "depends_on": [1]},
+            {"step": "测试功能", "depends_on": [2]},
+            {"step": "部署上线", "depends_on": [3]},
+        ]
+        report = engine.effort_estimate(plan)
+        self.assertEqual(len(report["steps"]), 5)
+        self.assertTrue(
+            all(entry["estimated_hours"] > 0 for entry in report["steps"])
+        )
+        self.assertEqual(report["total_hours"], 26.0)
+        self.assertEqual(report["critical_path_hours"], 26.0)
+        self.assertEqual(report["buffered_total_hours"], 31.2)
+        self.assertTrue(report["note"])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("effort_estimate", {"plan": plan})
+        self.assertEqual(via_mcp["total_hours"], 26.0)
+        self.assertEqual(via_mcp["buffered_total_hours"], 31.2)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

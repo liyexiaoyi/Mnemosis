@@ -1210,6 +1210,30 @@ class MCPServer:
                 },
             },
             {
+                "name": "effort_estimate",
+                "description": (
+                    "Estimate per-step and total effort for a plan, "
+                    "including critical-path hours and a 20% buffer for "
+                    "the planning fallacy (Buehler et al. 1994)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "plan": {
+                            "type": "array",
+                            "items": {
+                                "oneOf": [
+                                    {"type": "string"},
+                                    {"type": "object"},
+                                ]
+                            },
+                        },
+                        "base_hours": {"type": "number"},
+                    },
+                    "required": ["plan"],
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -1824,6 +1848,11 @@ class MCPServer:
             return self.engine.lesson_learned(
                 memory_ids=args.get("memory_ids"),
                 limit=int(args.get("limit", 10)),
+            )
+        if name == "effort_estimate":
+            return self.engine.effort_estimate(
+                args["plan"],
+                base_hours=float(args.get("base_hours", 2.0)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")
