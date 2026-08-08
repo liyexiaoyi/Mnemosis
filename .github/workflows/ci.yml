@@ -88,3 +88,9 @@ jobs:
           --out /tmp/plan_capacity_smoke.json
         env:
           PYTHONPATH: src
+      - name: Plan effort smoke (low/medium/high mapping, retrieval only)
+        run: >
+          python benchmarks/plan_effort_bench.py
+          --out /tmp/plan_effort_smoke.json
+        env:
+          PYTHONPATH: src

@@ -173,6 +173,15 @@ class MCPServer:
                     "properties": {
                         "goal": {"type": "string"},
                         "top_k": {"type": "integer"},
+                        "effort": {
+                            "type": "string",
+                            "enum": ["low", "medium", "high"],
+                            "description": (
+                                "Planning depth: low (fast, 6 items, no "
+                                "outcome rerank), medium (8, rerank), "
+                                "high (14, rerank). Default: auto."
+                            ),
+                        },
                     },
                     "required": ["goal"],
                 },
@@ -400,7 +409,13 @@ class MCPServer:
             }
         if name == "plan":
             results = self.engine.plan_for_goal(
-                args["goal"], top_k=int(args.get("top_k", 8))
+                args["goal"],
+                top_k=(
+                    int(args["top_k"])
+                    if args.get("top_k") is not None
+                    else None
+                ),
+                effort=args.get("effort"),
             )
             return [
                 {

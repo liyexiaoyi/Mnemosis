@@ -249,6 +249,33 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
             )
         )
 
+    def test_mcp_plan_effort_param(self) -> None:
+        server = MCPServer(engine=self._engine())
+        low = server._call_tool(
+            "plan",
+            {"goal": "大壮想去京都旅行，参考阿丽和小波",
+             "effort": "low"},
+        )
+        self.assertFalse(
+            any(
+                "\u7ed3\u679c\u52a0\u6743" in reason
+                for r in low
+                for reason in r["reasons"]
+            )
+        )
+        high = server._call_tool(
+            "plan",
+            {"goal": "大壮想去京都旅行，参考阿丽和小波",
+             "effort": "high"},
+        )
+        self.assertTrue(
+            any(
+                "\u7ed3\u679c\u52a0\u6743" in reason
+                for r in high
+                for reason in r["reasons"]
+            )
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
