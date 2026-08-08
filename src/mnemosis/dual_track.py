@@ -125,6 +125,8 @@ class DualTrackStore:
         source_trust_weight: float = 0.06,
         mood_congruent_boost: bool = True,
         mood_boost_weight: float = 0.05,
+        confidence_boost: bool = True,
+        confidence_weight: float = 0.05,
         suppression_factor: float = 0.01,
         suppression_min_cues: int = 2,
         suppression_floor: float = 0.7,
@@ -242,6 +244,11 @@ class DualTrackStore:
                 # joy/anxiety preferentially retrieves traces stored under
                 # the same emotion, as mood acts as a retrieval cue.
                 mood_bonus = mood_boost_weight
+            confidence_bonus = (
+                confidence_weight * item.confidence
+                if confidence_boost
+                else 0.0
+            )
             if query_vector is not None:
                 item_vector = self._embedding(item, embedder)
                 semantic = embedder.cosine(query_vector, item_vector)
@@ -254,6 +261,7 @@ class DualTrackStore:
                     + self_bonus
                     + trust_bonus
                     + mood_bonus
+                    + confidence_bonus
                 )
             else:
                 score = (
@@ -264,6 +272,7 @@ class DualTrackStore:
                     + self_bonus
                     + trust_bonus
                     + mood_bonus
+                    + confidence_bonus
                 )
             if overlap > 0:
                 reasons.append(f"cue/keyword overlap {overlap:.2f}")
@@ -274,6 +283,12 @@ class DualTrackStore:
                 reasons.append("来源可信(高)")
             if query_mood and item.affect in (query_mood, "mixed"):
                 reasons.append(f"情绪一致({query_mood})")
+            if confidence_boost and item.confidence >= 0.85:
+                # Metacognitive calibration (Koriat & Goldsmith, 1996):
+                # when two traces match equally, prefer the one the system
+                # itself is more confident about, so agents avoid asserting
+                # shaky memories.
+                reasons.append("置信度高")
             if action_cued and item.kind is MemoryKind.EPISODIC:
                 score += 0.05
                 reasons.append("action-cued episodic preference")

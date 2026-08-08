@@ -238,6 +238,41 @@ class CognitionTest(unittest.TestCase):
         )
         self.assertEqual(plain[0].item.id, a_p)
 
+    def test_confidence_boost(self):
+        def _build():
+            engine = MemoryEngine()
+            winner = engine.remember(
+                "alpha two",
+                kind=MemoryKind.SEMANTIC,
+                source=SourceRecord(origin=SourceType.USER),
+                cues=["alpha"],
+                importance=0.5,
+                strength=0.5,
+                confidence=0.9,
+                auto_cues=False,
+            )
+            loser = engine.remember(
+                "alpha one",
+                kind=MemoryKind.SEMANTIC,
+                source=SourceRecord(origin=SourceType.USER),
+                cues=["alpha"],
+                importance=0.5,
+                strength=0.5,
+                confidence=0.4,
+                auto_cues=False,
+            )
+            return engine, winner.id, loser.id
+
+        engine_b, w_b, _ = _build()
+        boosted = engine_b.recall("alpha", top_k=3)
+        self.assertEqual(boosted[0].item.id, w_b)
+        self.assertTrue(any("置信度" in r for r in boosted[0].reasons))
+        engine_p, _, l_p = _build()
+        plain = engine_p.recall(
+            "alpha", top_k=3, confidence_boost=False
+        )
+        self.assertEqual(plain[0].item.id, l_p)
+
     def test_emotional_memory_decays_slower(self):
         now = utcnow()
         self.engine.curve.decay_rate = 0.01
