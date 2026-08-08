@@ -4070,6 +4070,57 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(via_mcp["count"], 1)
         self.assertGreater(via_mcp["rows"][0]["days_to_threshold"], 0)
 
+    def test_affect_decay(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        persistent = engine.remember(
+            "答辩搞砸了",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["答辩"],
+            affect="negative",
+            auto_cues=False,
+        )
+        persistent.review_streak = 0
+        engine.backend.update(persistent)
+        fading = engine.remember(
+            "获奖",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["荣誉"],
+            affect="positive",
+            auto_cues=False,
+        )
+        fading.review_streak = 2
+        engine.backend.update(fading)
+        processed = engine.remember(
+            "小失误",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["日常"],
+            affect="negative",
+            auto_cues=False,
+        )
+        processed.review_streak = 3
+        engine.backend.update(processed)
+        report = engine.affect_decay()
+        self.assertEqual(report["total_emotional"], 3)
+        by_id = {row["id"]: row for row in report["rows"]}
+        self.assertEqual(by_id[persistent.id]["status"], "persistent")
+        self.assertEqual(by_id[persistent.id]["charge"], 1.0)
+        self.assertEqual(by_id[fading.id]["status"], "fading")
+        self.assertEqual(by_id[processed.id]["status"], "processed")
+        self.assertEqual(by_id[processed.id]["charge"], 0.0)
+        self.assertEqual(
+            report["status_counts"],
+            {"persistent": 1, "fading": 1, "processed": 1},
+        )
+        self.assertIn("重评", report["advice"])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("affect_decay", {})
+        self.assertEqual(via_mcp["total_emotional"], 3)
+        self.assertIn("persistent", via_mcp["status_counts"])
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

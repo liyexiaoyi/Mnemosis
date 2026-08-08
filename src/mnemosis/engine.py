@@ -4222,6 +4222,73 @@ class MemoryEngine:
             ),
         }
 
+    def affect_decay(
+        self,
+        *,
+        limit: int = 20,
+    ) -> dict:
+        """Forecast emotional charge persistence for emotional memories.
+
+        Emotional memories persist longer, but repeated successful
+        processing reduces the charge (Gross, 2002; extinction-like
+        regulation). Residual charge drops with the review streak (3
+        consecutive successes = processed). This reports current charge,
+        estimated persistence and a regulation hint.
+        """
+        from collections import defaultdict
+
+        emotional = [
+            item
+            for item in self.store.all_active()
+            if item.affect in ("positive", "negative", "arousing", "mixed")
+        ]
+        rows: list[dict] = []
+        for item in emotional:
+            charge = round(max(0.0, 1.0 - item.review_streak / 3.0), 3)
+            persistence_days = round(charge * 30.0, 1)
+            if charge == 0:
+                status = "processed"
+            elif charge <= 0.5:
+                status = "fading"
+            else:
+                status = "persistent"
+            rows.append(
+                {
+                    "id": item.id,
+                    "preview": item.content[:32],
+                    "affect": item.affect,
+                    "review_streak": item.review_streak,
+                    "charge": charge,
+                    "persistence_days": persistence_days,
+                    "status": status,
+                    "hint": (
+                        "情绪已处理：正常间隔复习即可"
+                        if status == "processed"
+                        else "情绪在消退：保持重评式复习"
+                        if status == "fading"
+                        else "情绪仍强：用重评+更新处理，别反复回放"
+                    ),
+                }
+            )
+        rows.sort(
+            key=lambda row: (-row["charge"], row["persistence_days"])
+        )
+        counts = defaultdict(int)
+        for row in rows:
+            counts[row["status"]] += 1
+        persistent = [row for row in rows if row["status"] == "persistent"]
+        return {
+            "total_emotional": len(emotional),
+            "status_counts": dict(counts),
+            "rows": rows[: max(1, int(limit))],
+            "advice": (
+                "仍有高情绪记忆：先重评（换个角度），再趁提取窗口更新"
+                "结论（Gross 2002；Nader 2000）。"
+                if persistent
+                else "情绪记忆处理良好：按间隔复习保持即可。"
+            ),
+        }
+
     def retrieval_assist(
         self,
         query: str,

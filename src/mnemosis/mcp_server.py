@@ -1723,6 +1723,20 @@ class MCPServer:
                 },
             },
             {
+                "name": "affect_decay",
+                "description": (
+                    "Forecast emotional charge persistence: repeated "
+                    "successful processing reduces charge (emotion "
+                    "regulation; Gross, 2002)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -2484,6 +2498,10 @@ class MCPServer:
                 memory_id=args.get("memory_id"),
                 horizon_days=int(args.get("horizon_days", 30)),
                 threshold=float(args.get("threshold", 0.4)),
+            )
+        if name == "affect_decay":
+            return self.engine.affect_decay(
+                limit=int(args.get("limit", 20)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")
