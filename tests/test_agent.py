@@ -696,6 +696,32 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         )
         self.assertEqual(len(via_mcp["plan"]), 3)
 
+    def test_sleep_and_plan(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        now = utcnow()
+        for i in range(5):
+            engine.remember(
+                f"弱重要{i}：关键知识。",
+                kind=MemoryKind.SEMANTIC,
+                source=SourceRecord(origin=SourceType.USER),
+                cues=[f"弱重要{i}"],
+                importance=0.8,
+                strength=0.3,
+                created_at=now - timedelta(days=60),
+            )
+        result = engine.sleep_and_plan(days=7, now=now)
+        self.assertGreaterEqual(result["weak_replayed"], 1)
+        self.assertIsInstance(result["plan"], list)
+        self.assertIsInstance(result["forecast"], list)
+        self.assertIn("weak_replayed", result["sleep_summary"])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "sleep_and_plan", {"days": 7}
+        )
+        self.assertIn("sleep_summary", via_mcp)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

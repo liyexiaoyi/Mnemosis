@@ -1428,6 +1428,30 @@ class MemoryEngine:
         report = self.practice_report(answers, now=now)
         return {"plan": plan, "report": report}
 
+    def sleep_and_plan(
+        self,
+        days: int = 7,
+        now: datetime | None = None,
+        summarizer=None,
+    ) -> dict:
+        """Sleep consolidation + refreshed review plan in one call.
+
+        Runs the full sleep cycle, then returns the consolidation summary,
+        how many weak-important traces were replayed, and the refreshed
+        practice plan/forecast (Stickgold & Walker, 2013; Smolen et al.,
+        2016).
+        """
+        now = now or utcnow()
+        report = self.sleep(now=now, summarizer=summarizer)
+        plan = self.practice_plan(limit=10, now=now)
+        forecast = self.practice_forecast(days=days, now=now)
+        return {
+            "sleep_summary": report.summary(),
+            "weak_replayed": report.weak_replayed,
+            "plan": plan,
+            "forecast": forecast,
+        }
+
     # -- sleep cycle ----------------------------------------------------------
 
     def sleep(

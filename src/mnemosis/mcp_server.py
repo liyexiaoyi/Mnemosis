@@ -373,6 +373,20 @@ class MCPServer:
                 },
             },
             {
+                "name": "sleep_and_plan",
+                "description": (
+                    "Run the full sleep cycle, then return the consolidation "
+                    "summary, weak-important replay count, and refreshed "
+                    "practice plan/forecast."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "days": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -763,6 +777,10 @@ class MCPServer:
             return self.engine.practice_session(
                 args["answers"],
                 limit=int(args.get("limit", 5)),
+            )
+        if name == "sleep_and_plan":
+            return self.engine.sleep_and_plan(
+                days=int(args.get("days", 7))
             )
         if name == "practice_due":
             kind_value = args.get("kind")
