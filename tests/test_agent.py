@@ -597,6 +597,53 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         )
         self.assertEqual(via_mcp["n"], 4)
 
+    def test_export_import(self) -> None:
+        from datetime import timedelta
+
+        engine = MemoryEngine()
+        now = utcnow()
+        a = engine.remember(
+            "导出记忆 a：喜欢红色。",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["导出a"],
+            importance=0.8,
+            strength=0.5,
+            created_at=now - timedelta(days=10),
+        )
+        engine.remember(
+            "导出记忆 b：去过成都。",
+            kind=MemoryKind.EPISODIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["导出b"],
+            importance=0.6,
+            strength=0.4,
+            created_at=now - timedelta(days=5),
+        )
+        a.retrieval_successes = 3
+        a.review_streak = 2
+        engine.backend.update(a)
+        payload = engine.export_memories()
+        self.assertEqual(len(payload["memories"]), 2)
+        fresh = MemoryEngine()
+        imported = fresh.import_memories(payload)
+        self.assertEqual(imported, 2)
+        self.assertEqual(len(fresh.store.all_active()), 2)
+        restored = next(
+            i for i in fresh.store.all_active() if "红色" in i.content
+        )
+        self.assertEqual(restored.retrieval_successes, 3)
+        self.assertEqual(restored.review_streak, 2)
+        server = MCPServer(engine=engine)
+        via_tool = server._call_tool("export_memories", {})
+        self.assertEqual(len(via_tool["memories"]), 2)
+        fresh2 = MemoryEngine()
+        server2 = MCPServer(engine=fresh2)
+        imported2 = server2._call_tool(
+            "import_memories", {"payload": via_tool}
+        )
+        self.assertEqual(imported2, 2)
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

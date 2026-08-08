@@ -1379,6 +1379,38 @@ class MemoryEngine:
             "details": details,
         }
 
+    def export_memories(self) -> dict:
+        """Export all active memories as a portable JSON payload."""
+        items = [
+            item
+            for item in self.store.all_active()
+            if item.status is MemoryStatus.ACTIVE
+        ]
+        return {
+            "version": 1,
+            "exported_at": utcnow().isoformat(),
+            "memories": [item.to_dict() for item in items],
+        }
+
+    def import_memories(self, payload: dict) -> int:
+        """Import memories from an export payload (round 106).
+
+        Rebuilds each MemoryItem from its dict and adds it back into the
+        store with cues and associations. Ids are preserved for portability;
+        importing the same payload twice creates duplicates.
+        """
+        from .types import MemoryItem
+
+        imported = 0
+        for data in payload.get("memories", []):
+            item = MemoryItem.from_dict(data)
+            self.backend.add(item)
+            self.backend.add_cues(item.id, item.cues)
+            self.associations.index(item)
+            self.associations.link_related(item)
+            imported += 1
+        return imported
+
     # -- sleep cycle ----------------------------------------------------------
 
     def sleep(

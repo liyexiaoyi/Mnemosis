@@ -325,6 +325,28 @@ class MCPServer:
                 },
             },
             {
+                "name": "export_memories",
+                "description": (
+                    "Export all active memories as a portable JSON payload "
+                    "(versioned, includes retrieval stats)."
+                ),
+                "inputSchema": {"type": "object", "properties": {}},
+            },
+            {
+                "name": "import_memories",
+                "description": (
+                    "Import memories from an export payload; returns the "
+                    "number imported."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "payload": {"type": "object"},
+                    },
+                    "required": ["payload"],
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -707,6 +729,10 @@ class MCPServer:
             return self.engine.memory_status()
         if name == "review_batch":
             return self.engine.review_batch(args["answers"])
+        if name == "export_memories":
+            return self.engine.export_memories()
+        if name == "import_memories":
+            return self.engine.import_memories(args["payload"])
         if name == "practice_due":
             kind_value = args.get("kind")
             from .types import MemoryKind
