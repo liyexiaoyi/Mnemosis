@@ -161,6 +161,54 @@ class MCPServer:
                     "required": ["memory_id"],
                 },
             },
+            {
+                "name": "plan",
+                "description": (
+                    "Agent planning: turn a goal into an ordered step plan, "
+                    "reusing the person's own past steps or a referenced "
+                    "person's steps as an analogical template."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "goal": {"type": "string"},
+                        "top_k": {"type": "integer"},
+                    },
+                    "required": ["goal"],
+                },
+            },
+            {
+                "name": "reason",
+                "description": (
+                    "Reasoning recall: assemble the full premise pack for a "
+                    "math / compare / transitive question."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"},
+                        "top_k": {"type": "integer"},
+                    },
+                    "required": ["query"],
+                },
+            },
+            {
+                "name": "record_outcome",
+                "description": (
+                    "Record an execution outcome (success/fail + note) for "
+                    "an agent project step (evidence accumulation)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "goal": {"type": "string"},
+                        "step": {"type": "string"},
+                        "success": {"type": "boolean"},
+                        "note": {"type": "string"},
+                    },
+                    "required": ["goal", "step", "success"],
+                },
+            },
         ]
 
     def handle_line(self, line: str) -> str | None:
@@ -349,6 +397,42 @@ class MCPServer:
                 "review_streak": item.review_streak,
                 "retrieval_successes": item.retrieval_successes,
                 "retrieval_failures": item.retrieval_failures,
+            }
+        if name == "plan":
+            results = self.engine.plan_for_goal(
+                args["goal"], top_k=int(args.get("top_k", 8))
+            )
+            return [
+                {
+                    "content": r.item.content,
+                    "score": round(r.score, 3),
+                    "reasons": r.reasons,
+                }
+                for r in results
+            ]
+        if name == "reason":
+            results = self.engine.recall_reasoning(
+                args["query"], top_k=int(args.get("top_k", 8))
+            )
+            return [
+                {
+                    "content": r.item.content,
+                    "score": round(r.score, 3),
+                    "reasons": r.reasons,
+                }
+                for r in results
+            ]
+        if name == "record_outcome":
+            item = self.engine.record_outcome(
+                args["goal"],
+                args["step"],
+                success=bool(args["success"]),
+                note=args.get("note"),
+            )
+            return {
+                "id": item.id,
+                "content": item.content,
+                "evidence_count": item.evidence_count,
             }
         raise ValueError(f"unknown tool: {name}")
 

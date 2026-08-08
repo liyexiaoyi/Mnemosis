@@ -244,6 +244,7 @@ class MemoryEngine:
         if not any(marker in query for marker in (
             "怎么", "如何", "为什么", "过程", "步骤", "准备", "计划", "安排",
             "第一步", "该做什么", "怎么做", "流程", "方法", "办法", "方式",
+            "想", "要", "打算", "希望",
             "how", "why", "step",
         )):
             return results[:top_k]
@@ -301,6 +302,65 @@ class MemoryEngine:
                     "\u601d\u7ef4\u94fe\u6b65\u9aa4(\u6309\u65f6\u95f4\u6392\u5e8f)"
                 )
         return ordered[:top_k]
+
+    def plan_for_goal(
+        self,
+        goal: str,
+        *,
+        top_k: int = 10,
+        now: datetime | None = None,
+        zh_synonyms: bool = True,
+    ) -> list[RecallResult]:
+        """Agent planning: turn a goal into an ordered step plan.
+
+        Prefrontal goal maintenance (Miller & Cohen, 2001): the agent holds
+        the goal and pulls the task-relevant schema - the person's own past
+        steps or, when the goal references another person ("参考阿丽"),
+        that person's steps as an analogical template (Gick & Holyoak, 1980).
+        Falls back to the reasoning premise pack for non-step goals.
+        """
+        if any(marker in goal for marker in (
+            "想", "要", "打算", "计划", "准备", "希望", "怎么", "如何",
+        )):
+            return self.recall_steps(
+                goal,
+                top_k=top_k,
+                now=now,
+                zh_synonyms=zh_synonyms,
+            )
+        return self.recall_reasoning(goal, top_k=top_k, now=now)
+
+    def record_outcome(
+        self,
+        goal: str,
+        step: str,
+        *,
+        success: bool,
+        note: str | None = None,
+        now: datetime | None = None,
+    ) -> MemoryItem:
+        """Record an execution outcome (agent judgment loop).
+
+        The prefrontal cortex monitors action outcomes and updates
+        predictions (Miller & Cohen, 2001; Smolen et al., 2016). The outcome
+        is stored with evidence accumulation, so repeated success/failure
+        strengthens the trace and future plans can prefer it.
+        """
+        result = "成功" if success else "失败"
+        content = (
+            f"项目“{goal}”的步骤“{step}”执行{result}"
+            + (f"（{note}）" if note else "")
+            + "。"
+        )
+        return self.remember(
+            content,
+            kind=MemoryKind.EPISODIC,
+            source=SourceRecord(origin=SourceType.AGENT),
+            cues=[goal[:8], step[:8], result],
+            importance=0.75,
+            evidence_count=1,
+            created_at=now,
+        )
 
     # -- sleep cycle ----------------------------------------------------------
 
