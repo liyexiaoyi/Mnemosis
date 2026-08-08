@@ -341,6 +341,20 @@ class MCPServer:
                     },
                 },
             },
+            {
+                "name": "practice_forecast",
+                "description": (
+                    "Forecast which memories are due within the next N "
+                    "days, with due times, so the agent can plan a week of "
+                    "reviews ahead of time."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "days": {"type": "integer"},
+                    },
+                },
+            },
         ]
 
     def handle_line(self, line: str) -> str | None:
@@ -637,6 +651,10 @@ class MCPServer:
         if name == "practice_plan":
             return self.engine.practice_plan(
                 limit=int(args.get("limit", 5))
+            )
+        if name == "practice_forecast":
+            return self.engine.practice_forecast(
+                days=int(args.get("days", 7))
             )
         raise ValueError(f"unknown tool: {name}")
 

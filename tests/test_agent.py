@@ -532,6 +532,42 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         via_mcp = server._call_tool("practice_plan", {"limit": 5})
         self.assertEqual(len(via_mcp), 3)
 
+    def test_practice_forecast(self) -> None:
+        from datetime import datetime, timedelta
+
+        engine = MemoryEngine()
+        now = utcnow()
+        items = {}
+        for streak in (0, 1, 2, 8, 9):
+            item = engine.remember(
+                f"预报记忆{streak}：条目{streak}。",
+                kind=MemoryKind.SEMANTIC,
+                source=SourceRecord(origin=SourceType.USER),
+                cues=[f"预报{streak}"],
+                importance=0.8,
+                strength=0.3,
+                created_at=now - timedelta(days=20),
+            )
+            item.review_streak = streak
+            engine.backend.update(item)
+            items[streak] = item.id
+        forecast = engine.practice_forecast(days=7, now=now)
+        ids = {entry["id"] for entry in forecast}
+        self.assertIn(items[0], ids)
+        self.assertIn(items[1], ids)
+        self.assertIn(items[2], ids)
+        self.assertNotIn(items[8], ids)
+        self.assertNotIn(items[9], ids)
+        due_times = [
+            datetime.fromisoformat(entry["due_at"]) for entry in forecast
+        ]
+        self.assertEqual(due_times, sorted(due_times))
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "practice_forecast", {"days": 7}
+        )
+        self.assertEqual(len(via_mcp), len(forecast))
+
     def test_mcp_practice_report_tool(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

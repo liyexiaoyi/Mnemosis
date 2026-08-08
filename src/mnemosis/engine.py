@@ -1205,6 +1205,48 @@ class MemoryEngine:
             )
         return plan
 
+    def practice_forecast(
+        self,
+        days: int = 7,
+        now: datetime | None = None,
+    ) -> list[dict]:
+        """Forecast which memories are due within the next ``days``.
+
+        Extends practice_plan into a calendar (Smolen et al., 2016
+        adaptive spacing): every active trace whose scheduled next review
+        falls inside the window is returned with its due time, so agents
+        can plan a week of reviews ahead of time.
+        """
+        from datetime import timedelta
+
+        now = now or utcnow()
+        horizon = now + timedelta(days=max(1, int(days)))
+        forecast = []
+        for item in self.store.all_active():
+            next_review = self.scheduler.next_review_at(item, now)
+            if not (now <= next_review <= horizon):
+                continue
+            forecast.append(
+                {
+                    "id": item.id,
+                    "cue": (
+                        " / ".join(item.cues[:2])
+                        if item.cues
+                        else item.content[:12]
+                    ),
+                    "due_at": next_review.isoformat(),
+                    "retrievability": round(
+                        self.curve.retrievability(item, now), 3
+                    ),
+                    "success_rate": round(
+                        self._success_rate(item), 3
+                    ),
+                    "kind": item.kind.value,
+                }
+            )
+        forecast.sort(key=lambda entry: entry["due_at"])
+        return forecast
+
     # -- sleep cycle ----------------------------------------------------------
 
     def sleep(
