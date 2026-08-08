@@ -1668,6 +1668,20 @@ class MCPServer:
                 },
             },
             {
+                "name": "cue_diversity",
+                "description": (
+                    "Check each memory's retrieval-cue breadth and flag "
+                    "single-cue or overloaded-cue memories (encoding "
+                    "specificity; Tulving & Thomson, 1973)."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "practice_due",
                 "description": (
                     "Active retrieval practice: list due memories as cues "
@@ -2412,6 +2426,10 @@ class MCPServer:
             return self.engine.nightly_routine(
                 review_limit=int(args.get("review_limit", 3)),
                 quiz_count=int(args.get("quiz_count", 3)),
+            )
+        if name == "cue_diversity":
+            return self.engine.cue_diversity(
+                limit=int(args.get("limit", 20)),
             )
         if name == "practice_due":
             kind_value = args.get("kind")

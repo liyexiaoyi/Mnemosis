@@ -3871,6 +3871,53 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(len(via_mcp["tomorrow_quiz"]), 3)
         self.assertGreaterEqual(via_mcp["sleep_inference_pairs"], 1)
 
+    def test_cue_diversity(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        a = engine.remember(
+            "单线索记忆",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["单线"],
+            auto_cues=False,
+        )
+        b = engine.remember(
+            "多线索记忆",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["多线1", "多线2", "多线3"],
+            auto_cues=False,
+        )
+        c = engine.remember(
+            "双线索记忆",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["双线1", "双线2"],
+            auto_cues=False,
+        )
+        crowded = []
+        for i in range(5):
+            item = engine.remember(
+                f"拥挤记忆 {i}",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["拥挤"],
+                auto_cues=False,
+            )
+            crowded.append(item)
+        report = engine.cue_diversity()
+        self.assertEqual(report["total_memories"], 8)
+        by_id = {row["id"]: row for row in report["rows"]}
+        self.assertEqual(by_id[a.id]["level"], "fragile")
+        self.assertEqual(by_id[b.id]["level"], "robust")
+        self.assertEqual(by_id[c.id]["level"], "ok")
+        self.assertIn("拥挤", by_id[crowded[0].id]["overloaded_cues"])
+        self.assertIn("脆弱", report["advice"])
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool("cue_diversity", {})
+        self.assertEqual(via_mcp["total_memories"], 8)
+        self.assertIn("fragile", via_mcp["level_counts"])
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

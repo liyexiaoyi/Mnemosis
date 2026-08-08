@@ -3971,6 +3971,70 @@ class MemoryEngine:
             ),
         }
 
+    def cue_diversity(
+        self,
+        *,
+        limit: int = 20,
+    ) -> dict:
+        """Check each memory's retrieval-cue breadth.
+
+        Encoding specificity (Tulving & Thomson, 1973): a memory is
+        reachable through cues present at encoding, and multiple distinct
+        cues make retrieval more robust. Single-cue memories are fragile;
+        cues shared by many memories are overloaded and weak.
+        """
+        from collections import defaultdict, Counter
+
+        items = self.store.all_active()
+        cue_counts: Counter = Counter()
+        for item in items:
+            for cue in item.cues:
+                cue_counts[cue] += 1
+        rows: list[dict] = []
+        for item in items:
+            cue_count = len(item.cues)
+            if cue_count >= 3:
+                level = "robust"
+            elif cue_count == 2:
+                level = "ok"
+            else:
+                level = "fragile"
+            overloaded = [
+                cue for cue in item.cues if cue_counts[cue] > 4
+            ]
+            rows.append(
+                {
+                    "id": item.id,
+                    "preview": item.content[:32],
+                    "cue_count": cue_count,
+                    "cues": item.cues[:4],
+                    "level": level,
+                    "overloaded_cues": overloaded[:3],
+                    "suggestion": (
+                        "线索太窄：加 1-2 个不同角度的线索，"
+                        "检索更稳（编码特异性）。"
+                        if level == "fragile" or overloaded
+                        else "线索足够：保持现状。"
+                    ),
+                }
+            )
+        rows.sort(key=lambda row: row["cue_count"])
+        counts = defaultdict(int)
+        for row in rows:
+            counts[row["level"]] += 1
+        fragile = [row for row in rows if row["level"] == "fragile"]
+        return {
+            "total_memories": len(items),
+            "level_counts": dict(counts),
+            "rows": rows[: max(1, int(limit))],
+            "advice": (
+                "有脆弱线索：单线索/超载线索记忆容易想不起来，"
+                "建议补充多角度线索（Tulving & Thomson 1973）。"
+                if fragile
+                else "线索结构良好：记忆检索路径丰富。"
+            ),
+        }
+
     def retrieval_assist(
         self,
         query: str,
