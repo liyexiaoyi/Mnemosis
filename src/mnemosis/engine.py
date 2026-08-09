@@ -53,6 +53,7 @@ _TEMPORAL_ACTION_SYNONYMS: tuple[tuple[str, str], ...] = (
     ("复查", "复诊"),
     ("维修", "检测"),
     ("选品", "上新"),
+    ("采摘", "摘", "收获", "收"),
 )
 _TEMPORAL_EXCLUSIONS: tuple[tuple[str, str], ...] = (
     ("主观题", "客观题"),
