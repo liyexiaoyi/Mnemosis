@@ -9,10 +9,11 @@ Code, Codex, or any MCP client:
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from datetime import datetime
-from typing import Any
+from typing import Any, Sequence
 
 from .engine import MemoryEngine
 from .embedding import NGramEmbedder
@@ -2811,4 +2812,23 @@ def run_stdio(db_path: str | None = None) -> None:
             sys.stdout.flush()
 
 
-__all__ = ["MCPServer", "run_stdio"]
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="mnemosis-mcp",
+        description="Mnemosis MCP server (JSON-RPC over stdio)",
+    )
+    parser.add_argument(
+        "--db",
+        default=None,
+        help="SQLite path for persistent memory (default: in-memory)",
+    )
+    args = parser.parse_args(argv)
+    run_stdio(args.db)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+
+
+__all__ = ["MCPServer", "run_stdio", "main"]
