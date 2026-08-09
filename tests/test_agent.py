@@ -4698,6 +4698,72 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
             [reason for result in off for reason in result.reasons],
         )
 
+    def test_value_anchor_recall(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        for content, cues in (
+            ("物业规定：周末禁止大噪音施工。", ["物业"]),
+            (
+                "8月20日跟邻居打过招呼：装修噪音集中在 9:00-12:00、14:00-18:00。",
+                ["邻居"],
+            ),
+            ("装修公司 A 报价 11.6 万（半包）。", ["报价"]),
+            ("9月5日开工，10 月 10 日瓦工进场。", ["施工"]),
+            ("购物清单：买牛奶和鸡蛋。", ["购物"]),
+            ("装修现场噪音很大，物业来提醒过一次。", ["噪音"]),
+            ("装修施工前要跟邻居打好招呼。", ["邻居"]),
+            ("装修期间每天清理一次垃圾。", ["垃圾"]),
+        ):
+            engine.remember(
+                content,
+                kind=MemoryKind.EPISODIC,
+                source=user,
+                cues=cues,
+                auto_cues=False,
+            )
+        query = "装修噪音施工时间是几点到几点？"
+        base_all = engine.recall(query, top_k=8, value_anchor=False)
+        base = [
+            result
+            for result in base_all
+            if "9:00-12:00" not in result.item.content
+        ][:2]
+        anchored = engine._apply_value_anchor(
+            query, list(base), top_k=2, kind=None, exclude_ids=set()
+        )
+        contents = [r.item.content for r in anchored]
+        self.assertTrue(any("9:00-12:00" in c for c in contents))
+        self.assertTrue(
+            any(
+                "数值锚点" in reason
+                for result in anchored
+                for reason in result.reasons
+            )
+        )
+        # a query without a value marker gets no value anchor
+        plain_query = "周末能不能施工？"
+        plain = engine._apply_value_anchor(
+            plain_query,
+            list(engine.recall(plain_query, top_k=2, value_anchor=False)),
+            top_k=2,
+            kind=None,
+            exclude_ids=set(),
+        )
+        self.assertNotIn(
+            "数值锚点",
+            [reason for result in plain for reason in result.reasons],
+        )
+        # disabled explicitly
+        off = engine.recall(
+            query,
+            top_k=2,
+            value_anchor=False,
+        )
+        self.assertNotIn(
+            "数值锚点",
+            [reason for result in off for reason in result.reasons],
+        )
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

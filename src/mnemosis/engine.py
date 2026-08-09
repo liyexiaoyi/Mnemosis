@@ -224,6 +224,7 @@ class MemoryEngine:
         kind_preference: bool = True,
         concept_coverage: bool = True,
         entity_anchor: bool = True,
+        value_anchor: bool = True,
         exclude_ids: set[str] | None = None,
     ) -> list[RecallResult]:
         embedder = embedder or self.embedder
@@ -296,6 +297,14 @@ class MemoryEngine:
             )
         if entity_anchor:
             results = self._apply_entity_anchor(
+                query,
+                results,
+                top_k=top_k,
+                kind=kind,
+                exclude_ids=exclude_ids,
+            )
+        if value_anchor:
+            results = self._apply_value_anchor(
                 query,
                 results,
                 top_k=top_k,
@@ -500,6 +509,9 @@ class MemoryEngine:
 
     _ENTITY_QUESTION_RE = None
     _ENTITY_RECORD_RE = None
+    _VALUE_QUESTION_RE = None
+    _VALUE_PATTERN_RE = None
+    _TIME_RANGE_RE = None
 
     def _apply_entity_anchor(
         self,
@@ -564,6 +576,76 @@ class MemoryEngine:
         for score, candidate in candidates[:1]:
             result = RecallResult(candidate, score)
             result.reasons.append("实体锚点(编号记录)")
+            results.append(result)
+        results.sort(key=lambda result: result.score, reverse=True)
+        return results[: max(1, int(top_k))]
+
+    def _apply_value_anchor(
+        self,
+        query: str,
+        results: list[RecallResult],
+        *,
+        top_k: int,
+        kind: MemoryKind | None,
+        exclude_ids: set[str],
+    ) -> list[RecallResult]:
+        """Anchor value questions to the record that carries the answer.
+
+        Questions like "几点到几点/多少/几号/什么时间" are often matched
+        by a rule or summary memory while the record that actually carries
+        the time range or quantity ranks just below top-k. This post-pass
+        inserts the best value-carrying record (time ranges preferred for
+        time questions) into the top-k with an 数值锚点 reason.
+        """
+        import re
+
+        from .types import tokenize
+
+        if self._VALUE_QUESTION_RE is None:
+            self._VALUE_QUESTION_RE = re.compile(
+                r"(几点|几点到几点|什么时间|什么时候|几号|多少|"
+                r"哪几天|多少钱|多久|几点开始|几点结束)"
+            )
+            self._VALUE_PATTERN_RE = re.compile(
+                r"\d{1,2}:\d{2}"
+                r"|\d+\s*月\s*\d+\s*日"
+                r"|\d+(?:\.\d+)?\s*(?:元|块|天|件|平|平米|%|期|mg|克|kg|万)"
+            )
+            self._TIME_RANGE_RE = re.compile(
+                r"\d{1,2}:\d{2}\s*[-—~至到]\s*\d{1,2}:\d{2}"
+            )
+        if not self._VALUE_QUESTION_RE.search(query) or not results:
+            return results
+        seen = {result.item.id for result in results}
+        query_terms = self._concept_terms(query)
+        if not query_terms:
+            return results
+        time_marker = bool(
+            re.search(r"几点|什么时间|几点到几点", query)
+        )
+        candidates: list[tuple[float, MemoryItem]] = []
+        for item in self.store.all_active(kind=kind):
+            if item.id in seen or item.id in exclude_ids:
+                continue
+            if not self._VALUE_PATTERN_RE.search(item.content):
+                continue
+            text = item.content + " " + " ".join(item.cues)
+            item_terms = set(tokenize(text))
+            overlap = len(query_terms & item_terms)
+            if overlap < 2:
+                continue
+            score = (
+                0.62
+                if time_marker and self._TIME_RANGE_RE.search(item.content)
+                else 0.60
+            )
+            candidates.append((score, item))
+        if not candidates:
+            return results
+        candidates.sort(key=lambda pair: (-pair[0], pair[1].id))
+        for score, candidate in candidates[:1]:
+            result = RecallResult(candidate, score)
+            result.reasons.append("数值锚点(值记录)")
             results.append(result)
         results.sort(key=lambda result: result.score, reverse=True)
         return results[: max(1, int(top_k))]
