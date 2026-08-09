@@ -4764,6 +4764,44 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
             [reason for result in off for reason in result.reasons],
         )
 
+    def test_value_anchor_money_preference(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        for content, cues in (
+            ("2026年2月10日试营业：招牌牛肉面 18 元。", ["牛肉面"]),
+            ("2026年5月5日上了新品：豌杂面 22 元。", ["豌杂面"]),
+            ("2026年3月10日第一次盘点：牛肉面日销 80 碗。", ["盘点"]),
+            ("2026年3月5日供应商报价：面粉 2.4 元/斤，牛肉 32 元/斤。", ["供应商"]),
+            ("营业时间：早 8 点到晚 10 点，周一休息。", ["营业时间"]),
+        ):
+            engine.remember(
+                content,
+                kind=MemoryKind.EPISODIC,
+                source=user,
+                cues=cues,
+                auto_cues=False,
+            )
+        query = "招牌牛肉面多少钱？豌杂面呢？"
+        base = [
+            result
+            for result in engine.recall(query, top_k=6, value_anchor=False)
+            if "豌杂面" not in result.item.content
+        ][:4]
+        # 豌杂面 record must be anchored even when a dated 盘点 row
+        # (日销 80 碗) also matches the overlap gate
+        anchored = engine._apply_value_anchor(
+            query, list(base), top_k=4, kind=None, exclude_ids=set()
+        )
+        contents = [r.item.content for r in anchored]
+        self.assertTrue(any("豌杂面 22 元" in c for c in contents))
+        self.assertTrue(
+            any(
+                "数值锚点" in reason
+                for result in anchored
+                for reason in result.reasons
+            )
+        )
+
     def test_temporal_anchor_recall(self) -> None:
         engine = MemoryEngine()
         user = SourceRecord(origin=SourceType.USER)

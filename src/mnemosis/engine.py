@@ -523,6 +523,8 @@ class MemoryEngine:
     _VALUE_QUESTION_RE = None
     _VALUE_PATTERN_RE = None
     _TIME_RANGE_RE = None
+    _MONEY_QUESTION_RE = None
+    _MONEY_PATTERN_RE = None
     _TEMPORAL_PAST_RE = re.compile(
         r"上次|上一次|最近|最新|刚才|最后一次|前一次|"
         r"什么时候[^？?]{0,6}(?:的|了)"
@@ -661,6 +663,12 @@ class MemoryEngine:
             self._TIME_RANGE_RE = re.compile(
                 r"\d{1,2}:\d{2}\s*[-—~至到]\s*\d{1,2}:\d{2}"
             )
+            self._MONEY_QUESTION_RE = re.compile(
+                r"多少钱|价格|费用|价钱|多少元|几块"
+            )
+            self._MONEY_PATTERN_RE = re.compile(
+                r"\d+(?:\.\d+)?\s*(?:元|块|万)"
+            )
         if not self._VALUE_QUESTION_RE.search(query) or not results:
             return results
         seen = {result.item.id for result in results}
@@ -670,6 +678,7 @@ class MemoryEngine:
         time_marker = bool(
             re.search(r"几点|什么时间|几点到几点", query)
         )
+        money_marker = bool(self._MONEY_QUESTION_RE.search(query))
         candidates: list[tuple[float, MemoryItem]] = []
         for item in self.store.all_active(kind=kind):
             if item.id in seen or item.id in exclude_ids:
@@ -681,11 +690,16 @@ class MemoryEngine:
             overlap = len(query_terms & item_terms)
             if overlap < 2:
                 continue
-            score = (
-                0.62
-                if time_marker and self._TIME_RANGE_RE.search(item.content)
-                else 0.60
-            )
+            # A money question ("多少钱/价格") must anchor a record that
+            # carries an amount (元/块/万), not any dated value record
+            # like "日销 80 碗" (number-line units; Dehaene & Brannon,
+            # 2011: the unit is part of the quantity).
+            if money_marker and self._MONEY_PATTERN_RE.search(item.content):
+                score = 0.62
+            elif time_marker and self._TIME_RANGE_RE.search(item.content):
+                score = 0.62
+            else:
+                score = 0.60
             candidates.append((score, item))
         if not candidates:
             return results
