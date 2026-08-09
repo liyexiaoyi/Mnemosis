@@ -29,7 +29,7 @@ from .types import (
     utcnow,
 )
 
-_TEMPORAL_VERB_STEMS = frozenset("修补打交买续复查检看办发报学装")
+_TEMPORAL_VERB_STEMS = frozenset("修补打交买续复查检看办发报学装退")
 
 
 class MemoryEngine:

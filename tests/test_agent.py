@@ -5132,6 +5132,8 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
             ("2026年8月1日预约 8 月 12 日三保。", ["三保"]),
             ("2026年3月20日托福二考：总分 104。", ["托福"]),
             ("2026年6月20日体能考核：3 分钟平板支撑。", ["考核"]),
+            ("2026年2月12日退货成功，退款 599 元。", ["退货"]),
+            ("2026年7月15日退款 268 元到账。", ["退款"]),
         ):
             engine.remember(
                 content,
@@ -5181,6 +5183,22 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
                 for result in anchored
             )
         )
+        # 退 is a verb stem: 退货 matches 退款 (7月15日 is the latest)
+        base = engine.recall(
+            "上次退货是什么时候？退了多少钱？",
+            top_k=4,
+            temporal_anchor=False,
+        )
+        anchored = engine._apply_temporal_anchor(
+            "上次退货是什么时候？退了多少钱？",
+            list(base),
+            top_k=4,
+            kind=None,
+            exclude_ids=set(),
+            now=now,
+        )
+        contents = [r.item.content for r in anchored]
+        self.assertTrue(any("7月15日退款 268 元" in c for c in contents))
 
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
