@@ -155,7 +155,7 @@ mnemosis mcp --db memory.db   # or: mnemosis-mcp --db memory.db
 ## Testing
 
 ```bash
-python -m unittest discover -s tests -q   # 319 unit tests
+python -m unittest discover -s tests -q   # 320 unit tests
 python benchmarks/locomo_bench.py --mode keyword   # LoCoMo-style long dialogue
 ```
 
