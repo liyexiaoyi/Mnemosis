@@ -8,19 +8,19 @@ and recall by similarity. Mnemosis instead treats memory as a **lifecycle** —
 remembering, reinforcing, consolidating, forgetting, and reconciling — the way
 human memory actually works.
 
-[![PyPI version](https://img.shields.io/pypi/v/mnemosis.svg)](https://pypi.org/project/mnemosis/)
-[![Python versions](https://img.shields.io/pypi/pyversions/mnemosis.svg)](https://pypi.org/project/mnemosis/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/liyexiaoyi/Mnemosis/actions/workflows/ci.yml/badge.svg)](https://github.com/liyexiaoyi/Mnemosis/actions/workflows/ci.yml)
 
 ## Install
 
 ```bash
-pip install mnemosis
+pip install git+https://github.com/liyexiaoyi/Mnemosis.git
 ```
 
 Zero runtime dependencies (pure Python stdlib + SQLite). No server, no cloud
 embeddings required — optional embedder hooks only.
+
+> PyPI 版（`pip install mnemosis`）发布后会在这里同步更新。
 
 ## Quick start
 
@@ -50,7 +50,7 @@ engine.sleep()  # offline consolidation: dedupe, promote, detect contradictions
 ## 中文快速开始
 
 ```bash
-pip install mnemosis
+pip install git+https://github.com/liyexiaoyi/Mnemosis.git
 ```
 
 ```python
@@ -81,7 +81,7 @@ for r in engine.recall("用户用什么语言聊天？", top_k=3):
 一分钟完整演示（记住 → 检索 → 新旧矛盾 → 睡眠整合 → 元认知 → 遗忘回收）：
 
 ```bash
-pip install mnemosis
+pip install git+https://github.com/liyexiaoyi/Mnemosis.git
 python examples/demo.py          # 仓库内
 ```
 

@@ -1,7 +1,7 @@
 """Mnemosis 一分钟体验（中文场景，零依赖）。
 
 安装后直接运行：
-    pip install mnemosis
+    pip install git+https://github.com/liyexiaoyi/Mnemosis.git
     python demo.py
 
 演示：记住 -> 检索 -> 新旧矛盾 -> 睡眠整合 -> 元认知 -> 遗忘回收。

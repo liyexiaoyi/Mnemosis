@@ -7,7 +7,7 @@ Mnemosis 自带一个**零依赖的 MCP 服务器**（JSON-RPC 2.0，走标准�
 ## 第一步：安装
 
 ```bash
-pip install mnemosis
+pip install git+https://github.com/liyexiaoyi/Mnemosis.git
 ```
 
 安装后会提供两个命令：
