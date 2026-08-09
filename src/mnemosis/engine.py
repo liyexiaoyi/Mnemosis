@@ -770,12 +770,16 @@ class MemoryEngine:
         if self._VALUE_QUESTION_RE is None:
             self._VALUE_QUESTION_RE = re.compile(
                 r"(几点|几点到几点|什么时间|什么时候|几号|多少|"
-                r"哪几天|多少钱|多久|几点开始|几点结束)"
+                r"哪几天|多少钱|多久|几点开始|几点结束|"
+                r"几餐|几套|几件|几节|几杯|几盒|几斤|几个人|几小时)"
             )
             self._VALUE_PATTERN_RE = re.compile(
                 r"\d{1,2}:\d{2}"
                 r"|\d+\s*月\s*\d+\s*日"
-                r"|\d+(?:\.\d+)?\s*(?:元|块|天|件|平|平米|%|期|mg|克|kg|万)"
+                r"|\d+(?:\.\d+)?\s*(?:元|块|天|件|平|平米|%|期|mg|克|kg|万|"
+                r"餐|套|节|杯|盒|斤|人|小时)"
+                r"|[一二两三四五六七八九十]+\s*(?:餐|套|节|杯|盒|斤|人|"
+                r"小时|天)"
             )
             self._TIME_RANGE_RE = re.compile(
                 r"\d{1,2}:\d{2}\s*[-—~至到]\s*\d{1,2}:\d{2}"
@@ -799,6 +803,11 @@ class MemoryEngine:
                 continue
             seen_flag = item.id in seen
             if not money_marker and seen_flag:
+                continue
+            # Money questions anchor only records that carry an amount:
+            # a dated notice (开放日 5月22日) must not compete with the
+            # actual price record just because it shares the domain term.
+            if money_marker and not _MONEY_PAT_RE.search(item.content):
                 continue
             if not self._VALUE_PATTERN_RE.search(item.content):
                 continue
