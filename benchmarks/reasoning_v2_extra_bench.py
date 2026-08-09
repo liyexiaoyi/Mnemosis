@@ -16,8 +16,6 @@ import json
 import os
 import re
 import sys
-import time
-import urllib.request
 
 os.environ["MEM0_TELEMETRY"] = "False"
 
@@ -69,7 +67,7 @@ def _answer_cloud(q: str, context: list[str]) -> str:
     prompt = (
         "只用下面的记忆上下文回答中文问题；上下文里没有答案就回答'unknown'。"
         "需要计算时先算清楚再回答。\n\n"
-        f"上下文：\n" + "\n".join(f"- {c}" for c in context)
+        "上下文：\n" + "\n".join(f"- {c}" for c in context)
         + f"\n\n问题：{q}"
     )
     return cloud_generate(prompt, max_tokens=400)

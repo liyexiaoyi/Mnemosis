@@ -26,7 +26,6 @@ import json
 import os
 import shutil
 import sys
-import time
 import urllib.request
 
 _BENCH = os.path.dirname(os.path.abspath(__file__))

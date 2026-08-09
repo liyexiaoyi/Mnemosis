@@ -178,7 +178,7 @@ def _run(combined: bool) -> dict:
             query = f"总结一下{key}喜欢什么颜色？"
             kwargs = {}
         elif kind == "context":
-            query = f"讨论过的方案是什么？"
+            query = "讨论过的方案是什么？"
             idx = int(key[3:])
             kwargs = {"context": f"正在{locs[idx]}里开会"}
         else:

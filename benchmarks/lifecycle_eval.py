@@ -368,7 +368,7 @@ def main() -> int:
     print(f"  retention after {args.days} days:")
     print(f"    reviewed weekly : {decay['reviewed_retention']:.3f}")
     print(f"    never reviewed  : {decay['unreviewed_retention']:.3f}")
-    print(f"  avg recall score of the correct memory:")
+    print("  avg recall score of the correct memory:")
     print(f"    reviewed weekly : {decay['reviewed_avg_score']:.3f}")
     print(f"    never reviewed  : {decay['unreviewed_avg_score']:.3f}")
     print(

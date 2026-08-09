@@ -6,7 +6,6 @@ import unittest
 from datetime import timedelta
 
 from mnemosis import MemoryEngine
-from mnemosis.forgetting import ForgettingCurve, ReviewScheduler
 from mnemosis.types import MemoryItem, MemoryKind, SourceRecord, SourceType, utcnow
 
 
@@ -25,10 +24,9 @@ class DesirableDifficultyTests(unittest.TestCase):
     def test_due_items_prefer_moderate_difficulty(self) -> None:
         engine = MemoryEngine()
         # same importance; retrievability ~ strength * exp(-0.002*age*24)
-        easy = _item(engine, 0.55, age_days=1)    # ~0.52 -> not due? 0.52 > 0.5
+        _item(engine, 0.55, age_days=1)    # ~0.52 -> not due? 0.52 > 0.5
         moderate = _item(engine, 0.5, age_days=3)  # ~0.43
         hard = _item(engine, 0.5, age_days=30)     # ~0.12
-        items = [easy, moderate, hard]
         now = utcnow()
         chosen = engine.review_due(
             limit=3, now=now, desirable_difficulty=True

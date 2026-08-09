@@ -143,7 +143,7 @@ def main() -> int:
                 prompt = (
                     "只用下面的记忆上下文回答中文问题；上下文里没有答案就回答'unknown'。"
                     "如果有步骤请按时间顺序列出。\n\n"
-                    f"上下文：\n" + "\n".join(f"- {c}" for c in context)
+                    "上下文：\n" + "\n".join(f"- {c}" for c in context)
                     + f"\n\n问题：{s['question']}"
                 )
                 answer = cloud_generate(prompt, max_tokens=400)

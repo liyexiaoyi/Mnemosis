@@ -132,8 +132,8 @@ def main() -> int:
             answer = cloud_generate(
                 "下面是两个参考计划和执行记录。给大壮做京都旅行计划，"
                 "参考谁的计划更可靠？只回答人名。\n\n"
-                f"参考计划：\n" + "\n".join(f"- {c}" for c in contents)
-                + f"\n\n执行记录：\n"
+                "参考计划：\n" + "\n".join(f"- {c}" for c in contents)
+                + "\n\n执行记录：\n"
                 + "\n".join(f"- {c}" for c in outcome_records)
                 + f"\n\n问题：{GOAL}"
             )

@@ -14,7 +14,6 @@ import os
 import subprocess
 import sys
 import tempfile
-import json
 
 _BENCH = os.path.dirname(os.path.abspath(__file__))
 _SRC = os.path.normpath(os.path.join(_BENCH, "..", "src"))

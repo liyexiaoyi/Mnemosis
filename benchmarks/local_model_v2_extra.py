@@ -35,7 +35,7 @@ def main() -> int:
         MODEL,
         "下面是重新规划后的参考计划。请为大壮写出调整后的旅行步骤计划，"
         "每步一行，避免失败过的步骤。\n\n"
-        f"上下文：\n" + "\n".join(f"- {c}" for c in plan_ctx)
+        "上下文：\n" + "\n".join(f"- {c}" for c in plan_ctx)
         + f"\n\n目标：{GOAL}",
         URL,
         timeout=60,
@@ -57,7 +57,7 @@ def main() -> int:
     answer2 = ollama_generate(
         MODEL,
         "只用下面的记忆上下文回答；没有就答unknown。\n\n"
-        f"上下文：\n" + "\n".join(f"- {c}" for c in ctx)
+        "上下文：\n" + "\n".join(f"- {c}" for c in ctx)
         + "\n\n问题：哪个步骤出现过意外失败？",
         URL,
         timeout=60,

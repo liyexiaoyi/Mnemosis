@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import unittest
-from datetime import date, timedelta
+from datetime import date
 
 from mnemosis import MemoryEngine
 from mnemosis.temporal_reason import (
@@ -16,7 +16,6 @@ from mnemosis.types import MemoryKind, SourceRecord, SourceType, tokenize
 def _engine_with_chain() -> MemoryEngine:
     engine = MemoryEngine()
     source = SourceRecord(origin=SourceType.USER)
-    start = date(2026, 3, 1)
     events = [
         ("alice bought camera on 2026-03-01.", "alice", "2026-03-01"),
         ("alice visited kyoto on 2026-03-02.", "alice", "2026-03-02"),

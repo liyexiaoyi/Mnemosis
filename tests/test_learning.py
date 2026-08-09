@@ -148,7 +148,6 @@ class LearningTest(unittest.TestCase):
     def test_review_outcome_adaptive_spacing(self):
         """engine.review() drives the adaptive scheduler: success grows the
         streak and next interval; failure resets it (Smolen et al., 2016)."""
-        from datetime import timedelta
         item = self.remember("A scheduled memory.")
         now = utcnow()
         storage_before = item.storage_strength
@@ -185,12 +184,12 @@ class LearningTest(unittest.TestCase):
         """Walker & Stickgold (2004): REM integrates associations and
         reconciles contradictory memories."""
         now = utcnow()
-        a = self.remember(
+        self.remember(
             "Alice visited the harbor on 2026-02-01.",
             kind=MemoryKind.EPISODIC,
             cues=["alice", "harbor", "trip"],
         )
-        b = self.remember(
+        self.remember(
             "Alice visited the aquarium on 2026-02-02.",
             kind=MemoryKind.EPISODIC,
             cues=["alice", "harbor", "trip"],
@@ -200,7 +199,7 @@ class LearningTest(unittest.TestCase):
             confidence=0.9,
             cues=["deadline"],
         )
-        c2 = self.remember(
+        self.remember(
             "The deadline is Monday.",
             confidence=0.9,
             cues=["deadline"],

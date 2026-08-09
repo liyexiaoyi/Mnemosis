@@ -118,7 +118,7 @@ def chart_zh_llm() -> str:
         draw.line([(60, y), (W - 60, y)], fill="#e5e5e5", width=1)
         draw.text((25, y - 10), label, fill="#666", font=f_val)
     draw.text((40, 470),
-              f"裸答 25% → 接记忆 83%：中文内容先检索再回答，提升 58 个百分点。",
+              "裸答 25% → 接记忆 83%：中文内容先检索再回答，提升 58 个百分点。",
               fill="#111", font=f_note)
     draw.text((40, 515),
               "和英文矩阵结论一致：Mnemosis 给模型的中文上下文同样有效。",

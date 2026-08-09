@@ -19,7 +19,7 @@ sys.path.insert(0, _BENCH)
 sys.path.insert(0, _SRC)
 
 from mnemosis import MemoryEngine  # noqa: E402
-from mnemosis.types import MemoryKind, MemoryStatus, SourceRecord, SourceType  # noqa: E402
+from mnemosis.types import MemoryKind, SourceRecord, SourceType  # noqa: E402
 
 
 def _run_pair(seed: int, lopsided: bool) -> dict:

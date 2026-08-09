@@ -11,8 +11,6 @@ import argparse
 import json
 import os
 import sys
-import time
-import urllib.request
 
 os.environ["MEM0_TELEMETRY"] = "False"
 

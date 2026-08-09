@@ -82,7 +82,7 @@ def main() -> int:
         ctx = [r.item.content for r in summary]
         answer = cloud_generate(
             "只用下面的记忆上下文回答；没有就答unknown。\n\n"
-            f"上下文：\n" + "\n".join(f"- {c}" for c in ctx)
+            "上下文：\n" + "\n".join(f"- {c}" for c in ctx)
             + "\n\n问题：订机票的历史成功率是多少？"
         )
         report["llm"] = {

@@ -17,7 +17,6 @@ _SRC = os.path.normpath(os.path.join(_BENCH, "..", "src"))
 sys.path.insert(0, _BENCH)
 sys.path.insert(0, _SRC)
 
-from final_matrix_build import _codex_en_scores  # noqa: E402
 
 
 def _load(path: str):

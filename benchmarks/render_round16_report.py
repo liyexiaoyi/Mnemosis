@@ -50,7 +50,7 @@ def chart_e2e() -> str:
         draw.text((90, y), s["name"], fill="#111", font=f_row)
         draw.line([(30, y + 24), (W - 30, y + 24)], fill="#e5e5e5", width=1)
     draw.text((40, y + 40),
-              f"覆盖：记住（中文/虚词）→ 回忆（跨格式日期）→ 没聊过不乱说 → "
+              "覆盖：记住（中文/虚词）→ 回忆（跨格式日期）→ 没聊过不乱说 → "
               "睡眠巩固 → 统计 → 更新事实 → 复习 → 工作集。",
               fill="#555", font=f_val)
     path = os.path.join(_OUT, "round16_e2e_cli.png")

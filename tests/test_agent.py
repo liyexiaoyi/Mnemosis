@@ -1240,7 +1240,7 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
             "bbb keep me", kind=MemoryKind.SEMANTIC, source=user,
             cues=["sup-b"], auto_cues=False,
         )
-        c = engine.remember(
+        engine.remember(
             "ccc keep me too", kind=MemoryKind.SEMANTIC, source=user,
             cues=["sup-c"], auto_cues=False,
         )
@@ -1451,10 +1451,10 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         i1 = engine.remember_intent("call a", due_at=now + timedelta(minutes=10))
         i2 = engine.remember_intent("call b", due_at=now + timedelta(minutes=20))
         i3 = engine.remember_intent("later", due_at=now + timedelta(hours=2))
-        i4 = engine.remember_intent(
+        engine.remember_intent(
             "office a", due_at=now + timedelta(days=1), context_cue="office"
         )
-        i5 = engine.remember_intent(
+        engine.remember_intent(
             "office b", due_at=now + timedelta(days=2), context_cue="office"
         )
         result = engine.intent_conflicts(time_window_minutes=60)
@@ -1808,10 +1808,10 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         engine = MemoryEngine()
         now = utcnow()
         i1 = engine.remember_intent("soon a", due_at=now + timedelta(minutes=10))
-        i2 = engine.remember_intent("soon b", due_at=now + timedelta(minutes=20))
+        engine.remember_intent("soon b", due_at=now + timedelta(minutes=20))
         i3 = engine.remember_intent("later", due_at=now + timedelta(hours=2))
         i4 = engine.remember_intent("overdue", due_at=now - timedelta(hours=1))
-        i5 = engine.remember_intent(
+        engine.remember_intent(
             "office a", due_at=now + timedelta(days=1), context_cue="office"
         )
         i6 = engine.remember_intent(
@@ -2397,11 +2397,11 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
     def test_plan_support(self) -> None:
         engine = MemoryEngine()
         user = SourceRecord(origin=SourceType.USER)
-        m1 = engine.remember(
+        engine.remember(
             "需求文档已确认", kind=MemoryKind.SEMANTIC, source=user,
             cues=["需求"], auto_cues=False,
         )
-        m2 = engine.remember(
+        engine.remember(
             "上线检查清单", kind=MemoryKind.SEMANTIC, source=user,
             cues=["上线"], auto_cues=False,
         )

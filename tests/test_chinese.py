@@ -16,7 +16,6 @@ from mnemosis.types import (
 class ChineseOptimizationTest(unittest.TestCase):
     def test_chinese_function_words_are_filtered(self) -> None:
         tokens = tokenize("请问阿丽最喜欢的颜色是什么？")
-        joined = " ".join(tokens)
         self.assertIn("颜色", tokens)
         self.assertIn("阿丽", tokens)
         for noise in ("请", "问", "的", "最", "什", "么", "是"):

@@ -108,7 +108,7 @@ def main() -> int:
         answer = cloud_generate(
             "下面是重新规划后的参考计划。请为大壮写出调整后的旅行步骤计划，"
             "每步一行，避免失败过的步骤。\n\n"
-            f"上下文：\n" + "\n".join(f"- {c}" for c in replan_contents)
+            "上下文：\n" + "\n".join(f"- {c}" for c in replan_contents)
             + f"\n\n目标：{GOAL}"
         )
         report["llm"] = {

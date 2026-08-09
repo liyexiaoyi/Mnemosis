@@ -170,7 +170,7 @@ def _run_backend(backend: dict) -> dict:
         plan_answer = _cloud(
             "下面是记忆上下文。请为问题中的目标写一个按时间顺序的步骤计划，"
             "每步一行，只列步骤。\n\n"
-            f"上下文：\n" + "\n".join(f"- {c}" for c in plan_ctx)
+            "上下文：\n" + "\n".join(f"- {c}" for c in plan_ctx)
             + f"\n\n目标：{s['goal']}"
         )
         # record the outcome
@@ -203,7 +203,7 @@ def _run_backend(backend: dict) -> dict:
             out_ctx = [r.get("memory", "") for r in resp.get("results", [])]
         out_answer = _cloud(
             "只用下面的记忆上下文回答；没有就答unknown。\n\n"
-            f"上下文：\n" + "\n".join(f"- {c}" for c in out_ctx)
+            "上下文：\n" + "\n".join(f"- {c}" for c in out_ctx)
             + f"\n\n问题：{s['outcome_question']}"
         )
         rows.append(
@@ -246,7 +246,7 @@ def _run_backend(backend: dict) -> dict:
             ctx = [r.get("memory", "") for r in resp.get("results", [])]
         answer = _cloud(
             "只用下面的记忆上下文回答；没有就答unknown。\n\n"
-            f"上下文：\n" + "\n".join(f"- {c}" for c in ctx)
+            "上下文：\n" + "\n".join(f"- {c}" for c in ctx)
             + f"\n\n问题：{jq['q']}"
         )
         if jq["answer"] == "unknown":

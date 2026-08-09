@@ -23,7 +23,6 @@ import re
 import sys
 import time
 import urllib.request
-from datetime import date, timedelta
 
 os.environ["MEM0_TELEMETRY"] = "False"
 
@@ -143,7 +142,7 @@ def _answer_cloud(question: str, context: list[str]) -> str:
     prompt = (
         "只用下面的记忆上下文回答中文问题；如果上下文里有步骤，请按时间顺序"
         "列出关键步骤，每步一行。\n\n"
-        f"上下文：\n" + "\n".join(f"- {c}" for c in context)
+        "上下文：\n" + "\n".join(f"- {c}" for c in context)
         + f"\n\n问题：{question}"
     )
     return cloud_generate(prompt, max_tokens=600)

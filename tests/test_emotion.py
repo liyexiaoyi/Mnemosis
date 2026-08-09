@@ -102,7 +102,7 @@ class EmotionalConsolidationTest(unittest.TestCase):
         user = SourceRecord(origin=SourceType.USER)
         engine = MemoryEngine()
         now = utcnow()
-        item = engine.remember(
+        engine.remember(
             "Alice was thrilled about the new office.",
             kind=MemoryKind.EPISODIC,
             source=user,

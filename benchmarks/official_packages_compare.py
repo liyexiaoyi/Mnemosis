@@ -147,7 +147,6 @@ def run_cognitive_memory(dataset: dict, questions: list[dict], top_k: int = 5) -
     different API).
     """
     import subprocess
-    import tempfile
 
     work = os.path.normpath(
         os.path.join(_BENCH_DIR, "..", "..", "work")
@@ -158,7 +157,6 @@ def run_cognitive_memory(dataset: dict, questions: list[dict], top_k: int = 5) -
     out_file = os.path.join(work, "cm_result.json")
     system_python = sys.executable
     # prefer the system interpreter where 0.5.1 is installed
-    import shutil
     candidates = [r"C:\Python314\python.exe", system_python]
     for cand in candidates:
         if os.path.exists(cand):
@@ -173,38 +171,6 @@ def run_cognitive_memory(dataset: dict, questions: list[dict], top_k: int = 5) -
     )
     with open(out_file, encoding="utf-8") as handle:
         return json.load(handle)
-
-    mem = SyncCognitiveMemory(embedder="hash")
-    t0 = time.perf_counter()
-    for memory in dataset["facts"] + dataset["events"]:
-        mem.add(
-            memory["content"],
-            category="core" if memory["kind"] == "semantic" else "episodic",
-        )
-    ingest = time.perf_counter() - t0
-
-    stats = _new_stats()
-    t0 = time.perf_counter()
-    for question in questions:
-        kind = question["kind"]
-        stats[kind]["n"] += 1
-        if kind == "distractor":
-            resp = mem.search(question["q"], top_k=top_k)
-            relevant = [
-                r for r in resp.results if r.relevance_score > 0.05
-            ]
-            stats[kind]["pass"] += int(len(relevant) == 0)
-            continue
-        resp = mem.search(question["q"], top_k=top_k)
-        contents = [r.memory.content for r in resp.results]
-        expected = _expected(question)
-        stats[kind]["hit1"] += int(bool(contents) and _hit(contents[0], expected))
-        stats[kind]["hit5"] += int(any(_hit(c, expected) for c in contents))
-    search = time.perf_counter() - t0
-    report = _summarize(stats, "cognitive-memory 官方包 (0.5.1)")
-    report["ingest_seconds"] = round(ingest, 1)
-    report["search_seconds"] = round(search, 1)
-    return report
 
 
 def run_mnemosis(

@@ -43,7 +43,7 @@ def _answer_cloud(question: str, context: list[str]) -> str:
 
     prompt = (
         "只用下面的记忆上下文回答中文问题；上下文里没有答案就回答'unknown'。\n\n"
-        f"上下文：\n" + "\n".join(f"- {c}" for c in context)
+        "上下文：\n" + "\n".join(f"- {c}" for c in context)
         + f"\n\n问题：{question}"
     )
     return cloud_generate(prompt, max_tokens=200)

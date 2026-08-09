@@ -11,7 +11,7 @@ import argparse
 import json
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 _BENCH = os.path.dirname(os.path.abspath(__file__))
 _SRC = os.path.normpath(os.path.join(_BENCH, "..", "src"))

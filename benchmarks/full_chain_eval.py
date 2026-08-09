@@ -12,7 +12,6 @@ retrieval boosts. Expect full >= baseline with a clear margin.
 from __future__ import annotations
 
 import argparse
-import copy
 import json
 import os
 import random

@@ -6336,7 +6336,6 @@ class MemoryEngine:
         ]
         ref_persons: list[str] = []
         if plan_reuse:
-            import re as _re
 
             found = re.findall(
                 r"(?:参考|参照|学|模仿|按照|像)([\u4e00-\u9fff]{2})"
@@ -6487,7 +6486,6 @@ class MemoryEngine:
         constraints get a deep plan. Constraint words: 预算/人数/时间/地点/
         要求/限制/完整/全部/按顺序; references: 参考/参照/学/模仿/按照/像.
         """
-        import re as _re
 
         refs = len(re.findall(
             r"(?:参考|参照|学|模仿|按照|像)([\u4e00-\u9fff]{2})"
@@ -6588,7 +6586,6 @@ class MemoryEngine:
         base 8, +2 per referenced person ("参考阿丽和小波"), +2 for chain
         or multi-step hints, capped at 14.
         """
-        import re as _re
 
         size = 8
         refs = re.findall(

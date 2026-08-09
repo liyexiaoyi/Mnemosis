@@ -72,7 +72,7 @@ def main() -> int:
     plan_answer = _cloud(
         "下面是记忆上下文。请为问题中的目标写一个按时间顺序的步骤计划，"
         "每步一行。\n\n"
-        f"上下文：\n" + "\n".join(f"- {c}" for c in plan_contents)
+        "上下文：\n" + "\n".join(f"- {c}" for c in plan_contents)
         + f"\n\n目标：{PLAN_GOAL}"
     )
     report["agent_plan_coverage"] = int(
@@ -102,7 +102,7 @@ def main() -> int:
     recall_contents = [r["content"] for r in recall_result]
     judge_answer = _cloud(
         "只用下面的记忆上下文回答；没有就答unknown。\n\n"
-        f"上下文：\n" + "\n".join(f"- {c}" for c in recall_contents)
+        "上下文：\n" + "\n".join(f"- {c}" for c in recall_contents)
         + "\n\n问题：大壮京都旅行计划中哪一步出了问题？"
     )
     report["agent_judge_outcome"] = int("订机票" in judge_answer)
@@ -112,7 +112,7 @@ def main() -> int:
     check = server._call_tool("check", {"query": "阿丽上次旅行顺利吗？", "top_k": 3})
     gap_answer = _cloud(
         "只用下面的记忆上下文回答；没有就答unknown。\n\n"
-        f"上下文：\n" + "\n".join(f"- {i['content']}" for i in check["items"])
+        "上下文：\n" + "\n".join(f"- {i['content']}" for i in check["items"])
         + "\n\n问题：阿丽上次旅行顺利吗？"
     )
     report["agent_gap_unknown"] = int("unknown" in gap_answer.lower())

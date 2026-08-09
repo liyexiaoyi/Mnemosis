@@ -119,7 +119,7 @@ def main() -> int:
         prompt = (
             "Answer using ONLY the memory context below. "
             "If the context lacks the answer, answer 'unknown'.\n\n"
-            f"Context:\n" + "\n".join(f"- {c}" for c in contexts) +
+            "Context:\n" + "\n".join(f"- {c}" for c in contexts) +
             f"\n\nQuestion: {question['q']}"
         )
         start = time.perf_counter()

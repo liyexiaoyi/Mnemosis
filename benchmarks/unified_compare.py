@@ -12,7 +12,6 @@ import argparse
 import json
 import os
 import sys
-import time
 from collections import defaultdict
 
 from mnemosis import MemoryEngine
