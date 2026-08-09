@@ -94,6 +94,8 @@ _CONTACT_Q_RE = re.compile(r"电话|号码|联系方式")
 _CONTACT_PAT_RE = re.compile(
     r"(?:\d{3,4}-){1,2}\d{3,4}|\d{3,4}-\d{7,8}|400-\d{3}-\d{4}"
 )
+_HOURS_Q_RE = re.compile(r"几点|营业时间|开门|关门")
+_HOURS_WORD_RE = re.compile(r"营业|开门|关门|点到")
 _PURCHASE_Q_RE = re.compile(
     r"买了什么|买了哪些|买过什么|买了什么设备|买了什么装备|"
     r"放了哪些|放了什么|存放了哪些|存放了些什么|存了什么|"
@@ -785,6 +787,9 @@ class MemoryEngine:
             )
             self._TIME_RANGE_RE = re.compile(
                 r"\d{1,2}:\d{2}\s*[-—~至到]\s*\d{1,2}:\d{2}"
+                r"|(?:早|上午|下午|晚|晚上)?\s*\d{1,2}\s*点"
+                r"(?:\d{1,2}\s*分)?\s*[-—~至到]\s*"
+                r"(?:早|上午|下午|晚|晚上)?\s*\d{1,2}\s*点"
             )
         if not self._VALUE_QUESTION_RE.search(query) or not results:
             return results
@@ -828,7 +833,16 @@ class MemoryEngine:
                 # Prefer the record whose amount is the price of the
                 # queried item (价格/费用/花了), not a related payment
                 # like 年费/续费/充值 that merely sits on the same topic.
-                score = 0.63 if _MONEY_PRICE_RE.search(item.content) else 0.62
+                near = any(
+                    term in item.content
+                    and abs(item.content.find(term) - _MONEY_PAT_RE.search(item.content).start()) <= 15
+                    for term in query_terms
+                )
+                score = (
+                    0.63
+                    if _MONEY_PRICE_RE.search(item.content) or near
+                    else 0.62
+                )
             elif time_marker and self._TIME_RANGE_RE.search(item.content):
                 score = 0.62
             else:
@@ -840,11 +854,7 @@ class MemoryEngine:
             candidates.sort(
                 key=lambda pair: (
                     -pair[1],
-                    -(
-                        1
-                        if _MONEY_PRICE_RE.search(pair[2].content)
-                        else 0
-                    ),
+                    -(1 if pair[0] >= 0.63 else 0),
                     tuple(-d for d in self._latest_date(pair[2].content)),
                     pair[2].id,
                 )
@@ -1023,6 +1033,7 @@ class MemoryEngine:
             excluded_terms,
         ) = self._temporal_probe(query)
         notice_q = self._TEMPORAL_NOTICE_RE.search(query)
+        hours_q = bool(_HOURS_Q_RE.search(query))
 
         if date_marker:
             month, day = (
@@ -1123,6 +1134,11 @@ class MemoryEngine:
                 action_groups,
                 excluded_terms,
             ):
+                continue
+            # Hours questions (几点开门/营业时间) must anchor a record
+            # that actually states opening hours: a newer but unrelated
+            # same-shop event (四轮定位) must not win by date alone.
+            if hours_q and not _HOURS_WORD_RE.search(item.content):
                 continue
             # Money questions must anchor a record that actually carries
             # an amount, not e.g. a 协议 notice about the boarding shop.
@@ -1268,6 +1284,8 @@ class MemoryEngine:
                 action_groups,
                 excluded_terms,
             ):
+                continue
+            if hours_q and not _HOURS_WORD_RE.search(text):
                 continue
             # A seen record only "covers" the question when it is about
             # the same event as the candidate, not merely the same domain:

@@ -52,6 +52,22 @@ _SYNONYM_GROUPS: tuple[frozenset[str], ...] = (
     frozenset({"便宜", "廉价"}),
 )
 
+_EN_ZH_PAIRS: tuple[tuple[str, str], ...] = (
+    ("电池", "battery"),
+    ("电瓶", "battery"),
+    ("雨刮器", "wiper"),
+    ("轮胎", "tire"),
+    ("刹车", "brake"),
+    ("机油", "oil"),
+    ("无线", "wifi"),
+    ("会员", "vip"),
+    ("套餐", "package"),
+    ("折扣", "discount"),
+    ("手机", "phone"),
+    ("电脑", "computer"),
+    ("相机", "camera"),
+)
+
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 
 
@@ -67,6 +83,11 @@ def expand_synonyms(terms: set[str]) -> set[str]:
     for group in _SYNONYM_GROUPS:
         if terms & group:
             out |= group
+    for zh, en in _EN_ZH_PAIRS:
+        if zh in terms:
+            out.add(en)
+        if en in terms:
+            out.add(zh)
     return out
 
 
