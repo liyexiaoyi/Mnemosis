@@ -29,7 +29,25 @@ from .types import (
     utcnow,
 )
 
-_TEMPORAL_VERB_STEMS = frozenset("修补打交买续复查检看办发报学装退")
+_TEMPORAL_STEM_WORDS: dict[str, tuple[str, ...]] = {
+    "修": ("修", "维修", "检修", "检测"),
+    "补": ("补", "补发", "补胎", "补牙"),
+    "打": ("打", "打气", "打针"),
+    "交": ("交", "缴费", "交房", "交付"),
+    "买": ("买", "购买", "买入"),
+    "续": ("续", "续费"),
+    "复": ("复", "复查", "复诊"),
+    "查": ("查", "检查", "复查", "查房"),
+    "检": ("检", "检查", "检测", "体检"),
+    "看": ("看", "查看", "看房"),
+    "办": ("办", "办理"),
+    "发": ("发", "发布", "发放"),
+    "报": ("报", "报名", "报到", "报销"),
+    "学": ("学", "学习", "上学"),
+    "装": ("装", "安装", "加装"),
+    "退": ("退", "退款", "退货", "退换"),
+    "换": ("换", "更换", "换新", "换货"),
+}
 
 
 class MemoryEngine:
@@ -1015,16 +1033,14 @@ class MemoryEngine:
             and i > 0
             and "\u4e00" <= query[i - 1] <= "\u9fff"
         )
-        verb_stems = (
-            {
-                match.group(1)
-                for match in re.finditer(
-                    r"([\u4e00-\u9fff])(?:的|了|着|过)", query
-                )
-            }
-            & _TEMPORAL_VERB_STEMS
+        verb_stems = frozenset(
+            match.group(1)
+            for match in re.finditer(
+                r"([\u4e00-\u9fff])(?:的|了|着|过)", query
+            )
+            if match.group(1) in _TEMPORAL_STEM_WORDS
         )
-        return topic_len, query_finals, frozenset(verb_stems)
+        return topic_len, query_finals, verb_stems
 
     @staticmethod
     def _temporal_relevant(
@@ -1052,21 +1068,14 @@ class MemoryEngine:
         if query_terms & set(tokenize(text)):
             return True
         # Verb-stem fallback: "修的什么" -> 修 matches "修好" (the stem is
-        # followed by a result complement in the record). Only a small
-        # curated stem set is allowed, so 考/试 cannot leak into 考核/面试.
+        # followed by a result complement in the record). Each stem maps
+        # to a small set of near-synonym action words (修 -> 检修/检测),
+        # so 考/试 cannot leak into 考核/面试.
         if verb_stems:
             for stem in verb_stems:
-                start = 0
-                while True:
-                    pos = text.find(stem, start)
-                    if pos == -1:
-                        break
-                    nxt = pos + len(stem)
-                    if nxt < len(text) and (
-                        "\u4e00" <= text[nxt] <= "\u9fff"
-                    ):
+                for word in _TEMPORAL_STEM_WORDS.get(stem, (stem,)):
+                    if word in text:
                         return True
-                    start = pos + 1
         if topic_len >= 3:
             # Long topics (托福考试/去银行办信用卡) need a real shared
             # bigram; a single common character is not enough.
