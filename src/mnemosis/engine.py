@@ -54,6 +54,7 @@ _TEMPORAL_ACTION_SYNONYMS: tuple[tuple[str, str], ...] = (
     ("维修", "检测"),
     ("选品", "上新"),
     ("采摘", "摘", "收获", "收"),
+    ("看电影", "观影", "看", "点映"),
 )
 _TEMPORAL_EXCLUSIONS: tuple[tuple[str, str], ...] = (
     ("主观题", "客观题"),
@@ -68,7 +69,7 @@ _PROBLEM_WORD_RE = re.compile(
     r"磨脚|偏大|漏|丢失|褪色|松动|异响|碎了|压坏|空鼓|"
     r"结膜炎|发炎|感染|过敏|瘦了"
 )
-_MONEY_Q_RE = re.compile(r"多少钱|价格|费用|价钱|多少元|几块")
+_MONEY_Q_RE = re.compile(r"多少钱|价格|费用|价钱|多少元|几块|票价")
 _MONEY_PAT_RE = re.compile(r"\d+(?:\.\d+)?\s*(?:元|块|万)")
 _CONTACT_Q_RE = re.compile(r"电话|号码|联系方式")
 _CONTACT_PAT_RE = re.compile(
@@ -992,7 +993,7 @@ class MemoryEngine:
             side = (
                 [d for d in dates if d <= today]
                 if want_past
-                else [d for d in dates if d >= today]
+                else [d for d in dates if d > today]
             )
             if not side:
                 continue
@@ -1033,7 +1034,7 @@ class MemoryEngine:
             full_side = (
                 [d for d in full if d <= today]
                 if want_past
-                else [d for d in full if d >= today]
+                else [d for d in full if d > today]
             )
             extreme = max(full) if want_past else min(full)
             score = (
@@ -1099,7 +1100,7 @@ class MemoryEngine:
             ):
                 continue
             side = [d for d in full if d <= today] if want_past else [
-                d for d in full if d >= today
+                d for d in full if d > today
             ]
             if not side:
                 continue
