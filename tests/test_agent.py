@@ -4960,6 +4960,91 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
             )
         )
 
+    def test_temporal_anchor_skips_notices_and_uses_synonyms(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        for content, cues in (
+            ("2026年1月10日体测：体脂率 24%，体重 72kg。", ["体测"]),
+            ("2026年2月10日复查体测：体脂 23%。", ["体测"]),
+            ("2026年3月5日预约 3 月 15 日第二次体测。", ["预约"]),
+            ("2026年3月15日体测：体脂 21%，体重 69kg。", ["体测"]),
+            ("2026年7月15日预约 7 月 28 日第三次体测。", ["预约"]),
+            ("2026年1月15日第一节私教课：练胸，卧推空杆。", ["私教"]),
+            ("2026年2月20日私教课练腿：深蹲 40kg。", ["私教"]),
+            ("2026年3月20日私教课：卧推 50kg，5 组 × 8 次。", ["私教"]),
+            ("2026年4月10日私教课练背：引体向上 6 个。", ["私教"]),
+            ("2026年7月10日私教课：卧推 60kg。", ["私教"]),
+            ("2026年8月5日私教课调时间：8 月 12 日改到 19:30。", ["私教"]),
+            ("2026年1月5日办了健身卡：年卡 1880 元。", ["健身卡"]),
+            ("2026年7月20日教练提醒 8 月 1 日续费活动开始。", ["续费"]),
+            ("2026年8月2日续费年卡：优惠价 1688 元。", ["续费"]),
+            ("健身计划：每周 3 练：周一胸、周三背、周五腿。", ["计划"]),
+        ):
+            engine.remember(
+                content,
+                kind=MemoryKind.EPISODIC,
+                source=user,
+                cues=cues,
+                auto_cues=False,
+            )
+        now = datetime(2026, 8, 9, tzinfo=timezone.utc)
+        # 体测: a newer 预约 notice must not block the real result record
+        base = engine.recall(
+            "上次体测是什么时候？体脂率多少？",
+            top_k=4,
+            temporal_anchor=False,
+        )
+        anchored = engine._apply_temporal_anchor(
+            "上次体测是什么时候？体脂率多少？",
+            list(base),
+            top_k=4,
+            kind=None,
+            exclude_ids=set(),
+            now=now,
+        )
+        contents = [r.item.content for r in anchored]
+        self.assertTrue(any("3月15日体测" in c for c in contents))
+        # 私教课: a 调时间 notice is not the latest class
+        base = engine.recall(
+            "上次私教课练了什么？",
+            top_k=4,
+            temporal_anchor=False,
+        )
+        anchored = engine._apply_temporal_anchor(
+            "上次私教课练了什么？",
+            list(base),
+            top_k=4,
+            kind=None,
+            exclude_ids=set(),
+            now=now,
+        )
+        contents = [r.item.content for r in anchored]
+        self.assertTrue(any("7月10日私教课" in c for c in contents))
+        self.assertFalse(
+            any("8月5日私教课调时间" in c for c in contents[:4])
+        )
+        # 什么时候…的 triggers the past direction; 续的 matches 续费 via
+        # the Chinese synonym expansion
+        base = engine.recall(
+            "健身卡什么时候续的？多少钱？",
+            top_k=4,
+            temporal_anchor=False,
+            value_anchor=False,
+        )
+        anchored = engine._apply_temporal_anchor(
+            "健身卡什么时候续的？多少钱？",
+            list(base),
+            top_k=4,
+            kind=None,
+            exclude_ids=set(),
+            now=now,
+        )
+        contents = [r.item.content for r in anchored]
+        self.assertTrue(any("8月2日续费年卡" in c for c in contents))
+        self.assertFalse(
+            any("7月2日买了运动手环" in c for c in contents[:4])
+        )
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

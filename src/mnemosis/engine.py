@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from collections import deque
 from datetime import datetime
 
@@ -522,8 +523,39 @@ class MemoryEngine:
     _VALUE_QUESTION_RE = None
     _VALUE_PATTERN_RE = None
     _TIME_RANGE_RE = None
-    _TEMPORAL_QUESTION_RE = None
-    _TEMPORAL_DATE_RE = None
+    _TEMPORAL_PAST_RE = re.compile(
+        r"上次|上一次|最近|最新|刚才|最后一次|前一次|"
+        r"什么时候[^？?]{0,6}(?:的|了)"
+    )
+    _TEMPORAL_FUTURE_RE = re.compile(
+        r"下次|下一次|接下来|"
+        r"什么时候(续费|到期|上门|开工|交房|开始|结束|还款|复诊|面试|入职|复查)"
+    )
+    _TEMPORAL_DATE_Q_RE = re.compile(
+        r"(\d{1,2})\s*月\s*(\d{1,2})\s*日"
+    )
+    _TEMPORAL_DATE_RE = re.compile(
+        r"(\d{4})年(\d{1,2})月(\d{1,2})日"
+        r"|(\d{4})-(\d{1,2})-(\d{1,2})"
+    )
+    _TEMPORAL_YEAR_RE = re.compile(r"(\d{4})\s*年")
+    _TEMPORAL_NOTICE_RE = re.compile(
+        r"预约|通知|提醒|改到|调时间|约了|收到|说"
+    )
+    _TEMPORAL_NOISE = (
+        "是了的吗呢吧啊呀和与及或在有就都还也很这那"
+        "什么哪一天上下次第几多少怎么如何何时几号点分"
+    )
+    _TEMPORAL_STRIP_RE = re.compile(
+        r"(上次|上一次|最近|最新|刚才|最后一次|前一次|"
+        r"下次|下一次|接下来)"
+        r"|(是什么时候|是哪一天|是什么时间|什么时候|考了多少分|"
+        r"面了什么内容|结果如何|怎么样|推荐了什么|要准备什么|"
+        r"要带什么|是多少|是什么|多少分)"
+    )
+    _TEMPORAL_CLEAN_RE = re.compile(
+        "[" + _TEMPORAL_NOISE + "年月日0-9\\s，。？：:、（）()]"
+    )
 
     def _apply_entity_anchor(
         self,
@@ -586,16 +618,14 @@ class MemoryEngine:
             return results
         candidates.sort(key=lambda pair: (-pair[0], pair[1].id))
         for score, candidate in candidates[:1]:
-            # The anchor is a deliberate cue: even when a generic memory
-            # already ranks higher, the exact record must not be pushed
-            # out of top-k by the truncation step.
-            result = RecallResult(
-                candidate, max(score, results[0].score + 0.01)
+            return self._append_anchor(
+                results,
+                candidate,
+                score,
+                "实体锚点(编号记录)",
+                top_k,
             )
-            result.reasons.append("实体锚点(编号记录)")
-            results.append(result)
-        results.sort(key=lambda result: result.score, reverse=True)
-        return results[: max(1, int(top_k))]
+        return results
 
     def _apply_value_anchor(
         self,
@@ -661,11 +691,34 @@ class MemoryEngine:
             return results
         candidates.sort(key=lambda pair: (-pair[0], pair[1].id))
         for score, candidate in candidates[:1]:
-            result = RecallResult(
-                candidate, max(score, results[0].score + 0.01)
+            return self._append_anchor(
+                results,
+                candidate,
+                score,
+                "数值锚点(值记录)",
+                top_k,
             )
-            result.reasons.append("数值锚点(值记录)")
-            results.append(result)
+        return results
+
+    @staticmethod
+    def _append_anchor(
+        results: list[RecallResult],
+        candidate: MemoryItem,
+        score: float,
+        reason: str,
+        top_k: int,
+    ) -> list[RecallResult]:
+        """Shared tail for anchor passes: insert, re-rank, truncate.
+
+        The anchored record is scored just above the current best so a
+        deliberate retrieval cue survives top-k truncation (ponytail: one
+        path for every anchor instead of four copies).
+        """
+        result = RecallResult(
+            candidate, max(score, results[0].score + 0.01)
+        )
+        result.reasons.append(reason)
+        results.append(result)
         results.sort(key=lambda result: result.score, reverse=True)
         return results[: max(1, int(top_k))]
 
@@ -699,31 +752,11 @@ class MemoryEngine:
         truncation instead of being pushed out by an already-high-ranking
         generic match.
         """
-        import re
-
-        if self._TEMPORAL_QUESTION_RE is None:
-            self._TEMPORAL_QUESTION_RE = re.compile(
-                r"(上次|上一次|最近|最新|刚才|最后一次|前一次)"
-                r"|(下次|下一次|接下来|"
-                r"什么时候(续费|到期|上门|开工|交房|开始|结束|还款|复诊|面试|入职|复查))"
-            )
-            self._TEMPORAL_DATE_RE = re.compile(
-                r"(\d{4})年(\d{1,2})月(\d{1,2})日"
-                r"|(\d{4})-(\d{1,2})-(\d{1,2})"
-            )
         if not results:
             return results
-        past_marker = re.search(
-            r"上次|上一次|最近|最新|刚才|最后一次|前一次", query
-        )
-        future_marker = re.search(
-            r"下次|下一次|接下来|"
-            r"什么时候(续费|到期|上门|开工|交房|开始|结束|还款|复诊|面试|入职|复查)",
-            query,
-        )
-        date_marker = re.search(
-            r"(\d{1,2})\s*月\s*(\d{1,2})\s*日", query
-        )
+        past_marker = self._TEMPORAL_PAST_RE.search(query)
+        future_marker = self._TEMPORAL_FUTURE_RE.search(query)
+        date_marker = self._TEMPORAL_DATE_Q_RE.search(query)
         if not past_marker and not future_marker and not date_marker:
             return results
         now = now or utcnow()
@@ -750,44 +783,58 @@ class MemoryEngine:
                     )
             return out
 
+        seen = {result.item.id for result in results}
+        query_terms = self._concept_terms(query)
+        if not query_terms:
+            return results
+        from .zh_nlp import expand_synonyms
+
+        # tokenize drops particle forms (续的), so re-add raw verb+particle
+        # 2-grams and expand only those ("续的" -> "续费"), never the whole
+        # term set (健身 -> 运动/锻炼 would drag in unrelated records).
+        particle_terms = {
+            match.group(0)
+            for match in re.finditer(
+                r"[\u4e00-\u9fff](?:的|了|着|过)", query
+            )
+        }
+        if particle_terms:
+            query_terms |= expand_synonyms(particle_terms)
+        topic_len, query_finals = self._temporal_probe(query)
+        notice_q = self._TEMPORAL_NOTICE_RE.search(query)
+
         if date_marker:
             month, day = (
                 int(date_marker.group(1)),
                 int(date_marker.group(2)),
             )
             date_frag = f"{month}月{day}日"
-            year = re.search(r"(\d{4})\s*年", query)
+            year = self._TEMPORAL_YEAR_RE.search(query)
             target_frag = (
                 f"{int(year.group(1))}年{date_frag}" if year else date_frag
             )
-            seen = {result.item.id for result in results}
-            query_terms = self._concept_terms(query)
-            if not query_terms:
-                return results
             candidates: list[tuple[float, MemoryItem]] = []
             for item in self.store.all_active(kind=kind):
                 if item.id in seen or item.id in exclude_ids:
                     continue
                 text = item.content + " " + " ".join(item.cues)
-                norm = re.sub(r"\s+", "", text)
-                if target_frag not in norm:
+                if target_frag not in "".join(text.split()):
                     continue
-                if not self._temporal_relevant(query, query_terms, text):
+                if not self._temporal_relevant(
+                    query_terms, text, topic_len, query_finals
+                ):
                     continue
                 candidates.append((0.62, item))
             if not candidates:
                 return results
             candidates.sort(key=lambda pair: (-pair[0], pair[1].id))
-            if candidates[0][1].id in seen:
-                return results
-            result = RecallResult(
+            return self._append_anchor(
+                results,
                 candidates[0][1],
-                max(candidates[0][0], results[0].score + 0.01),
+                candidates[0][0],
+                f"时间锚点(日期:{date_frag})",
+                top_k,
             )
-            result.reasons.append(f"时间锚点(日期:{date_frag})")
-            results.append(result)
-            results.sort(key=lambda result: result.score, reverse=True)
-            return results[: max(1, int(top_k))]
 
         # Past wins when both directions appear ("上次体检和下次体检分别
         # 是什么时候"): the multi-concept pass still queries each chunk, so
@@ -795,10 +842,6 @@ class MemoryEngine:
         want_past = bool(past_marker) and (
             not future_marker or past_marker.start() <= future_marker.start()
         )
-        seen = {result.item.id for result in results}
-        query_terms = self._concept_terms(query)
-        if not query_terms:
-            return results
         candidates: list[tuple[float, MemoryItem]] = []
         for item in self.store.all_active(kind=kind):
             if item.id in seen or item.id in exclude_ids:
@@ -814,7 +857,19 @@ class MemoryEngine:
             )
             if not side:
                 continue
-            if not self._temporal_relevant(query, query_terms, text):
+            # Past-direction questions ask about the event itself, not a
+            # notice about it: 预约/通知/提醒/调时间 records (source
+            # monitoring; Johnson & Raye, 1981) are skipped unless the
+            # query is itself asking about the notice.
+            if (
+                want_past
+                and not notice_q
+                and self._TEMPORAL_NOTICE_RE.search(text)
+            ):
+                continue
+            if not self._temporal_relevant(
+                query_terms, text, topic_len, query_finals
+            ):
                 continue
             target = max(side) if want_past else min(side)
             # A record whose strongest direction date is also its most
@@ -832,48 +887,85 @@ class MemoryEngine:
                 pair[2].id,
             )
         )
-        score, _target, candidate = candidates[0]
-        # If the strongest candidate is already in the result list, the
-        # current top-k already answers the question; do not re-insert.
-        if candidate.id in seen:
-            return results
+        score, target, candidate = candidates[0]
+        # For past questions about the event itself, notices (预约/通知/
+        # 提醒/调时间) only confuse the answer model: the "latest class"
+        # row with no content makes it answer 不知道. Drop them when
+        # enough real event records exist (source monitoring; Johnson &
+        # Raye, 1981).
+        if want_past and not notice_q:
+            event_rows = [
+                result
+                for result in results
+                if not self._TEMPORAL_NOTICE_RE.search(
+                    result.item.content + " " + " ".join(result.item.cues)
+                )
+            ]
+            if event_rows:
+                results = event_rows
         # If some result already present is a relevant dated record at
         # least as strong in the asked direction, keep the current list.
         for result in results:
             if result.item.id in exclude_ids:
                 continue
-            text = (
-                result.item.content
-                + " "
-                + " ".join(result.item.cues)
-            )
-            if not self._temporal_relevant(query, query_terms, text):
+            text = result.item.content + " " + " ".join(result.item.cues)
+            dates = _dates(text)
+            if not dates:
                 continue
-            side = [d for d in _dates(text) if d <= today] if want_past else [
-                d for d in _dates(text) if d >= today
+            if (
+                want_past
+                and not notice_q
+                and self._TEMPORAL_NOTICE_RE.search(text)
+            ):
+                continue
+            if not self._temporal_relevant(
+                query_terms, text, topic_len, query_finals
+            ):
+                continue
+            side = [d for d in dates if d <= today] if want_past else [
+                d for d in dates if d >= today
             ]
             if not side:
                 continue
             seen_best = max(side) if want_past else min(side)
-            if (want_past and seen_best >= _target) or (
-                not want_past and seen_best <= _target
+            if (want_past and seen_best >= target) or (
+                not want_past and seen_best <= target
             ):
                 return results
-        result = RecallResult(
-            candidate, max(score, results[0].score + 0.01)
+        return self._append_anchor(
+            results,
+            candidate,
+            score,
+            "时间锚点(上次)" if want_past else "时间锚点(下次)",
+            top_k,
         )
-        result.reasons.append(
-            "时间锚点(上次)" if want_past else "时间锚点(下次)"
+
+    @classmethod
+    def _temporal_probe(
+        cls,
+        query: str,
+    ) -> tuple[int, frozenset[str]]:
+        """Precompute per-query topic length and word-final chars once."""
+        topic = cls._TEMPORAL_STRIP_RE.sub("", query)
+        topic = cls._TEMPORAL_CLEAN_RE.sub("", topic)
+        topic_len = sum(1 for ch in topic if "\u4e00" <= ch <= "\u9fff")
+        noise = set(cls._TEMPORAL_NOISE)
+        query_finals = frozenset(
+            ch
+            for i, ch in enumerate(query)
+            if "\u4e00" <= ch <= "\u9fff"
+            and ch not in noise
+            and i > 0
+            and "\u4e00" <= query[i - 1] <= "\u9fff"
         )
-        results.append(result)
-        results.sort(key=lambda result: result.score, reverse=True)
-        return results[: max(1, int(top_k))]
+        return topic_len, query_finals
 
     @staticmethod
     def _temporal_relevant(
-        query: str,
         query_terms: set[str],
         text: str,
+        topic_len: int,
+        query_finals: frozenset[str],
     ) -> bool:
         """Relevance gate for temporal anchors.
 
@@ -888,54 +980,20 @@ class MemoryEngine:
         characters are excluded so "上次/哪天/是什么" do not create false
         hits.
         """
-        import re
-
         from .types import tokenize
 
         if query_terms & set(tokenize(text)):
             return True
-
-        topic = re.sub(
-            r"(上次|上一次|最近|最新|刚才|最后一次|前一次|"
-            r"下次|下一次|接下来)", "", query
-        )
-        topic = re.sub(
-            r"(是什么时候|是哪一天|是什么时间|什么时候|考了多少分|"
-            r"面了什么内容|结果如何|怎么样|推荐了什么|要准备什么|"
-            r"要带什么|是多少|是什么|多少分)", "", topic
-        )
-        topic = re.sub(
-            r"[是了的吗呢吧啊呀和与及或在有就都还也很这那"
-            r"什么哪一天上下次第几多少怎么如何何时几号点分"
-            r"年月日0-9\s，。？：:、（）()]",
-            "",
-            topic,
-        )
-        topic_len = sum(1 for ch in topic if "\u4e00" <= ch <= "\u9fff")
         if topic_len >= 3:
             # Long topics (托福考试/去银行办信用卡) need a real shared
             # bigram; a single common character is not enough.
             return False
-
-        def _cjk(ch: str) -> bool:
-            return "\u4e00" <= ch <= "\u9fff"
-
-        noise = set(
-            "是了的吗呢吧啊呀和与及或在有就都还也很这那"
-            "什么哪一天上下次第几多少怎么如何何时几号点分"
-        )
-        query_finals = {
-            ch
-            for i, ch in enumerate(query)
-            if _cjk(ch)
-            and ch not in noise
-            and i > 0
-            and _cjk(query[i - 1])
-        }
         if not query_finals:
             return False
         return any(
-            ch in query_finals and j > 0 and _cjk(text[j - 1])
+            ch in query_finals
+            and j > 0
+            and "\u4e00" <= text[j - 1] <= "\u9fff"
             for j, ch in enumerate(text)
         )
 

@@ -22,6 +22,8 @@ _SYNONYM_GROUPS: tuple[frozenset[str], ...] = (
     frozenset({"颜色", "色彩"}),
     frozenset({"食物", "美食"}),
     frozenset({"运动", "锻炼", "健身"}),
+    frozenset({"续费", "续的"}),
+    frozenset({"复查", "复诊"}),
     frozenset({"歌手", "歌星"}),
     frozenset({"搬家", "迁居"}),
     frozenset({"学习", "学会"}),
