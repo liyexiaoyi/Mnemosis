@@ -108,7 +108,7 @@ _SCOPE_Q_RE = re.compile(
     r"哪些服务|哪些业务|提供哪些|卖哪些"
 )
 _SCOPE_WORD_RE = re.compile(
-    r"范围|包括|包含|均可|不收|种类|分类|清单|项目|服务"
+    r"范围|包括|包含|均可|不收|种类|分类|清单|项目"
 )
 _PURCHASE_WORD_RE = re.compile(
     r"买|购买|购入|入手|添置|存放|放入|存了|装了|收纳|放进|搁置"
@@ -642,6 +642,7 @@ class MemoryEngine:
     _TEMPORAL_PAST_RE = re.compile(
         r"上次|上一次|最近|最新|刚才|最后一次|前一次|"
         r"现在|目前|当前|第一次|首次|头一回|"
+        r"结果|成绩|考了多少分|评分结果|考核结果|"
         r"什么时候[^？?]{0,6}(?:的|了)"
     )
     _TEMPORAL_FUTURE_RE = re.compile(
@@ -1145,6 +1146,9 @@ class MemoryEngine:
             )
         )
         score, target, candidate = candidates[0]
+        candidate_terms = set(
+            tokenize(candidate.content + " " + " ".join(candidate.cues))
+        )
         # For past questions about the event itself, notices (预约/通知/
         # 提醒/调时间) only confuse the answer model: the "latest class"
         # row with no content makes it answer 不知道. Drop them when
@@ -1231,6 +1235,18 @@ class MemoryEngine:
                 verb_stems,
                 action_groups,
                 excluded_terms,
+            ):
+                continue
+            # A seen record only "covers" the question when it is about
+            # the same event as the candidate, not merely the same domain:
+            # 钟点工保险 record must not block 考核完成 because both mention
+            # 钟点工. Require a shared query-relevant term with the
+            # candidate (the distinctive action/noun), except for
+            # earliest-event questions where the covering record may be a
+            # different but earlier instance.
+            if (
+                not want_earliest
+                and not (set(tokenize(text)) & query_terms & candidate_terms)
             ):
                 continue
             is_notice = bool(self._TEMPORAL_NOTICE_RE.search(text))
