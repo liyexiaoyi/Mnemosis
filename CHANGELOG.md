@@ -9,6 +9,8 @@
 - Bilingual README, Colab demo notebook, one-command demo
   (`examples/demo.py`)
 - CI + release workflows on GitHub Actions
+- MCP server forces UTF-8 stdio on all platforms (fixes JSON-RPC parsing on
+  Windows when tool descriptions contain Chinese)
 
 ## v0.17.x - iteration series (365+ rounds)
 

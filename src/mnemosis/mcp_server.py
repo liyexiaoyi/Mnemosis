@@ -2804,6 +2804,11 @@ class MCPServer:
 
 
 def run_stdio(db_path: str | None = None) -> None:
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError):
+            pass
     server = MCPServer(MemoryEngine(db_path))
     for line in sys.stdin:
         response = server.handle_line(line)

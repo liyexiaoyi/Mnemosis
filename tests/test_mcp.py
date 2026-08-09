@@ -1,4 +1,6 @@
 import json
+import subprocess
+import sys
 import unittest
 
 from mnemosis import MemoryEngine
@@ -31,6 +33,23 @@ class MCPTest(unittest.TestCase):
         )
         self.assertEqual(response["result"]["serverInfo"]["name"], "mnemosis")
         self.assertIn("tools", response["result"]["capabilities"])
+
+    def test_stdio_emits_utf8(self):
+        proc = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "from mnemosis.mcp_server import run_stdio; run_stdio()",
+            ],
+            input='{"jsonrpc":"2.0","id":1,"method":"tools/list"}\n',
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=120,
+        )
+        self.assertEqual(proc.returncode, 0)
+        obj = json.loads(proc.stdout.strip())
+        self.assertIn("tools", obj["result"])
 
     def test_tools_list(self):
         response = self.send(
