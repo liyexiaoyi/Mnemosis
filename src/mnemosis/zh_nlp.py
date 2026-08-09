@@ -24,6 +24,7 @@ _SYNONYM_GROUPS: tuple[frozenset[str], ...] = (
     frozenset({"运动", "锻炼", "健身"}),
     frozenset({"学车", "驾校", "练车", "报名"}),
     frozenset({"开通", "办理", "办"}),
+    frozenset({"安防", "监控", "门锁", "摄像头"}),
     frozenset({"续费", "续的"}),
     frozenset({"复查", "复诊"}),
     frozenset({"歌手", "歌星"}),

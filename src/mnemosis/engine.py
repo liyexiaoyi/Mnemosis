@@ -83,6 +83,8 @@ _CONTACT_Q_RE = re.compile(r"电话|号码|联系方式")
 _CONTACT_PAT_RE = re.compile(
     r"(?:\d{3,4}-){1,2}\d{3,4}|\d{3,4}-\d{7,8}|400-\d{3}-\d{4}"
 )
+_PURCHASE_Q_RE = re.compile(r"买了什么|买了哪些|买过什么|买了什么设备|买了什么装备")
+_PURCHASE_WORD_RE = re.compile(r"买|购买|购入|入手|添置")
 
 class MemoryEngine:
     """The one thing most users touch.
@@ -283,6 +285,7 @@ class MemoryEngine:
         temporal_anchor: bool = True,
         problem_anchor: bool = True,
         contact_anchor: bool = True,
+        purchase_anchor: bool = True,
         exclude_ids: set[str] | None = None,
     ) -> list[RecallResult]:
         embedder = embedder or self.embedder
@@ -388,6 +391,14 @@ class MemoryEngine:
             )
         if contact_anchor:
             results = self._apply_contact_anchor(
+                query,
+                results,
+                top_k=top_k,
+                kind=kind,
+                exclude_ids=exclude_ids,
+            )
+        if purchase_anchor:
+            results = self._apply_purchase_anchor(
                 query,
                 results,
                 top_k=top_k,
@@ -1273,6 +1284,61 @@ class MemoryEngine:
             "联系锚点(电话记录)",
             top_k,
         )
+
+    def _apply_purchase_anchor(
+        self,
+        query: str,
+        results: list[RecallResult],
+        *,
+        top_k: int,
+        kind: MemoryKind | None,
+        exclude_ids: set[str],
+    ) -> list[RecallResult]:
+        """Anchor "买了什么" questions to the purchase records.
+
+        "买了什么安防设备？" often matches a service note while the actual
+        purchase records (买监控摄像头 / 买智能门锁) rank below top-k.
+        This post-pass inserts the best purchase records (up to 2, since
+        the answer often spans several items) with a 购买锚点 reason.
+        """
+        from .zh_nlp import expand_synonyms, has_cjk
+
+        if not _PURCHASE_Q_RE.search(query) or not results:
+            return results
+        seen = {result.item.id for result in results}
+        query_terms = self._concept_terms(query)
+        if has_cjk(query):
+            query_terms = expand_synonyms(query_terms)
+        if not query_terms:
+            return results
+        candidates: list[tuple[int, tuple[int, int, int], MemoryItem]] = []
+        for item in self.store.all_active(kind=kind):
+            if item.id in seen or item.id in exclude_ids:
+                continue
+            if not _PURCHASE_WORD_RE.search(item.content):
+                continue
+            from .types import tokenize
+
+            overlap = len(query_terms & set(tokenize(item.content)))
+            if overlap == 0:
+                continue
+            candidates.append(
+                (overlap, self._latest_date(item.content), item)
+            )
+        if not candidates:
+            return results
+        candidates.sort(
+            key=lambda pair: (-pair[0], tuple(-d for d in pair[1]), pair[2].id)
+        )
+        for score, _date, candidate in candidates[:2]:
+            results = self._append_anchor(
+                results,
+                candidate,
+                min(0.62, 0.60 + 0.01 * score),
+                "购买锚点(购置记录)",
+                top_k,
+            )
+        return results
 
     @classmethod
     def _temporal_probe(
