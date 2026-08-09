@@ -24,6 +24,9 @@ embeddings required — optional embedder hooks only.
 
 > PyPI 版（`pip install mnemosis`）发布后会在这里同步更新。
 
+SQLite 存储适合单进程/低并发场景；多个 Agent 并发写入时建议串行访问或接入
+外部数据库适配层。
+
 ## Quick start
 
 ```python
@@ -87,7 +90,7 @@ pip install git+https://github.com/liyexiaoyi/Mnemosis.git
 python examples/demo.py          # 仓库内
 ```
 
-不想安装？直接在 [Google Colab 打开演示笔记本](examples/Mnemosis_demo.ipynb)。
+不想安装？直接在 [Google Colab 打开演示笔记本](https://colab.research.google.com/github/liyexiaoyi/Mnemosis/blob/main/examples/Mnemosis_demo.ipynb)。
 
 ## Use with your AI client (MCP)
 

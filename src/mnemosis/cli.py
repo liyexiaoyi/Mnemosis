@@ -78,12 +78,6 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("review", help="record a spaced-repetition outcome")
     p.add_argument("memory_id")
     p.add_argument(
-        "--success",
-        action="store_true",
-        default=True,
-        help="mark the review as successful (default)",
-    )
-    p.add_argument(
         "--fail",
         action="store_true",
         help="mark the review as failed",
@@ -105,7 +99,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     engine = MemoryEngine(args.db)
     try:
         if args.command == "remember":
-            cues = [c.strip() for c in args.cues.split(",")] if args.cues else None
+            cues = (
+                [c.strip() for c in args.cues.split(",") if c.strip()]
+                if args.cues
+                else None
+            )
             item = engine.remember(
                 args.content,
                 kind=MemoryKind(args.kind),

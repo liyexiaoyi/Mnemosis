@@ -2044,7 +2044,7 @@ class MCPServer:
                 {
                     "protocolVersion": PROTOCOL_VERSION,
                     "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "mnemosis", "version": "0.2.0"},
+                    "serverInfo": {"name": "mnemosis", "version": "0.2.1"},
                 },
             )
         if method == "ping":
@@ -2071,6 +2071,12 @@ class MCPServer:
                         "isError": False,
                     },
                 )
+            except KeyError as exc:
+                return self._error(
+                    message_id,
+                    -32602,
+                    f"Invalid params: missing required field {exc.args[0]}",
+                )
             except Exception as exc:  # noqa: BLE001 - surface tool errors
                 return self._result(
                     message_id,
@@ -2093,8 +2099,8 @@ class MCPServer:
                 context=args.get("context"),
                 affect=args.get("affect"),
                 importance=args.get("importance"),
-                confidence=float(args.get("confidence", 1.0)),
-                evidence_count=int(args.get("evidence_count", 1)),
+                confidence=float(args.get("confidence") or 1.0),
+                evidence_count=int(args.get("evidence_count") or 1),
             )
             return {
                 "id": item.id,
@@ -2112,7 +2118,7 @@ class MCPServer:
             results = self.engine.recall(
                 args["query"],
                 kind=_kind(args.get("kind")),
-                top_k=int(args.get("top_k", 5)),
+                top_k=int(args.get("top_k") or 5),
                 context=args.get("context"),
                 embedder=embedder,
             )
@@ -2130,7 +2136,7 @@ class MCPServer:
             return self.engine.search_batch(
                 args["queries"],
                 kind=_kind(args.get("kind")),
-                top_k=int(args.get("top_k", 3)),
+                top_k=int(args.get("top_k") or 3),
             )
         if name == "sleep":
             report = self.engine.sleep()
@@ -2142,7 +2148,7 @@ class MCPServer:
                 "conflicts": len(report.conflicts),
             }
         if name == "check":
-            check = self.engine.check(args["query"], top_k=int(args.get("top_k", 3)))
+            check = self.engine.check(args["query"], top_k=int(args.get("top_k") or 3))
             return {
                 "items": [
                     {
@@ -2189,7 +2195,7 @@ class MCPServer:
                         else None
                     ),
                 }
-                for item in self.engine.working_set(limit=int(args.get("limit", 8)))
+                for item in self.engine.working_set(limit=int(args.get("limit") or 8))
             ]
         if name == "review_due":
             return [
@@ -2201,7 +2207,7 @@ class MCPServer:
                     ),
                 }
                 for item in self.engine.review_due(
-                    limit=int(args.get("limit", 10)),
+                    limit=int(args.get("limit") or 10),
                     desirable_difficulty=bool(
                         args.get("desirable_difficulty", False)
                     ),
@@ -2226,7 +2232,7 @@ class MCPServer:
             results = self.engine.plan_for_goal(
                 args["goal"],
                 top_k=(
-                    int(args["top_k"])
+                    int(args.get("top_k") or 8)
                     if args.get("top_k") is not None
                     else None
                 ),
@@ -2242,7 +2248,7 @@ class MCPServer:
             ]
         if name == "reason":
             results = self.engine.recall_reasoning(
-                args["query"], top_k=int(args.get("top_k", 8))
+                args["query"], top_k=int(args.get("top_k") or 8)
             )
             return [
                 {
@@ -2269,7 +2275,7 @@ class MCPServer:
                 args["goal"],
                 args["failed_step"],
                 top_k=(
-                    int(args["top_k"])
+                    int(args.get("top_k") or 8)
                     if args.get("top_k") is not None
                     else None
                 ),
@@ -2289,7 +2295,7 @@ class MCPServer:
         if name == "search":
             results = self.engine.recall(
                 args["query"],
-                top_k=int(args.get("top_k", 5)),
+                top_k=int(args.get("top_k") or 5),
                 context=args.get("context") or None,
             )
             return [
@@ -2325,11 +2331,11 @@ class MCPServer:
         if name == "practice_session":
             return self.engine.practice_session(
                 args["answers"],
-                limit=int(args.get("limit", 5)),
+                limit=int(args.get("limit") or 5),
             )
         if name == "sleep_and_plan":
             return self.engine.sleep_and_plan(
-                days=int(args.get("days", 7))
+                days=int(args.get("days") or 7)
             )
         if name == "memory_audit":
             return self.engine.memory_audit()
@@ -2339,7 +2345,7 @@ class MCPServer:
             return self.engine.resolve_conflicts()
         if name == "review_load":
             return self.engine.review_load(
-                days=int(args.get("days", 7))
+                days=int(args.get("days") or 7)
             )
         if name == "tag_memories":
             return self.engine.tag_memories(
@@ -2349,7 +2355,7 @@ class MCPServer:
             )
         if name == "recall_log":
             return self.engine.get_recall_log(
-                limit=int(args.get("limit", 50))
+                limit=int(args.get("limit") or 50)
             )
         if name == "cleanup_preview":
             return self.engine.cleanup_preview(
@@ -2803,6 +2809,35 @@ class MCPServer:
         )
 
 
+def _read_message() -> str | None:
+    """Read one JSON-RPC message (MCP stdio Content-Length framing)."""
+    first = sys.stdin.buffer.readline()
+    if not first:
+        return None
+    if not first.strip().lower().startswith(b"content-length"):
+        return first.decode("utf-8").strip()  # legacy NDJSON line
+    length = int(first.split(b":", 1)[1].strip())
+    while True:
+        line = sys.stdin.buffer.readline()
+        if not line:
+            return None
+        if not line.strip():
+            break
+        if line.lower().startswith(b"content-length:"):
+            length = int(line.split(b":", 1)[1].strip())
+    if length <= 0:
+        return None
+    return sys.stdin.buffer.read(length).decode("utf-8")
+
+
+def _write_message(text: str) -> None:
+    body = text.encode("utf-8")
+    sys.stdout.buffer.write(
+        b"Content-Length: " + str(len(body)).encode("ascii") + b"\r\n\r\n" + body
+    )
+    sys.stdout.buffer.flush()
+
+
 def run_stdio(db_path: str | None = None) -> None:
     for stream in (sys.stdin, sys.stdout, sys.stderr):
         try:
@@ -2810,11 +2845,13 @@ def run_stdio(db_path: str | None = None) -> None:
         except (AttributeError, ValueError):
             pass
     server = MCPServer(MemoryEngine(db_path))
-    for line in sys.stdin:
-        response = server.handle_line(line)
+    while True:
+        message = _read_message()
+        if message is None:
+            break
+        response = server.handle_line(message)
         if response is not None:
-            sys.stdout.write(response + "\n")
-            sys.stdout.flush()
+            _write_message(response)
 
 
 def main(argv: Sequence[str] | None = None) -> int:

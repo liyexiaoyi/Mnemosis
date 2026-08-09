@@ -33,6 +33,9 @@ pip install git+https://github.com/liyexiaoyi/Mnemosis.git
 - `mnemosis` —— 命令行工具
 - `mnemosis-mcp` —— MCP 服务器（给 AI 客户端接入用）
 
+> SQLite 存储适合单进程/低并发场景；多个 Agent 并发写入时建议串行访问或
+> 接入外部数据库适配层。
+
 ## 快速开始
 
 ```python
@@ -76,7 +79,7 @@ pip install git+https://github.com/liyexiaoyi/Mnemosis.git
 python examples/demo.py
 ```
 
-或在 [Google Colab](examples/Mnemosis_demo.ipynb) 在线体验。
+或在 [Google Colab](https://colab.research.google.com/github/liyexiaoyi/Mnemosis/blob/main/examples/Mnemosis_demo.ipynb) 在线体验。
 
 ## 命令行
 

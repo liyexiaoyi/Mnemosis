@@ -62,7 +62,11 @@ class NGramEmbedder(Embedder):
 
     def features(self, text: str) -> list[str]:
         lowered = text.lower()
-        words = [w for w in re.findall(r"[a-z0-9]+", lowered) if len(w) >= 2]
+        words = [
+            w
+            for w in re.findall(r"[a-z0-9\u00e0-\u024f]+", lowered)
+            if len(w) >= 2
+        ]
         cjk = re.findall(r"[\u4e00-\u9fff]", lowered)
         features: list[str] = []
         for word in words:

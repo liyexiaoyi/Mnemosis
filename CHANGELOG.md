@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.2.1 - MCP 修复与仓库整理
+
+- MCP 服务器支持标准 Content-Length 帧（符合 MCP stdio 规范），可对接
+  Claude Desktop / Cursor 等标准客户端
+- 参数兼容性加固：`null` 参数回退默认值、缺失必填参数返回标准错误、
+  CLI `review` 简化、内容哈希改用 SHA-256、cues 过滤空串
+- 新增中文说明 README.zh-CN.md；不再跟踪基准结果文件；版本号对齐 0.2.1
+
 ## v0.2.0 - first public release
 
 - Install: `pip install git+https://github.com/liyexiaoyi/Mnemosis.git`
@@ -9,10 +17,10 @@
 - Bilingual README, Colab demo notebook, one-command demo
   (`examples/demo.py`)
 - CI + release workflows on GitHub Actions
-- MCP server forces UTF-8 stdio on all platforms (fixes JSON-RPC parsing on
-  Windows when tool descriptions contain Chinese)
 
-## v0.17.x - iteration series (365+ rounds)
+## v0.17.x - iteration series (365+ rounds, 内部迭代版本号）
+
+> 说明：项目自 v0.17.x 起切换为语义化版本（0.2.x），本段为历史迭代记录摘要。
 
 - Human-inspired memory lifecycle: dual-track storage, forgetting curves,
   sleep consolidation, active forgetting with recycle bin, source

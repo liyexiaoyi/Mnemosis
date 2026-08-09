@@ -35,20 +35,25 @@ class MCPTest(unittest.TestCase):
         self.assertIn("tools", response["result"]["capabilities"])
 
     def test_stdio_emits_utf8(self):
+        body = '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+        framed = (
+            f"Content-Length: {len(body.encode('utf-8'))}\r\n\r\n{body}"
+        ).encode("utf-8")
         proc = subprocess.run(
             [
                 sys.executable,
                 "-c",
                 "from mnemosis.mcp_server import run_stdio; run_stdio()",
             ],
-            input='{"jsonrpc":"2.0","id":1,"method":"tools/list"}\n',
+            input=framed,
             capture_output=True,
-            text=True,
-            encoding="utf-8",
             timeout=120,
         )
         self.assertEqual(proc.returncode, 0)
-        obj = json.loads(proc.stdout.strip())
+        header, sep, payload = proc.stdout.partition(b"\r\n\r\n")
+        self.assertTrue(sep)
+        length = int(header.split(b":")[1].strip())
+        obj = json.loads(payload[:length].decode("utf-8"))
         self.assertIn("tools", obj["result"])
 
     def test_tools_list(self):

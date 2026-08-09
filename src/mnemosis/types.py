@@ -40,7 +40,7 @@ ZH_DATE_NORMALIZE = True
 def hash_content(content: str) -> str:
     """Stable content hash used for semantic deduplication."""
     normalized = re.sub(r"\s+", " ", content).strip().lower()
-    return hashlib.sha1(normalized.encode("utf-8")).hexdigest()
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
 def _iso(dt: datetime | None) -> str | None:
