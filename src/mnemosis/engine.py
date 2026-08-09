@@ -59,6 +59,7 @@ _TEMPORAL_ACTION_SYNONYMS: tuple[tuple[str, str], ...] = (
 )
 _TEMPORAL_EXCLUSIONS: tuple[tuple[str, str], ...] = (
     ("主观题", "客观题"),
+    ("爬山", "夜爬"),
     ("模考", "考试"),
     ("模考", "通过"),
     ("模考", "出分"),
@@ -1075,6 +1076,19 @@ class MemoryEngine:
             ]
             if event_rows:
                 results = event_rows
+        # Topic opposites (爬山 vs 夜爬, 主观题 vs 客观题) must not sit in
+        # the context and trick the answer model into picking the newer
+        # but wrong record.
+        if excluded_terms:
+            clean_rows = [
+                result
+                for result in results
+                if not any(
+                    word in result.item.content for word in excluded_terms
+                )
+            ]
+            if clean_rows:
+                results = clean_rows
         # If some result already present is a relevant dated record at
         # least as strong in the asked direction, keep the current list.
         for result in results:
