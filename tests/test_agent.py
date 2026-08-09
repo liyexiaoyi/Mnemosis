@@ -5123,6 +5123,65 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
             )
         )
 
+    def test_temporal_anchor_verb_stem_match(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        for content, cues in (
+            ("2026年4月20日二保完成：换机油机滤，里程 8300km。", ["保养"]),
+            ("2026年7月25日空调不制冷，7 月 28 日修好。", ["空调"]),
+            ("2026年8月1日预约 8 月 12 日三保。", ["三保"]),
+            ("2026年3月20日托福二考：总分 104。", ["托福"]),
+            ("2026年6月20日体能考核：3 分钟平板支撑。", ["考核"]),
+        ):
+            engine.remember(
+                content,
+                kind=MemoryKind.EPISODIC,
+                source=user,
+                cues=cues,
+                auto_cues=False,
+            )
+        now = datetime(2026, 8, 9, tzinfo=timezone.utc)
+        base = engine.recall(
+            "上次修车是什么时候？修的什么？",
+            top_k=4,
+            temporal_anchor=False,
+        )
+        anchored = engine._apply_temporal_anchor(
+            "上次修车是什么时候？修的什么？",
+            list(base),
+            top_k=4,
+            kind=None,
+            exclude_ids=set(),
+            now=now,
+        )
+        contents = [r.item.content for r in anchored]
+        self.assertTrue(any("空调不制冷" in c for c in contents))
+        # 考 is not in the verb-stem set: 考了多少分 must not pull 体能考核
+        base = engine.recall(
+            "上次托福考试是什么时候？考了多少分？",
+            top_k=4,
+            temporal_anchor=False,
+        )
+        anchored = engine._apply_temporal_anchor(
+            "上次托福考试是什么时候？考了多少分？",
+            list(base),
+            top_k=4,
+            kind=None,
+            exclude_ids=set(),
+            now=now,
+        )
+        contents = [r.item.content for r in anchored]
+        self.assertTrue(any("托福二考" in c for c in contents))
+        self.assertFalse(
+            any(
+                "体能考核" in result.item.content
+                and any(
+                    "时间锚点" in reason for reason in result.reasons
+                )
+                for result in anchored
+            )
+        )
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

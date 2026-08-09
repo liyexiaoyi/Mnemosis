@@ -29,6 +29,8 @@ from .types import (
     utcnow,
 )
 
+_TEMPORAL_VERB_STEMS = frozenset("修补打交买续复查检看办发报学装")
+
 
 class MemoryEngine:
     """The one thing most users touch.
@@ -833,7 +835,7 @@ class MemoryEngine:
         }
         if particle_terms:
             query_terms |= expand_synonyms(particle_terms)
-        topic_len, query_finals = self._temporal_probe(query)
+        topic_len, query_finals, verb_stems = self._temporal_probe(query)
         notice_q = self._TEMPORAL_NOTICE_RE.search(query)
 
         if date_marker:
@@ -854,7 +856,11 @@ class MemoryEngine:
                 if target_frag not in "".join(text.split()):
                     continue
                 if not self._temporal_relevant(
-                    query_terms, text, topic_len, query_finals
+                    query_terms,
+                    text,
+                    topic_len,
+                    query_finals,
+                    verb_stems,
                 ):
                     continue
                 candidates.append((0.62, item))
@@ -901,7 +907,11 @@ class MemoryEngine:
             ):
                 continue
             if not self._temporal_relevant(
-                query_terms, text, topic_len, query_finals
+                query_terms,
+                text,
+                topic_len,
+                query_finals,
+                verb_stems,
             ):
                 continue
             target = max(side) if want_past else min(side)
@@ -962,7 +972,11 @@ class MemoryEngine:
             ):
                 continue
             if not self._temporal_relevant(
-                query_terms, text, topic_len, query_finals
+                query_terms,
+                text,
+                topic_len,
+                query_finals,
+                verb_stems,
             ):
                 continue
             side = [d for d in full if d <= today] if want_past else [
@@ -987,7 +1001,7 @@ class MemoryEngine:
     def _temporal_probe(
         cls,
         query: str,
-    ) -> tuple[int, frozenset[str]]:
+    ) -> tuple[int, frozenset[str], frozenset[str]]:
         """Precompute per-query topic length and word-final chars once."""
         topic = cls._TEMPORAL_STRIP_RE.sub("", query)
         topic = cls._TEMPORAL_CLEAN_RE.sub("", topic)
@@ -1001,7 +1015,16 @@ class MemoryEngine:
             and i > 0
             and "\u4e00" <= query[i - 1] <= "\u9fff"
         )
-        return topic_len, query_finals
+        verb_stems = (
+            {
+                match.group(1)
+                for match in re.finditer(
+                    r"([\u4e00-\u9fff])(?:的|了|着|过)", query
+                )
+            }
+            & _TEMPORAL_VERB_STEMS
+        )
+        return topic_len, query_finals, frozenset(verb_stems)
 
     @staticmethod
     def _temporal_relevant(
@@ -1009,6 +1032,7 @@ class MemoryEngine:
         text: str,
         topic_len: int,
         query_finals: frozenset[str],
+        verb_stems: frozenset[str],
     ) -> bool:
         """Relevance gate for temporal anchors.
 
@@ -1027,6 +1051,22 @@ class MemoryEngine:
 
         if query_terms & set(tokenize(text)):
             return True
+        # Verb-stem fallback: "修的什么" -> 修 matches "修好" (the stem is
+        # followed by a result complement in the record). Only a small
+        # curated stem set is allowed, so 考/试 cannot leak into 考核/面试.
+        if verb_stems:
+            for stem in verb_stems:
+                start = 0
+                while True:
+                    pos = text.find(stem, start)
+                    if pos == -1:
+                        break
+                    nxt = pos + len(stem)
+                    if nxt < len(text) and (
+                        "\u4e00" <= text[nxt] <= "\u9fff"
+                    ):
+                        return True
+                    start = pos + 1
         if topic_len >= 3:
             # Long topics (托福考试/去银行办信用卡) need a real shared
             # bigram; a single common character is not enough.
