@@ -4645,6 +4645,59 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertTrue(any("320" in c for c in packed))
         self.assertTrue(any("420" in c for c in packed))
 
+    def test_entity_anchor_recall(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        for content, cues in (
+            ("机票：8月20日 10:30 飞羽田，航班 MU523。", ["机票"]),
+            ("8月18日把行程单发给爸妈，附了航班号。", ["行程单"]),
+            ("8月19日收到通知：MU523 改到 11:00 起飞。", ["通知"]),
+            ("8月21日预约观景台，票号 SKY-8841。", ["观景台"]),
+            ("购物清单：给同事带巧克力。", ["购物"]),
+            ("理赔资料：航班延误证明、医院收据都要留好。", ["理赔"]),
+            ("机场提示：航班改签柜台在 3 楼。", ["机场"]),
+            ("关注航班动态 APP 推送，提前 2 小时到机场。", ["航班动态"]),
+            ("航班值机在 T2 出发层 4 号门。", ["值机"]),
+            ("航班行李额 23kg，超重要付费。", ["行李额"]),
+            ("航班上可以连 Wi-Fi，密码 FLY888。", ["Wi-Fi"]),
+            ("航班起飞前 45 分钟停止值机。", ["停止值机"]),
+        ):
+            engine.remember(
+                content,
+                kind=MemoryKind.EPISODIC,
+                source=user,
+                cues=cues,
+                auto_cues=False,
+            )
+        results = engine.recall(
+            "去程航班号是多少？几点的？", top_k=3
+        )
+        contents = [r.item.content for r in results]
+        self.assertTrue(any("MU523" in c for c in contents))
+        self.assertTrue(
+            any(
+                "实体锚点" in reason
+                for result in results
+                for reason in result.reasons
+            )
+        )
+        # non-entity question is untouched by the anchor pass
+        plain = engine.recall("8月21日预约了什么？", top_k=2)
+        self.assertNotIn(
+            "实体锚点",
+            [reason for result in plain for reason in result.reasons],
+        )
+        # anchor disabled explicitly
+        off = engine.recall(
+            "去程航班号是多少？几点的？",
+            top_k=3,
+            entity_anchor=False,
+        )
+        self.assertNotIn(
+            "实体锚点",
+            [reason for result in off for reason in result.reasons],
+        )
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

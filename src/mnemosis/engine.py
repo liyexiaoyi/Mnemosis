@@ -223,6 +223,7 @@ class MemoryEngine:
         separation: bool = True,
         kind_preference: bool = True,
         concept_coverage: bool = True,
+        entity_anchor: bool = True,
         exclude_ids: set[str] | None = None,
     ) -> list[RecallResult]:
         embedder = embedder or self.embedder
@@ -292,6 +293,14 @@ class MemoryEngine:
                 zh_synonyms=zh_synonyms,
                 pattern_completion=pattern_completion,
                 separation=separation,
+            )
+        if entity_anchor:
+            results = self._apply_entity_anchor(
+                query,
+                results,
+                top_k=top_k,
+                kind=kind,
+                exclude_ids=exclude_ids,
             )
         return results
 
@@ -488,6 +497,76 @@ class MemoryEngine:
             "verdict": "multi" if multi else "single",
             "advice": advice,
         }
+
+    _ENTITY_QUESTION_RE = None
+    _ENTITY_RECORD_RE = None
+
+    def _apply_entity_anchor(
+        self,
+        query: str,
+        results: list[RecallResult],
+        *,
+        top_k: int,
+        kind: MemoryKind | None,
+        exclude_ids: set[str],
+    ) -> list[RecallResult]:
+        """Anchor entity-number questions to the canonical record.
+
+        Questions like "航班号/票号/保单号/编号是多少" are often answered
+        by a reminder or a changelog that merely mentions the identifier,
+        while the canonical record (the booking, the policy) ranks just
+        below top-k. This post-pass scans active memories for the entity
+        word plus a real identifier token (e.g. 航班 MU523, 保单号
+        AL-889900) and inserts the best such record into the top-k with
+        an 实体锚点 reason.
+        """
+        import re
+
+        if self._ENTITY_QUESTION_RE is None:
+            self._ENTITY_QUESTION_RE = re.compile(
+                r"(航班号|票号|保单号|订单号|编号|号码|房间号|"
+                r"账号|卡号|单号|证号)"
+            )
+            self._ENTITY_RECORD_RE = re.compile(
+                r"(航班|保单|票号|订单号|编号|房间号|账号|卡号|单号|证号|票)"
+                r"[\s:：\-]*"
+                r"([A-Za-z]{1,8}[-]?\d{2,}|\d{3,})"
+            )
+        if not self._ENTITY_QUESTION_RE.search(query) or not results:
+            return results
+        seen = {result.item.id for result in results}
+        for memory_id in seen:
+            item = self.backend.get(memory_id)
+            if item is None:
+                continue
+            match = self._ENTITY_RECORD_RE.search(item.content)
+            if match and (
+                match.group(1) in query
+                or match.group(1) + "号" in query
+            ):
+                return results
+        candidates: list[tuple[float, MemoryItem]] = []
+        for item in self.store.all_active(kind=kind):
+            if item.id in exclude_ids or item.id in seen:
+                continue
+            match = self._ENTITY_RECORD_RE.search(item.content)
+            if match:
+                entity = match.group(1)
+                score = (
+                    0.62
+                    if entity in query or entity + "号" in query
+                    else 0.60
+                )
+                candidates.append((score, item))
+        if not candidates:
+            return results
+        candidates.sort(key=lambda pair: (-pair[0], pair[1].id))
+        for score, candidate in candidates[:1]:
+            result = RecallResult(candidate, score)
+            result.reasons.append("实体锚点(编号记录)")
+            results.append(result)
+        results.sort(key=lambda result: result.score, reverse=True)
+        return results[: max(1, int(top_k))]
 
     def get_recall_log(self, limit: int = 50) -> list[dict]:
         """Return the most recent recall entries (bounded audit log)."""
