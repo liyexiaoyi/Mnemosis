@@ -4898,6 +4898,68 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertIsInstance(via_mcp["final_top_k"], list)
         self.assertIn(via_mcp["verdict"], {"anchored", "none"})
 
+    def test_temporal_anchor_long_topic_no_char_false_positive(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        for content, cues in (
+            ("2026年2月15日托福首考：总分 96。", ["托福"]),
+            ("2026年2月25日报名 3 月 20 日第二次托福。", ["托福"]),
+            ("2026年3月20日托福二考：总分 104（达标）。", ["托福"]),
+            ("2026年1月20日报了托福班：2 月 15 日首考。", ["托福"]),
+            ("2026年5月25日 A 大学面试完成：问科研经历。", ["面试"]),
+            ("2026年5月5日递交 A 大学申请：申请费 90 美元。", ["申请"]),
+        ):
+            engine.remember(
+                content,
+                kind=MemoryKind.EPISODIC,
+                source=user,
+                cues=cues,
+                auto_cues=False,
+            )
+        query = "上次托福考试是什么时候？考了多少分？"
+        # 3月20日 record is already inside the base top-4: the anchor must
+        # not displace it with the 5月25日 interview (考试 vs 面试 share 试).
+        base = engine.recall(query, top_k=4, temporal_anchor=False)
+        self.assertTrue(any("3月20日托福二考" in r.item.content for r in base))
+        anchored = engine._apply_temporal_anchor(
+            query,
+            list(base),
+            top_k=4,
+            kind=None,
+            exclude_ids=set(),
+        )
+        contents = [r.item.content for r in anchored]
+        self.assertTrue(any("3月20日托福二考" in c for c in contents))
+        self.assertFalse(
+            any("5月25日" in c for c in contents[:4])
+        )
+        self.assertNotIn(
+            "时间锚点",
+            [reason for result in anchored for reason in result.reasons],
+        )
+        # when the best record is missing, the anchor still inserts it
+        base_missing = [
+            result
+            for result in engine.recall(query, top_k=8, temporal_anchor=False)
+            if "3月20日托福二考" not in result.item.content
+        ][:4]
+        fixed = engine._apply_temporal_anchor(
+            query,
+            list(base_missing),
+            top_k=4,
+            kind=None,
+            exclude_ids=set(),
+        )
+        contents = [r.item.content for r in fixed]
+        self.assertTrue(any("3月20日托福二考" in c for c in contents))
+        self.assertTrue(
+            any(
+                "时间锚点(上次)" in reason
+                for result in fixed
+                for reason in result.reasons
+            )
+        )
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

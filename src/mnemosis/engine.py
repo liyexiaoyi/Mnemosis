@@ -778,6 +778,8 @@ class MemoryEngine:
             if not candidates:
                 return results
             candidates.sort(key=lambda pair: (-pair[0], pair[1].id))
+            if candidates[0][1].id in seen:
+                return results
             result = RecallResult(
                 candidates[0][1],
                 max(candidates[0][0], results[0].score + 0.01),
@@ -825,12 +827,38 @@ class MemoryEngine:
             return results
         candidates.sort(
             key=lambda pair: (
-                -pair[0],
                 tuple(-d for d in pair[1]) if want_past else pair[1],
+                -pair[0],
                 pair[2].id,
             )
         )
         score, _target, candidate = candidates[0]
+        # If the strongest candidate is already in the result list, the
+        # current top-k already answers the question; do not re-insert.
+        if candidate.id in seen:
+            return results
+        # If some result already present is a relevant dated record at
+        # least as strong in the asked direction, keep the current list.
+        for result in results:
+            if result.item.id in exclude_ids:
+                continue
+            text = (
+                result.item.content
+                + " "
+                + " ".join(result.item.cues)
+            )
+            if not self._temporal_relevant(query, query_terms, text):
+                continue
+            side = [d for d in _dates(text) if d <= today] if want_past else [
+                d for d in _dates(text) if d >= today
+            ]
+            if not side:
+                continue
+            seen_best = max(side) if want_past else min(side)
+            if (want_past and seen_best >= _target) or (
+                not want_past and seen_best <= _target
+            ):
+                return results
         result = RecallResult(
             candidate, max(score, results[0].score + 0.01)
         )
@@ -851,17 +879,43 @@ class MemoryEngine:
 
         Bigram overlap is the primary signal; a character-level fallback
         catches Chinese near-synonyms that share a morpheme but not a
-        bigram ("面试" vs "终面" share 面). Only word-final shared
-        characters count (the shared char must sit right after a Chinese
-        character in both the query and the record), so "试用期" cannot
+        bigram ("面试" vs "终面" share 面). The fallback only fires for
+        short topics (2 meaningful chars like 面试/复诊): when the topic
+        is longer ("托福考试"), a lone shared final char (考试 vs 面试's
+        试) is not enough and a real bigram overlap is required. Only
+        word-final shared characters count, so "试用期" cannot
         masquerade as an interview memory via its 试. Function/noise
         characters are excluded so "上次/哪天/是什么" do not create false
         hits.
         """
+        import re
+
         from .types import tokenize
 
         if query_terms & set(tokenize(text)):
             return True
+
+        topic = re.sub(
+            r"(上次|上一次|最近|最新|刚才|最后一次|前一次|"
+            r"下次|下一次|接下来)", "", query
+        )
+        topic = re.sub(
+            r"(是什么时候|是哪一天|是什么时间|什么时候|考了多少分|"
+            r"面了什么内容|结果如何|怎么样|推荐了什么|要准备什么|"
+            r"要带什么|是多少|是什么|多少分)", "", topic
+        )
+        topic = re.sub(
+            r"[是了的吗呢吧啊呀和与及或在有就都还也很这那"
+            r"什么哪一天上下次第几多少怎么如何何时几号点分"
+            r"年月日0-9\s，。？：:、（）()]",
+            "",
+            topic,
+        )
+        topic_len = sum(1 for ch in topic if "\u4e00" <= ch <= "\u9fff")
+        if topic_len >= 3:
+            # Long topics (托福考试/去银行办信用卡) need a real shared
+            # bigram; a single common character is not enough.
+            return False
 
         def _cjk(ch: str) -> bool:
             return "\u4e00" <= ch <= "\u9fff"
