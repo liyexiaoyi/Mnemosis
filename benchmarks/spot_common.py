@@ -37,7 +37,11 @@ def _mnemosis_contexts(dataset, questions):
     contexts = {}
     for question in questions:
         results = engine.recall(question["q"], top_k=4)
-        contexts[question["q"]] = [r.item.content for r in results]
+        rows = [r.item.content for r in results]
+        hint = engine.temporal_hint(question["q"])
+        if hint:
+            rows = [hint] + rows
+        contexts[question["q"]] = rows
     return contexts
 
 

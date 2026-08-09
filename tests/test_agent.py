@@ -5200,6 +5200,16 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         contents = [r.item.content for r in anchored]
         self.assertTrue(any("7月15日退款 268 元" in c for c in contents))
 
+    def test_temporal_hint_for_answer_models(self) -> None:
+        engine = MemoryEngine()
+        self.assertIn("最近", engine.temporal_hint("现在怎么复习？") or "")
+        self.assertIn("未来", engine.temporal_hint("下次直播是什么时候？") or "")
+        self.assertIsNone(engine.temporal_hint("番茄钟怎么用？"))
+        self.assertIn(
+            "客观题",
+            engine.temporal_hint("最近一次客观题模考多少分？") or "",
+        )
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

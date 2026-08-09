@@ -48,6 +48,19 @@ _TEMPORAL_STEM_WORDS: dict[str, tuple[str, ...]] = {
     "退": ("退", "退款", "退货", "退换"),
     "换": ("换", "更换", "换新", "换货"),
 }
+_TEMPORAL_ACTION_SYNONYMS: tuple[tuple[str, str], ...] = (
+    ("复习", "备考"),
+    ("复查", "复诊"),
+    ("维修", "检测"),
+    ("选品", "上新"),
+)
+_TEMPORAL_EXCLUSIONS: tuple[tuple[str, str], ...] = (
+    ("主观题", "客观题"),
+    ("模考", "考试"),
+    ("模考", "通过"),
+    ("模考", "出分"),
+    ("模考", "成绩"),
+)
 
 
 class MemoryEngine:
@@ -547,6 +560,7 @@ class MemoryEngine:
     _MONEY_PATTERN_RE = None
     _TEMPORAL_PAST_RE = re.compile(
         r"上次|上一次|最近|最新|刚才|最后一次|前一次|"
+        r"现在|目前|当前|"
         r"什么时候[^？?]{0,6}(?:的|了)"
     )
     _TEMPORAL_FUTURE_RE = re.compile(
@@ -853,7 +867,13 @@ class MemoryEngine:
         }
         if particle_terms:
             query_terms |= expand_synonyms(particle_terms)
-        topic_len, query_finals, verb_stems = self._temporal_probe(query)
+        (
+            topic_len,
+            query_finals,
+            verb_stems,
+            action_groups,
+            excluded_terms,
+        ) = self._temporal_probe(query)
         notice_q = self._TEMPORAL_NOTICE_RE.search(query)
 
         if date_marker:
@@ -879,6 +899,8 @@ class MemoryEngine:
                     topic_len,
                     query_finals,
                     verb_stems,
+                    action_groups,
+                    excluded_terms,
                 ):
                     continue
                 candidates.append((0.62, item))
@@ -930,6 +952,8 @@ class MemoryEngine:
                 topic_len,
                 query_finals,
                 verb_stems,
+                action_groups,
+                excluded_terms,
             ):
                 continue
             target = max(side) if want_past else min(side)
@@ -995,6 +1019,8 @@ class MemoryEngine:
                 topic_len,
                 query_finals,
                 verb_stems,
+                action_groups,
+                excluded_terms,
             ):
                 continue
             side = [d for d in full if d <= today] if want_past else [
@@ -1019,7 +1045,13 @@ class MemoryEngine:
     def _temporal_probe(
         cls,
         query: str,
-    ) -> tuple[int, frozenset[str], frozenset[str]]:
+    ) -> tuple[
+        int,
+        frozenset[str],
+        frozenset[str],
+        frozenset[int],
+        frozenset[str],
+    ]:
         """Precompute per-query topic length and word-final chars once."""
         topic = cls._TEMPORAL_STRIP_RE.sub("", query)
         topic = cls._TEMPORAL_CLEAN_RE.sub("", topic)
@@ -1040,7 +1072,24 @@ class MemoryEngine:
             )
             if match.group(1) in _TEMPORAL_STEM_WORDS
         )
-        return topic_len, query_finals, verb_stems
+        action_groups = frozenset(
+            index
+            for index, group in enumerate(_TEMPORAL_ACTION_SYNONYMS)
+            if any(word in query for word in group)
+        )
+        excluded_terms = frozenset(
+            word
+            for group in _TEMPORAL_EXCLUSIONS
+            for word in group
+            if any(other in query for other in group if other != word)
+        )
+        return (
+            topic_len,
+            query_finals,
+            verb_stems,
+            action_groups,
+            excluded_terms,
+        )
 
     @staticmethod
     def _temporal_relevant(
@@ -1049,6 +1098,8 @@ class MemoryEngine:
         topic_len: int,
         query_finals: frozenset[str],
         verb_stems: frozenset[str],
+        action_groups: frozenset[int],
+        excluded_terms: frozenset[str],
     ) -> bool:
         """Relevance gate for temporal anchors.
 
@@ -1065,7 +1116,18 @@ class MemoryEngine:
         """
         from .types import tokenize
 
+        # Topic exclusions: asking about 客观题 must not match a record
+        # that says 主观题 (and vice versa).
+        if excluded_terms and any(word in text for word in excluded_terms):
+            return False
         if query_terms & set(tokenize(text)):
+            return True
+        # Action synonyms: "现在怎么复习" matches records written as
+        # 备考 (near-synonym actions in Chinese).
+        if action_groups and any(
+            any(word in text for word in _TEMPORAL_ACTION_SYNONYMS[index])
+            for index in action_groups
+        ):
             return True
         # Verb-stem fallback: "修的什么" -> 修 matches "修好" (the stem is
         # followed by a result complement in the record). Each stem maps
@@ -1129,6 +1191,38 @@ class MemoryEngine:
             ],
             "verdict": "anchored" if anchored else "none",
         }
+
+    def temporal_hint(self, query: str) -> str | None:
+        """Return a one-line answer-model hint for temporal questions.
+
+        Small and cloud models often answer 不知道 when several dated rows
+        look plausible ("上次/最近/现在怎么复习"). This hint tells the
+        answer model which direction to pick without revealing any answer
+        content, so the retrieved context is self-guiding (retrieval cue
+        elaboration; Craik & Tulving, 1975).
+        """
+        excluded = self._temporal_probe(query)[4]
+        note = (
+            "另注意：区分主观题与客观题、模考与正式考试，不要混用。"
+            if excluded
+            else ""
+        )
+        if self._TEMPORAL_PAST_RE.search(query):
+            return (
+                "提示：问题在问过去/最近/现在的情况，答案应选日期最新"
+                "且话题匹配的那条记忆。" + note
+            )
+        if self._TEMPORAL_FUTURE_RE.search(query):
+            return (
+                "提示：问题在问接下来的安排，答案应选日期最近未来的"
+                "那条记忆。" + note
+            )
+        if self._TEMPORAL_DATE_Q_RE.search(query):
+            return (
+                "提示：问题指定了具体日期，答案应选包含该日期的那条记忆。"
+                + note
+            )
+        return note or None
 
     def get_recall_log(self, limit: int = 50) -> list[dict]:
         """Return the most recent recall entries (bounded audit log)."""
