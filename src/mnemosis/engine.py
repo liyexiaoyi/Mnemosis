@@ -1115,6 +1115,23 @@ class MemoryEngine:
             ]
             if clean_rows:
                 results = clean_rows
+        # Future-direction questions ("下次/接下来") must not carry
+        # stale dated records in the context: a past appointment only
+        # tricks the answer model into picking a date that already
+        # happened. Human "next" queries ignore expired schedule rows.
+        if not want_past:
+            future_rows = []
+            for result in results:
+                if result.item.id in exclude_ids:
+                    future_rows.append(result)
+                    continue
+                text = result.item.content + " " + " ".join(result.item.cues)
+                full, dates = _dates(text)
+                if dates and not any(d > today for d in dates):
+                    continue
+                future_rows.append(result)
+            if future_rows:
+                results = future_rows
         # If some result already present is a relevant dated record at
         # least as strong in the asked direction, keep the current list.
         for result in results:
