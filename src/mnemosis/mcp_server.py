@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import datetime
 from typing import Any
 
 from .engine import MemoryEngine
@@ -2363,7 +2364,6 @@ class MCPServer:
                 limit=int(args.get("limit", 10)),
             )
         if name == "intent_remember":
-            from datetime import datetime
 
             return self.engine.remember_intent(
                 args["content"],
@@ -2397,7 +2397,6 @@ class MCPServer:
         if name == "suppressed_report":
             return self.engine.suppressed_report()
         if name == "timeline_report":
-            from datetime import datetime
 
             return self.engine.timeline_report(
                 start=(
@@ -2465,7 +2464,6 @@ class MCPServer:
                 limit=int(args.get("limit", 20)),
             )
         if name == "cramming_plan":
-            from datetime import datetime
 
             return self.engine.cramming_plan(
                 datetime.fromisoformat(args["target_at"]),
@@ -2746,7 +2744,6 @@ class MCPServer:
             )
         if name == "practice_due":
             kind_value = args.get("kind")
-            from .types import MemoryKind
 
             return self.engine.practice_due(
                 limit=int(args.get("limit", 5)),

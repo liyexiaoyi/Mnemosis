@@ -17,6 +17,7 @@ from .embedding import Embedder
 from .reasoning import apply_premise_pack
 from .schema import EventChainIndex
 from .temporal_reason import apply_time_cell_reasoning
+from .zh_nlp import expand_synonyms
 from .types import (
     MemoryItem,
     MemoryKind,
@@ -177,7 +178,6 @@ class DualTrackStore:
         if zh_synonyms and any("\u4e00" <= ch <= "\u9fff" for ch in query):
             # Chinese synonym expansion: questions often use different words
             # than the stored memory ("筹备/旅游" vs "准备/旅行").
-            from .zh_nlp import expand_synonyms
 
             query_terms = expand_synonyms(query_terms)
         # Temporal questions ("after X, what did Y do next?") cue the event

@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import math
 import re
-from collections import deque
-from datetime import datetime
+import uuid
+from itertools import combinations
+from collections import Counter, defaultdict, deque
+from datetime import date, datetime, timedelta
 
 from .association import AssociationIndex
 from .backend import Backend, make_backend
@@ -16,6 +19,8 @@ from .importance import ImportanceScorer
 from .metacognition import ConfidenceLabel, Metacognition, MetacognitiveCheck
 from .recycle import RecycleBin
 from .schema import EventChainIndex
+from .reasoning import suggested_pack_size
+from .zh_nlp import expand_synonyms, has_cjk
 from .types import (
     MemoryItem,
     MemoryKind,
@@ -26,6 +31,7 @@ from .types import (
     extract_cues,
     hash_content,
     normalize_cues,
+    tokenize,
     utcnow,
 )
 
@@ -134,7 +140,6 @@ class MemoryEngine:
         / "在公司" / "去家里" are extracted so later fuzzy-context recall
         can use them without the caller tagging every memory by hand.
         """
-        import re
 
         match = re.search(
             r"(?:在|去|到)([\u4e00-\u9fff]{2,6}?)"
@@ -412,7 +417,6 @@ class MemoryEngine:
         chunking; Miller, 1956). "A 和 B 分别是多少" becomes [A, B] so each
         concept gets a retrieval vote instead of being diluted in one
         bag-of-tokens query."""
-        import re
 
         if not any("\u4e00" <= ch <= "\u9fff" for ch in query):
             return []
@@ -446,7 +450,6 @@ class MemoryEngine:
         chunks = self._concept_chunks(query)
         if not chunks or not results:
             return results
-        from .types import tokenize
 
         seen = {result.item.id for result in results}
         for chunk in chunks:
@@ -490,7 +493,6 @@ class MemoryEngine:
         limit: int = 3,
     ) -> list[tuple[float, MemoryItem]]:
         """Score every active memory against one concept chunk."""
-        from .types import tokenize
 
         rows: list[tuple[float, MemoryItem]] = []
         for item in self.store.all_active(kind=kind):
@@ -510,7 +512,6 @@ class MemoryEngine:
 
     def _concept_terms(self, chunk: str) -> set[str]:
         """Meaningful terms of one concept chunk (no function words)."""
-        from .types import tokenize
 
         generic = {
             "多少", "分别", "是", "什么", "哪些", "怎么", "如何",
@@ -664,7 +665,6 @@ class MemoryEngine:
         AL-889900) and inserts the best such record into the top-k with
         an 实体锚点 reason.
         """
-        import re
 
         if self._ENTITY_QUESTION_RE is None:
             self._ENTITY_QUESTION_RE = re.compile(
@@ -732,9 +732,7 @@ class MemoryEngine:
         inserts the best value-carrying record (time ranges preferred for
         time questions) into the top-k with an 数值锚点 reason.
         """
-        import re
 
-        from .types import tokenize
 
         if self._VALUE_QUESTION_RE is None:
             self._VALUE_QUESTION_RE = re.compile(
@@ -755,7 +753,6 @@ class MemoryEngine:
         query_terms = self._concept_terms(query)
         if not query_terms:
             return results
-        from .zh_nlp import expand_synonyms, has_cjk
 
         if has_cjk(query):
             query_terms = expand_synonyms(query_terms)
@@ -883,7 +880,6 @@ class MemoryEngine:
         truncation instead of being pushed out by an already-high-ranking
         generic match.
         """
-        from .types import tokenize
 
         if not results:
             return results
@@ -936,7 +932,6 @@ class MemoryEngine:
         query_terms = self._concept_terms(query)
         if not query_terms:
             return results
-        from .zh_nlp import expand_synonyms
 
         # tokenize drops particle forms (续的), so re-add raw verb+particle
         # 2-grams and expand only those ("续的" -> "续费"), never the whole
@@ -1266,7 +1261,6 @@ class MemoryEngine:
             if not _CONTACT_PAT_RE.search(item.content):
                 continue
             text = item.content + " " + " ".join(item.cues)
-            from .types import tokenize
 
             overlap = len(query_terms & set(tokenize(text)))
             if overlap == 0:
@@ -1301,7 +1295,6 @@ class MemoryEngine:
         This post-pass inserts the best purchase records (up to 2, since
         the answer often spans several items) with a 购买锚点 reason.
         """
-        from .zh_nlp import expand_synonyms, has_cjk
 
         if not _PURCHASE_Q_RE.search(query) or not results:
             return results
@@ -1317,7 +1310,6 @@ class MemoryEngine:
                 continue
             if not _PURCHASE_WORD_RE.search(item.content):
                 continue
-            from .types import tokenize
 
             overlap = len(query_terms & set(tokenize(item.content)))
             if overlap == 0:
@@ -1413,7 +1405,6 @@ class MemoryEngine:
         characters are excluded so "上次/哪天/是什么" do not create false
         hits.
         """
-        from .types import tokenize
 
         # Topic exclusions: asking about 客观题 must not match a record
         # that says 主观题 (and vice versa).
@@ -1585,7 +1576,6 @@ class MemoryEngine:
         optional context cue, and surfaces when due instead of being
         reinforced like a past fact.
         """
-        import uuid
 
         now = now or utcnow()
         record = {
@@ -1607,13 +1597,12 @@ class MemoryEngine:
         limit: int = 10,
     ) -> list[dict]:
         """Return active intents whose deadline has arrived."""
-        from datetime import datetime as _dt
 
         now = now or utcnow()
         due = [
             r for r in self._intents.values()
             if r["status"] == "active"
-            and _dt.fromisoformat(r["due_at"]) <= now
+            and datetime.fromisoformat(r["due_at"]) <= now
         ]
         due.sort(key=lambda r: r["due_at"])
         return [dict(r) for r in due[: max(1, int(limit))]]
@@ -1642,17 +1631,16 @@ class MemoryEngine:
 
     def intent_report(self, now: datetime | None = None) -> dict:
         """Summarize the intention register (due / upcoming / done)."""
-        from datetime import datetime as _dt
 
         now = now or utcnow()
         active = [
             r for r in self._intents.values() if r["status"] == "active"
         ]
         overdue = [
-            r for r in active if _dt.fromisoformat(r["due_at"]) <= now
+            r for r in active if datetime.fromisoformat(r["due_at"]) <= now
         ]
         upcoming = [
-            r for r in active if _dt.fromisoformat(r["due_at"]) > now
+            r for r in active if datetime.fromisoformat(r["due_at"]) > now
         ]
         upcoming.sort(key=lambda r: r["due_at"])
         return {
@@ -1682,7 +1670,6 @@ class MemoryEngine:
         or sharing the same context cue risk one being forgotten. This
         tool reports both kinds so the agent can reschedule.
         """
-        from datetime import datetime as _dt
 
         active = [
             r for r in self._intents.values() if r["status"] == "active"
@@ -1691,8 +1678,8 @@ class MemoryEngine:
         for i in range(len(active)):
             a = active[i]
             for b in active[i + 1:]:
-                ta = _dt.fromisoformat(a["due_at"])
-                tb = _dt.fromisoformat(b["due_at"])
+                ta = datetime.fromisoformat(a["due_at"])
+                tb = datetime.fromisoformat(b["due_at"])
                 gap = abs((ta - tb).total_seconds()) / 60.0
                 if gap < max(1, int(time_window_minutes)):
                     conflicts.append(
@@ -2039,7 +2026,6 @@ class MemoryEngine:
         know whether they duplicate, conflict or are simply distinct. This
         reports token overlap, shared cues and a verdict.
         """
-        from .types import tokenize
 
         a = self.backend.get(id_a)
         b = self.backend.get(id_b)
@@ -2096,7 +2082,6 @@ class MemoryEngine:
         1983): overdue first, then upcoming by deadline, with clashing
         intentions flagged for rescheduling.
         """
-        from datetime import datetime as _dt, timedelta
 
         now = now or utcnow()
         conflicts = self.intent_conflicts()["conflicts"]
@@ -2107,7 +2092,7 @@ class MemoryEngine:
         for record in self._intents.values():
             if record["status"] != "active":
                 continue
-            due = _dt.fromisoformat(record["due_at"])
+            due = datetime.fromisoformat(record["due_at"])
             actions.append(
                 {
                     "type": "intent",
@@ -2139,8 +2124,6 @@ class MemoryEngine:
         detail. This extracts shared cues, frequent terms and evidence
         counts into a compact summary an agent can use (or write back).
         """
-        from collections import Counter
-        from .types import tokenize
 
         items = []
         for memory_id in memory_ids:
@@ -2190,7 +2173,6 @@ class MemoryEngine:
         shows which memories appear at each distance, so agents can gather
         multi-hop evidence for reasoning.
         """
-        from collections import defaultdict
 
         if self.backend.get(start_id) is None:
             return None
@@ -2238,7 +2220,6 @@ class MemoryEngine:
         2006): the available hours are split into short sessions and the
         most at-risk important memories are reviewed first.
         """
-        from datetime import timedelta
 
         scored = []
         for item in self.store.all_active():
@@ -2291,7 +2272,6 @@ class MemoryEngine:
         then flags conflict and duplicate pairs so the agent can resolve
         them before moving on.
         """
-        from itertools import combinations
 
         items = []
         for memory_id in memory_ids:
@@ -2410,7 +2390,6 @@ class MemoryEngine:
         over time; this returns the forecast at regular intervals so
         agents or dashboards can plot it.
         """
-        from datetime import timedelta
 
         item = self.backend.get(memory_id)
         if item is None:
@@ -2504,7 +2483,6 @@ class MemoryEngine:
         source origin and scores each source from its average confidence,
         evidence and importance.
         """
-        from collections import defaultdict
 
         groups: dict[str, list] = defaultdict(list)
         for item in self.store.all_active():
@@ -2591,7 +2569,6 @@ class MemoryEngine:
         memories that share a cue but have no link are a gap in the
         network. This lists those pairs so the agent can add bridges.
         """
-        from itertools import combinations
 
         items = self.store.all_active()
         existing: set[frozenset[str]] = set()
@@ -2641,7 +2618,6 @@ class MemoryEngine:
         verbs, dependency ordering, duplicate steps and alignment with
         project memories.
         """
-        from .types import tokenize
 
         steps = []
         for item in plan:
@@ -2817,7 +2793,6 @@ class MemoryEngine:
         unit mixes and division by zero, and cross-checks against known
         facts in memory (e.g. speed x time = distance).
         """
-        import re
 
         pairs = re.findall(
             r"(\d+(?:\.\d+)?)\s*"
@@ -3053,7 +3028,6 @@ class MemoryEngine:
         overdue intentions and clashing schedules all raise the risk score
         (0-100), with suggestions for mitigation.
         """
-        from itertools import combinations
 
         if memory_ids:
             items = []
@@ -3464,7 +3438,6 @@ class MemoryEngine:
         matches each lesson memory (success/failure/experience) against
         plan steps by token overlap and reports which lessons apply.
         """
-        from .types import tokenize
 
         steps = []
         for item in plan:
@@ -3629,7 +3602,6 @@ class MemoryEngine:
         components so agents can see which memories form a theme-cluster
         and which are isolated.
         """
-        from collections import Counter, defaultdict
 
         items = self.store.all_active()
         parent = {item.id: item.id for item in items}
@@ -3743,7 +3715,6 @@ class MemoryEngine:
         arousing traces, reports the negative ratio and suggests
         reappraisal or spacing when negativity is high.
         """
-        from collections import Counter
 
         if memory_ids:
             items = []
@@ -3901,7 +3872,6 @@ class MemoryEngine:
         episodes form event chains; unresolved contradictions block
         clean integration.
         """
-        from collections import defaultdict
 
         items = self.store.all_active()
         topic_groups: dict[str, list] = defaultdict(list)
@@ -4016,7 +3986,6 @@ class MemoryEngine:
         store the derived conclusion as an inference memory so the next
         reasoning round starts from a richer base.
         """
-        import re
 
         topic = topic or (self.store.all_active()[0].cues[0] if self.store.all_active() else problem[:12])
         results = self.recall(problem, top_k=max(1, int(top_k)), now=now)
@@ -4204,7 +4173,6 @@ class MemoryEngine:
         them by readiness, and tells the agent what to "let sleep
         integrate" next.
         """
-        from collections import defaultdict
 
         items = self.store.all_active()
         topic_groups: dict[str, list] = defaultdict(list)
@@ -4273,9 +4241,7 @@ class MemoryEngine:
         fit to the best-matching schema (topic group) and labels it
         assimilate / borderline / accommodate.
         """
-        from collections import defaultdict
 
-        from .types import tokenize
 
         items = self.store.all_active()
         groups: dict[str, list] = defaultdict(list)
@@ -4528,7 +4494,6 @@ class MemoryEngine:
         that are accessed far too often and suggests reappraisal +
         update instead of another replay.
         """
-        from collections import defaultdict
 
         threshold = max(1, int(access_threshold))
         items = self.store.all_active()
@@ -4671,7 +4636,6 @@ class MemoryEngine:
         If one memory in a topic is retrieved far more often than its
         siblings, the siblings may be losing retrievability silently.
         """
-        from collections import defaultdict
 
         ratio = max(1.0, float(imbalance_ratio))
         items = self.store.all_active()
@@ -4743,7 +4707,6 @@ class MemoryEngine:
         attempts per topic, compares mean confidence with accuracy and
         flags overconfidence / underconfidence.
         """
-        from collections import defaultdict
 
         min_attempts = max(1, int(min_attempts))
         items = self.store.all_active()
@@ -4904,7 +4867,6 @@ class MemoryEngine:
         accuracy, average retrievability and topic coverage; topics in
         the "developing" band are the next-step candidates.
         """
-        from collections import defaultdict
 
         min_attempts = max(1, int(min_attempts))
         items = self.store.all_active()
@@ -5042,9 +5004,7 @@ class MemoryEngine:
         cues, shared terms and shared relation words, and suggests
         analogies that aid transfer.
         """
-        from itertools import combinations
 
-        from .types import tokenize
 
         relation_words = {
             "绕", "围绕", "大于", "小于", "等于", "导致", "因为",
@@ -5234,7 +5194,6 @@ class MemoryEngine:
         cues make retrieval more robust. Single-cue memories are fragile;
         cues shared by many memories are overloaded and weak.
         """
-        from collections import defaultdict, Counter
 
         items = self.store.all_active()
         cue_counts: Counter = Counter()
@@ -5415,7 +5374,6 @@ class MemoryEngine:
         estimates a per-memory decay rate from retrieval history and
         predicts the day retrievability crosses a threshold.
         """
-        import math
 
         threshold = max(0.05, min(0.95, float(threshold)))
         if memory_id:
@@ -5486,7 +5444,6 @@ class MemoryEngine:
         consecutive successes = processed). This reports current charge,
         estimated persistence and a regulation hint.
         """
-        from collections import defaultdict
 
         emotional = [
             item
@@ -5689,8 +5646,6 @@ class MemoryEngine:
         and content terms that overlap the (synonym-expanded) query and
         returns them as concrete follow-up queries.
         """
-        from .types import tokenize
-        from .zh_nlp import expand_synonyms, has_cjk
 
         q_terms = set(tokenize(query))
         expanded = (
@@ -5896,7 +5851,6 @@ class MemoryEngine:
         vague "I know it" without detail). This tool checks one candidate
         memory against a query and reports which process supports it.
         """
-        from .types import tokenize
 
         item = self.backend.get(memory_id)
         if item is None:
@@ -5950,8 +5904,6 @@ class MemoryEngine:
         finds cues with >= shared_cue_min active memories and suggests
         differentiating them with extra cues.
         """
-        from collections import defaultdict
-        from .types import tokenize
 
         cue_members: dict[str, list] = defaultdict(list)
         for item in self.store.all_active():
@@ -6017,8 +5969,6 @@ class MemoryEngine:
         each period's event count, top themes, average importance and
         highlights.
         """
-        from collections import defaultdict
-        from datetime import date, timedelta
 
         epoch = date(1970, 1, 1)
         items = [
@@ -6097,7 +6047,6 @@ class MemoryEngine:
         the full premise set reaches the LLM context (Kahneman 2011;
         Miller & Cohen 2001).
         """
-        from .reasoning import suggested_pack_size
 
         return self.recall(
             query,
@@ -6125,9 +6074,7 @@ class MemoryEngine:
         event date; non-process questions behave exactly like
         ``recall_reasoning``.
         """
-        import re
 
-        from .types import MemoryKind
 
         results = self.recall(
             query,
@@ -6174,7 +6121,7 @@ class MemoryEngine:
         if plan_reuse:
             import re as _re
 
-            found = _re.findall(
+            found = re.findall(
                 r"(?:参考|参照|学|模仿|按照|像)([\u4e00-\u9fff]{2})"
                 r"|和([\u4e00-\u9fff]{2})",
                 query,
@@ -6183,10 +6130,8 @@ class MemoryEngine:
                 (a or b) for a, b in found if (a or b)
             ]
             if ref_persons:
-                from .types import tokenize as _tokenize
-                from .zh_nlp import expand_synonyms as _expand
 
-                query_terms = _expand(set(_tokenize(query)))
+                query_terms = expand_synonyms(set(tokenize(query)))
                 _TOPIC_STOP = {
                     "怎么", "如何", "准备", "计划", "参考", "参照", "模仿",
                     "按照", "更好", "希望", "想要", "想做", "打算", "安排",
@@ -6327,7 +6272,7 @@ class MemoryEngine:
         """
         import re as _re
 
-        refs = len(_re.findall(
+        refs = len(re.findall(
             r"(?:参考|参照|学|模仿|按照|像)([\u4e00-\u9fff]{2})"
             r"|和([\u4e00-\u9fff]{2})",
             goal,
@@ -6429,7 +6374,7 @@ class MemoryEngine:
         import re as _re
 
         size = 8
-        refs = _re.findall(
+        refs = re.findall(
             r"(?:参考|参照|学|模仿|按照|像)([\u4e00-\u9fff]{2})"
             r"|和([\u4e00-\u9fff]{2})",
             goal,
@@ -6458,13 +6403,12 @@ class MemoryEngine:
         each plan step that matches a step cue is nudged by
         ``clamp((success_evidence - failure_evidence) * bonus_scale)``.
         """
-        from .types import MemoryKind as _MemoryKind
 
         if not results:
             return
         _ACTION_PREFIXES = "订买卖打包收拾请找定学搬选入"
         outcome_by_step: dict[tuple[str, str], float] = {}
-        for item in self.backend.list(kind=_MemoryKind.EPISODIC):
+        for item in self.backend.list(kind=MemoryKind.EPISODIC):
             if "执行成功" not in item.content and "执行失败" not in item.content:
                 continue
             if len(item.cues) < 3:
@@ -6809,7 +6753,6 @@ class MemoryEngine:
         matching formula already stored in memory (or falls back to the
         template as a general rule).
         """
-        import re
 
         detected = [
             label
@@ -6982,8 +6925,6 @@ class MemoryEngine:
         applicable law from memory (falling back to common built-in
         rules), then plays the scene forward in ordered phases.
         """
-        import math
-        import re
 
         detected = [
             label
@@ -7987,7 +7928,6 @@ class MemoryEngine:
         falls inside the window is returned with its due time, so agents
         can plan a week of reviews ahead of time.
         """
-        from datetime import timedelta
 
         now = now or utcnow()
         horizon = now + timedelta(days=max(1, int(days)))
@@ -8111,7 +8051,6 @@ class MemoryEngine:
         store with cues and associations. Ids are preserved for portability;
         importing the same payload twice creates duplicates.
         """
-        from .types import MemoryItem
 
         imported = 0
         for data in payload.get("memories", []):
@@ -8247,7 +8186,6 @@ class MemoryEngine:
         (retrievability < 0.3). A weighted load index (overdue x2) tells
         agents whether today needs a bigger quota.
         """
-        from datetime import timedelta
 
         now = now or utcnow()
         items = self.store.all_active()
@@ -8353,7 +8291,6 @@ class MemoryEngine:
         pairs that need better separation (pattern separation; Yassa &
         Stark, 2011).
         """
-        from .types import tokenize
 
         items = self.store.all_active()
         pairs = []
@@ -8537,7 +8474,6 @@ class MemoryEngine:
         This tool compares the current working set against capacity and
         recommends chunking by topic when overloaded.
         """
-        from collections import defaultdict
 
         items = self.working_set(limit=max(1, int(limit)))
         count = len(items)
