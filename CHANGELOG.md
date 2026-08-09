@@ -2,8 +2,8 @@
 
 ## v0.2.1 - MCP 修复与仓库整理
 
-- MCP 服务器支持标准 Content-Length 帧（符合 MCP stdio 规范），可对接
-  Claude Desktop / Cursor 等标准客户端
+- MCP 服务器同时支持换行分隔（当前 MCP stdio 规范）与 Content-Length 帧
+  （旧版客户端），按请求格式回应，兼容 Claude Desktop / Cursor 等客户端
 - 参数兼容性加固：`null` 参数回退默认值、缺失必填参数返回标准错误、
   CLI `review` 简化、内容哈希改用 SHA-256、cues 过滤空串
 - 新增中文说明 README.zh-CN.md；不再跟踪基准结果文件；版本号对齐 0.2.1

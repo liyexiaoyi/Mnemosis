@@ -2809,32 +2809,35 @@ class MCPServer:
         )
 
 
-def _read_message() -> str | None:
-    """Read one JSON-RPC message (MCP stdio Content-Length framing)."""
+def _read_message() -> tuple[str | None, bool]:
+    """Read one JSON-RPC message; return (message, used_content_length)."""
     first = sys.stdin.buffer.readline()
     if not first:
-        return None
+        return None, False
     if not first.strip().lower().startswith(b"content-length"):
-        return first.decode("utf-8").strip()  # legacy NDJSON line
+        return first.decode("utf-8").strip(), False  # newline-delimited JSON
     length = int(first.split(b":", 1)[1].strip())
     while True:
         line = sys.stdin.buffer.readline()
         if not line:
-            return None
+            return None, True
         if not line.strip():
             break
         if line.lower().startswith(b"content-length:"):
             length = int(line.split(b":", 1)[1].strip())
     if length <= 0:
-        return None
-    return sys.stdin.buffer.read(length).decode("utf-8")
+        return None, True
+    return sys.stdin.buffer.read(length).decode("utf-8"), True
 
 
-def _write_message(text: str) -> None:
+def _write_message(text: str, framed: bool) -> None:
     body = text.encode("utf-8")
-    sys.stdout.buffer.write(
-        b"Content-Length: " + str(len(body)).encode("ascii") + b"\r\n\r\n" + body
-    )
+    if framed:
+        sys.stdout.buffer.write(
+            b"Content-Length: " + str(len(body)).encode("ascii") + b"\r\n\r\n" + body
+        )
+    else:
+        sys.stdout.buffer.write(body + b"\n")
     sys.stdout.buffer.flush()
 
 
@@ -2846,12 +2849,12 @@ def run_stdio(db_path: str | None = None) -> None:
             pass
     server = MCPServer(MemoryEngine(db_path))
     while True:
-        message = _read_message()
+        message, framed = _read_message()
         if message is None:
             break
         response = server.handle_line(message)
         if response is not None:
-            _write_message(response)
+            _write_message(response, framed)
 
 
 def main(argv: Sequence[str] | None = None) -> int:
