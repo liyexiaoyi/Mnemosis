@@ -740,6 +740,10 @@ class MemoryEngine:
         query_terms = self._concept_terms(query)
         if not query_terms:
             return results
+        from .zh_nlp import expand_synonyms, has_cjk
+
+        if has_cjk(query):
+            query_terms = expand_synonyms(query_terms)
         time_marker = bool(
             re.search(r"几点|什么时间|几点到几点", query)
         )
