@@ -5083,6 +5083,46 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
             any("7月2日买了运动手环" in c for c in contents[:4])
         )
 
+    def test_temporal_anchor_yearless_future_date(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        for content, cues in (
+            ("2026年3月10日第三次直播：卖了 88 单。", ["直播"]),
+            ("2026年3月1日直播时间改为每周二、五晚 8 点。", ["直播"]),
+            ("2026年2月10日第二次直播：卖了 51 单。", ["直播"]),
+            ("2026年7月20日预约 8 月 20 日新品发布会直播。", ["直播"]),
+        ):
+            engine.remember(
+                content,
+                kind=MemoryKind.EPISODIC,
+                source=user,
+                cues=cues,
+                auto_cues=False,
+            )
+        now = datetime(2026, 8, 9, tzinfo=timezone.utc)
+        base = engine.recall(
+            "下次直播是什么时候？",
+            top_k=3,
+            temporal_anchor=False,
+        )
+        anchored = engine._apply_temporal_anchor(
+            "下次直播是什么时候？",
+            list(base),
+            top_k=3,
+            kind=None,
+            exclude_ids=set(),
+            now=now,
+        )
+        contents = [r.item.content for r in anchored]
+        self.assertTrue(any("8 月 20 日" in c for c in contents))
+        self.assertTrue(
+            any(
+                "时间锚点(下次)" in reason
+                for result in anchored
+                for reason in result.reasons
+            )
+        )
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

@@ -540,6 +540,9 @@ class MemoryEngine:
         r"(\d{4})年(\d{1,2})月(\d{1,2})日"
         r"|(\d{4})-(\d{1,2})-(\d{1,2})"
     )
+    _TEMPORAL_MD_RE = re.compile(
+        r"(?<!年)(\d{1,2})\s*月\s*(\d{1,2})\s*日"
+    )
     _TEMPORAL_YEAR_RE = re.compile(r"(\d{4})\s*年")
     _TEMPORAL_NOTICE_RE = re.compile(
         r"预约|通知|提醒|改到|调时间|约了|收到|说"
@@ -776,26 +779,42 @@ class MemoryEngine:
         now = now or utcnow()
         today = (now.year, now.month, now.day)
 
-        def _dates(text: str) -> list[tuple[int, int, int]]:
-            out: list[tuple[int, int, int]] = []
+        def _dates(
+            text: str,
+        ) -> tuple[
+            list[tuple[int, int, int]], list[tuple[int, int, int]]
+        ]:
+            full: list[tuple[int, int, int]] = []
+            year: int | None = None
             for match in self._TEMPORAL_DATE_RE.finditer(text):
                 if match.group(1):
-                    out.append(
+                    year = int(match.group(1))
+                    full.append(
                         (
-                            int(match.group(1)),
+                            year,
                             int(match.group(2)),
                             int(match.group(3)),
                         )
                     )
                 else:
-                    out.append(
+                    year = int(match.group(4))
+                    full.append(
                         (
-                            int(match.group(4)),
+                            year,
                             int(match.group(5)),
                             int(match.group(6)),
                         )
                     )
-            return out
+            # Year-less dates ("8 月 20 日") take the year of the first
+            # full date in the same record; human memory does the same
+            # anchoring (the event's own year supplies the missing digit).
+            out = list(full)
+            if year is not None:
+                for match in self._TEMPORAL_MD_RE.finditer(text):
+                    out.append(
+                        (year, int(match.group(1)), int(match.group(2)))
+                    )
+            return full, out
 
         seen = {result.item.id for result in results}
         query_terms = self._concept_terms(query)
@@ -861,7 +880,7 @@ class MemoryEngine:
             if item.id in seen or item.id in exclude_ids:
                 continue
             text = item.content + " " + " ".join(item.cues)
-            dates = _dates(text)
+            full, dates = _dates(text)
             if not dates:
                 continue
             side = (
@@ -886,11 +905,21 @@ class MemoryEngine:
             ):
                 continue
             target = max(side) if want_past else min(side)
-            # A record whose strongest direction date is also its most
-            # extreme overall date is a stronger anchor (single coherent
-            # date); records with both directions score slightly lower.
-            extreme = max(dates) if want_past else min(dates)
-            score = 0.62 if target == extreme else 0.60
+            # A record whose own full date is the direction target is the
+            # event record (strong anchor). Records that merely mention
+            # the date ("报名 3 月 20 日") score lower, so they cannot
+            # displace the actual event record.
+            full_side = (
+                [d for d in full if d <= today]
+                if want_past
+                else [d for d in full if d >= today]
+            )
+            extreme = max(full) if want_past else min(full)
+            score = (
+                0.62
+                if full_side and target == extreme
+                else 0.60
+            )
             candidates.append((score, target, item))
         if not candidates:
             return results
@@ -923,8 +952,8 @@ class MemoryEngine:
             if result.item.id in exclude_ids:
                 continue
             text = result.item.content + " " + " ".join(result.item.cues)
-            dates = _dates(text)
-            if not dates:
+            full, _all_dates = _dates(text)
+            if not full:
                 continue
             if (
                 want_past
@@ -936,8 +965,8 @@ class MemoryEngine:
                 query_terms, text, topic_len, query_finals
             ):
                 continue
-            side = [d for d in dates if d <= today] if want_past else [
-                d for d in dates if d >= today
+            side = [d for d in full if d <= today] if want_past else [
+                d for d in full if d >= today
             ]
             if not side:
                 continue
