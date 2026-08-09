@@ -29,6 +29,5 @@
 
 ## Later ideas
 
-- Agent-managed memory hierarchy  with Mnemosis as the
-  consolidation/metacognition layer
+- Agent-managed memory hierarchy with Mnemosis as the consolidation/metacognition layer
 - Distributed backends (PostgreSQL adapter)
