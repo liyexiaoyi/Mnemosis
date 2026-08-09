@@ -33,7 +33,7 @@ import re
 from datetime import date
 
 from .schema import _date_of, _person_and_session
-from .types import MemoryItem, MemoryKind, tokenize
+from .types import MemoryItem, MemoryKind
 
 
 _AFTER_MARKERS = (

@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import re
 
-from .types import MemoryItem, MemoryKind
+from .types import MemoryItem
 
 
 _MATH_RE = re.compile(
