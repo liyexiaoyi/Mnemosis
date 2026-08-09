@@ -63,6 +63,7 @@ _TEMPORAL_ACTION_SYNONYMS: tuple[tuple[str, str], ...] = (
     ("看电影", "观影", "看", "点映"),
     ("保洁", "清洁", "除螨", "擦玻璃", "大扫除", "深度保洁", "家政"),
     ("陪诊", "看门诊", "门诊", "取药", "取报告", "复查", "复诊", "检查", "手术"),
+    ("上课", "复课", "补课", "公开课", "课程", "训练", "训练课", "集训", "训导"),
 )
 _TEMPORAL_EXCLUSIONS: tuple[tuple[str, str], ...] = (
     ("主观题", "客观题"),
@@ -1009,10 +1010,17 @@ class MemoryEngine:
             full, dates = _dates(text)
             if not dates:
                 continue
+            is_notice = bool(self._TEMPORAL_NOTICE_RE.search(text))
+            event_dates = [d for d in dates if d not in set(full)]
+            side_dates = (
+                event_dates
+                if not want_past and is_notice and event_dates
+                else dates
+            )
             side = (
-                [d for d in dates if d <= today]
+                [d for d in side_dates if d <= today]
                 if want_past
-                else [d for d in dates if d > today]
+                else [d for d in side_dates if d > today]
             )
             if not side:
                 continue
@@ -1150,7 +1158,13 @@ class MemoryEngine:
                 excluded_terms,
             ):
                 continue
-            pool = full if want_past else all_dates
+            is_notice = bool(self._TEMPORAL_NOTICE_RE.search(text))
+            event_dates = [d for d in all_dates if d not in set(full)]
+            pool = (
+                event_dates
+                if not want_past and is_notice and event_dates
+                else (full if want_past else all_dates)
+            )
             side = [d for d in pool if d <= today] if want_past else [
                 d for d in pool if d > today
             ]
