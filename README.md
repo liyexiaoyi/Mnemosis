@@ -11,6 +11,8 @@ human memory actually works.
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/liyexiaoyi/Mnemosis/actions/workflows/ci.yml/badge.svg)](https://github.com/liyexiaoyi/Mnemosis/actions/workflows/ci.yml)
 
+中文说明：[README.zh-CN.md](README.zh-CN.md) · English: README.md
+
 ## Install
 
 ```bash
