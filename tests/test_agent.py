@@ -5276,6 +5276,61 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
             )
         )
 
+    def test_money_recency_and_contact_anchor(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        for content, cues in (
+            ("2026年3月15日寄养 3 天，费用 150 元/天。", ["寄养"]),
+            ("2026年5月1日寄养店涨价：180 元/天。", ["寄养"]),
+            ("2026年7月10日寄养 5 天，费用 200 元/天。", ["寄养"]),
+            ("2026年7月20日寄养店要求签协议。", ["寄养"]),
+            ("2026年1月15日参观寄养店，环境不错。", ["参观"]),
+            ("紧急联系：猫语时光 400-777-8888。", ["电话"]),
+        ):
+            engine.remember(
+                content,
+                kind=MemoryKind.EPISODIC,
+                source=user,
+                cues=cues,
+                auto_cues=False,
+            )
+        base = engine.recall(
+            "现在寄养一天多少钱？",
+            top_k=3,
+            value_anchor=False,
+            temporal_anchor=False,
+        )
+        anchored = engine._apply_value_anchor(
+            "现在寄养一天多少钱？",
+            list(base),
+            top_k=3,
+            kind=None,
+            exclude_ids=set(),
+        )
+        contents = [r.item.content for r in anchored]
+        self.assertTrue(any("费用 200 元/天" in c for c in contents))
+        base = engine.recall(
+            "寄养店电话多少？",
+            top_k=3,
+            contact_anchor=False,
+        )
+        anchored = engine._apply_contact_anchor(
+            "寄养店电话多少？",
+            list(base),
+            top_k=3,
+            kind=None,
+            exclude_ids=set(),
+        )
+        contents = [r.item.content for r in anchored]
+        self.assertTrue(any("400-777-8888" in c for c in contents))
+        self.assertTrue(
+            any(
+                "联系锚点" in reason
+                for result in anchored
+                for reason in result.reasons
+            )
+        )
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(

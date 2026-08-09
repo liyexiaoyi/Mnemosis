@@ -65,8 +65,15 @@ _PROBLEM_Q_RE = re.compile(r"什么问题|什么病|什么毛病|怎么了|什�
 _PROBLEM_WORD_RE = re.compile(
     r"有虫|坏了|故障|失灵|破损|变形|闪烁|告警|鼓包|不制冷|"
     r"磨脚|偏大|漏|丢失|褪色|松动|异响|碎了|压坏|空鼓|"
-    r"结膜炎|发炎|感染|过敏"
+    r"结膜炎|发炎|感染|过敏|瘦了"
 )
+_MONEY_Q_RE = re.compile(r"多少钱|价格|费用|价钱|多少元|几块")
+_MONEY_PAT_RE = re.compile(r"\d+(?:\.\d+)?\s*(?:元|块|万)")
+_CONTACT_Q_RE = re.compile(r"电话|号码|联系方式")
+_CONTACT_PAT_RE = re.compile(
+    r"(?:\d{3,4}-){1,2}\d{3,4}|\d{3,4}-\d{7,8}|400-\d{3}-\d{4}"
+)
+_RECENCY_Q_RE = re.compile(r"现在|最近|当前|上次|最新")
 
 
 class MemoryEngine:
@@ -267,6 +274,7 @@ class MemoryEngine:
         value_anchor: bool = True,
         temporal_anchor: bool = True,
         problem_anchor: bool = True,
+        contact_anchor: bool = True,
         exclude_ids: set[str] | None = None,
     ) -> list[RecallResult]:
         embedder = embedder or self.embedder
@@ -364,6 +372,14 @@ class MemoryEngine:
             )
         if problem_anchor:
             results = self._apply_problem_anchor(
+                query,
+                results,
+                top_k=top_k,
+                kind=kind,
+                exclude_ids=exclude_ids,
+            )
+        if contact_anchor:
+            results = self._apply_contact_anchor(
                 query,
                 results,
                 top_k=top_k,
@@ -594,7 +610,7 @@ class MemoryEngine:
     )
     _TEMPORAL_YEAR_RE = re.compile(r"(\d{4})\s*年")
     _TEMPORAL_NOTICE_RE = re.compile(
-        r"预约|通知|提醒|改到|调时间|约了|收到|说"
+        r"预约|通知|提醒|改到|调时间|约了|收到|说|协议|要求"
     )
     _TEMPORAL_NOISE = (
         "是了的吗呢吧啊呀和与及或在有就都还也很这那"
@@ -716,12 +732,6 @@ class MemoryEngine:
             self._TIME_RANGE_RE = re.compile(
                 r"\d{1,2}:\d{2}\s*[-—~至到]\s*\d{1,2}:\d{2}"
             )
-            self._MONEY_QUESTION_RE = re.compile(
-                r"多少钱|价格|费用|价钱|多少元|几块"
-            )
-            self._MONEY_PATTERN_RE = re.compile(
-                r"\d+(?:\.\d+)?\s*(?:元|块|万)"
-            )
         if not self._VALUE_QUESTION_RE.search(query) or not results:
             return results
         seen = {result.item.id for result in results}
@@ -731,7 +741,7 @@ class MemoryEngine:
         time_marker = bool(
             re.search(r"几点|什么时间|几点到几点", query)
         )
-        money_marker = bool(self._MONEY_QUESTION_RE.search(query))
+        money_marker = bool(_MONEY_Q_RE.search(query))
         candidates: list[tuple[float, MemoryItem]] = []
         for item in self.store.all_active(kind=kind):
             if item.id in seen or item.id in exclude_ids:
@@ -747,7 +757,7 @@ class MemoryEngine:
             # carries an amount (元/块/万), not any dated value record
             # like "日销 80 碗" (number-line units; Dehaene & Brannon,
             # 2011: the unit is part of the quantity).
-            if money_marker and self._MONEY_PATTERN_RE.search(item.content):
+            if money_marker and _MONEY_PAT_RE.search(item.content):
                 score = 0.62
             elif time_marker and self._TIME_RANGE_RE.search(item.content):
                 score = 0.62
@@ -756,7 +766,17 @@ class MemoryEngine:
             candidates.append((score, item))
         if not candidates:
             return results
-        candidates.sort(key=lambda pair: (-pair[0], pair[1].id))
+        recency = bool(_RECENCY_Q_RE.search(query))
+        if recency:
+            candidates.sort(
+                key=lambda pair: (
+                    -pair[0],
+                    tuple(-d for d in self._latest_date(pair[1].content)),
+                    pair[1].id,
+                )
+            )
+        else:
+            candidates.sort(key=lambda pair: (-pair[0], pair[1].id))
         for score, candidate in candidates[:1]:
             return self._append_anchor(
                 results,
@@ -788,6 +808,27 @@ class MemoryEngine:
         results.append(result)
         results.sort(key=lambda result: result.score, reverse=True)
         return results[: max(1, int(top_k))]
+
+    @staticmethod
+    def _latest_date(text: str) -> tuple[int, int, int]:
+        """Latest parsed date in a record; (0, 0, 0) when none."""
+        best = (0, 0, 0)
+        year: int | None = None
+        for match in MemoryEngine._TEMPORAL_DATE_RE.finditer(text):
+            if match.group(1):
+                year = int(match.group(1))
+                cur = (year, int(match.group(2)), int(match.group(3)))
+            else:
+                year = int(match.group(4))
+                cur = (year, int(match.group(5)), int(match.group(6)))
+            if cur > best:
+                best = cur
+        if year is not None:
+            for match in MemoryEngine._TEMPORAL_MD_RE.finditer(text):
+                cur = (year, int(match.group(1)), int(match.group(2)))
+                if cur > best:
+                    best = cur
+        return best
 
     def _apply_temporal_anchor(
         self,
@@ -977,6 +1018,12 @@ class MemoryEngine:
                 excluded_terms,
             ):
                 continue
+            # Money questions must anchor a record that actually carries
+            # an amount, not e.g. a 协议 notice about the boarding shop.
+            if _MONEY_Q_RE.search(query) and not _MONEY_PAT_RE.search(
+                item.content
+            ):
+                continue
             target = max(side) if want_past else min(side)
             # A record whose own full date is the direction target is the
             # event record (strong anchor). Records that merely mention
@@ -1117,6 +1164,54 @@ class MemoryEngine:
             candidates[0][1],
             candidates[0][0],
             "问题锚点(故障记录)",
+            top_k,
+        )
+
+    def _apply_contact_anchor(
+        self,
+        query: str,
+        results: list[RecallResult],
+        *,
+        top_k: int,
+        kind: MemoryKind | None,
+        exclude_ids: set[str],
+    ) -> list[RecallResult]:
+        """Anchor phone/contact questions to the record carrying a number.
+
+        "寄养店电话多少？" often matches visit notes while the record that
+        actually holds 400-777-8888 ranks below top-k. This post-pass
+        inserts the best contact record (highest relevance, then latest
+        date) with a 联系锚点 reason.
+        """
+        if not _CONTACT_Q_RE.search(query) or not results:
+            return results
+        seen = {result.item.id for result in results}
+        query_terms = self._concept_terms(query)
+        if not query_terms:
+            return results
+        candidates: list[tuple[int, tuple[int, int, int], MemoryItem]] = []
+        for item in self.store.all_active(kind=kind):
+            if item.id in seen or item.id in exclude_ids:
+                continue
+            if not _CONTACT_PAT_RE.search(item.content):
+                continue
+            text = item.content + " " + " ".join(item.cues)
+            from .types import tokenize
+
+            overlap = len(query_terms & set(tokenize(text)))
+            if overlap == 0:
+                continue
+            candidates.append((overlap, self._latest_date(item.content), item))
+        if not candidates:
+            return results
+        candidates.sort(
+            key=lambda pair: (-pair[0], tuple(-d for d in pair[1]), pair[2].id)
+        )
+        return self._append_anchor(
+            results,
+            candidates[0][2],
+            0.62,
+            "联系锚点(电话记录)",
             top_k,
         )
 
