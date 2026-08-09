@@ -64,11 +64,13 @@ _TEMPORAL_EXCLUSIONS: tuple[tuple[str, str], ...] = (
     ("模考", "出分"),
     ("模考", "成绩"),
 )
-_PROBLEM_Q_RE = re.compile(r"什么问题|什么病|什么毛病|怎么了|什么情况")
+_PROBLEM_Q_RE = re.compile(
+    r"什么问题|什么病|什么毛病|怎么了|什么情况|怎么解决|怎么处理|怎么办"
+)
 _PROBLEM_WORD_RE = re.compile(
     r"有虫|坏了|故障|失灵|破损|变形|闪烁|告警|鼓包|不制冷|"
     r"磨脚|偏大|漏|丢失|褪色|松动|异响|碎了|压坏|空鼓|"
-    r"结膜炎|发炎|感染|过敏|瘦了"
+    r"结膜炎|发炎|感染|过敏|瘦了|信号差|信号问题"
 )
 _MONEY_Q_RE = re.compile(r"多少钱|价格|费用|价钱|多少元|几块|票价")
 _MONEY_PAT_RE = re.compile(r"\d+(?:\.\d+)?\s*(?:元|块|万)")
