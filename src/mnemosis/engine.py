@@ -61,6 +61,11 @@ _TEMPORAL_EXCLUSIONS: tuple[tuple[str, str], ...] = (
     ("模考", "出分"),
     ("模考", "成绩"),
 )
+_PROBLEM_Q_RE = re.compile(r"什么问题|怎么了|什么情况|什么问题了")
+_PROBLEM_WORD_RE = re.compile(
+    r"有虫|坏了|故障|失灵|破损|变形|闪烁|告警|鼓包|不制冷|"
+    r"磨脚|偏大|漏|丢失|褪色|松动|异响|碎了|压坏|空鼓"
+)
 
 
 class MemoryEngine:
@@ -260,6 +265,7 @@ class MemoryEngine:
         entity_anchor: bool = True,
         value_anchor: bool = True,
         temporal_anchor: bool = True,
+        problem_anchor: bool = True,
         exclude_ids: set[str] | None = None,
     ) -> list[RecallResult]:
         embedder = embedder or self.embedder
@@ -354,6 +360,14 @@ class MemoryEngine:
                 kind=kind,
                 exclude_ids=exclude_ids,
                 now=now,
+            )
+        if problem_anchor:
+            results = self._apply_problem_anchor(
+                query,
+                results,
+                top_k=top_k,
+                kind=kind,
+                exclude_ids=exclude_ids,
             )
         return results
 
@@ -590,7 +604,8 @@ class MemoryEngine:
         r"下次|下一次|接下来)"
         r"|(是什么时候|是哪一天|是什么时间|什么时候|考了多少分|"
         r"面了什么内容|结果如何|怎么样|推荐了什么|要准备什么|"
-        r"要带什么|是多少|是什么|多少分)"
+        r"要带什么|是多少|是什么|多少分|多少钱|出了什么问题|"
+        r"什么问题|怎么解决|怎么办|怎么回事)"
     )
     _TEMPORAL_CLEAN_RE = re.compile(
         "[" + _TEMPORAL_NOISE + "年月日0-9\\s，。？：:、（）()]"
@@ -803,6 +818,8 @@ class MemoryEngine:
         truncation instead of being pushed out by an already-high-ranking
         generic match.
         """
+        from .types import tokenize
+
         if not results:
             return results
         past_marker = self._TEMPORAL_PAST_RE.search(query)
@@ -946,9 +963,12 @@ class MemoryEngine:
                 and self._TEMPORAL_NOTICE_RE.search(text)
             ):
                 continue
+            # Candidates must carry the topic in their own content, not
+            # just a cue: "新规则生效" with a 截单 cue is not the answer
+            # to 什么时候截单.
             if not self._temporal_relevant(
                 query_terms,
-                text,
+                item.content,
                 topic_len,
                 query_finals,
                 verb_stems,
@@ -1013,6 +1033,12 @@ class MemoryEngine:
                 and self._TEMPORAL_NOTICE_RE.search(text)
             ):
                 continue
+            # A seen record only "covers" the question when its own
+            # content (not just cues) carries a query term: "新规则生效"
+            # with a 截单 cue must not block the 公告 that actually says
+            # 每日截单.
+            if not (query_terms & set(tokenize(result.item.content))):
+                continue
             if not self._temporal_relevant(
                 query_terms,
                 text,
@@ -1038,6 +1064,58 @@ class MemoryEngine:
             candidate,
             score,
             "时间锚点(上次)" if want_past else "时间锚点(下次)",
+            top_k,
+        )
+
+    def _apply_problem_anchor(
+        self,
+        query: str,
+        results: list[RecallResult],
+        *,
+        top_k: int,
+        kind: MemoryKind | None,
+        exclude_ids: set[str],
+    ) -> list[RecallResult]:
+        """Anchor "what went wrong" questions to the fault record.
+
+        "大米多少钱？出了什么问题？" matches the purchase record while
+        the record that actually says 米有虫 ranks below top-k. This
+        post-pass scans for records carrying a fault word (有虫/坏了/
+        鼓包...) that also shares the query topic, and inserts the best
+        one (source monitoring: the fault report is the event).
+        """
+        if not _PROBLEM_Q_RE.search(query) or not results:
+            return results
+        seen = {result.item.id for result in results}
+        query_terms = self._concept_terms(query)
+        if not query_terms:
+            return results
+        topic_len, query_finals, _s, _a, _e = self._temporal_probe(query)
+        candidates: list[tuple[float, MemoryItem]] = []
+        for item in self.store.all_active(kind=kind):
+            if item.id in seen or item.id in exclude_ids:
+                continue
+            if not _PROBLEM_WORD_RE.search(item.content):
+                continue
+            if not self._temporal_relevant(
+                query_terms,
+                item.content,
+                topic_len,
+                query_finals,
+                frozenset(),
+                frozenset(),
+                frozenset(),
+            ):
+                continue
+            candidates.append((0.62, item))
+        if not candidates:
+            return results
+        candidates.sort(key=lambda pair: (-pair[0], pair[1].id))
+        return self._append_anchor(
+            results,
+            candidates[0][1],
+            candidates[0][0],
+            "问题锚点(故障记录)",
             top_k,
         )
 

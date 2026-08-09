@@ -5210,6 +5210,72 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
             engine.temporal_hint("最近一次客观题模考多少分？") or "",
         )
 
+    def test_problem_anchor_and_content_only_seen(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        for content, cues in (
+            ("2026年7月1日团购大米：50 斤 128 元。", ["大米"]),
+            ("2026年7月10日米有虫，申请售后。", ["售后"]),
+            ("2026年4月1日团购群改规则：每周三截单。", ["截单"]),
+            (
+                "2026年7月20日团购群公告：8 月 1 日起改每日截单。",
+                ["截单"],
+            ),
+            ("2026年8月1日新规则生效。", ["截单"]),
+        ):
+            engine.remember(
+                content,
+                kind=MemoryKind.EPISODIC,
+                source=user,
+                cues=cues,
+                auto_cues=False,
+            )
+        now = datetime(2026, 8, 9, tzinfo=timezone.utc)
+        # 8月1日 生效 record has only a cue (截单), so it must not block
+        # the 7月20日 公告 that actually says 每日截单
+        base = engine.recall(
+            "现在什么时候截单？",
+            top_k=4,
+            temporal_anchor=False,
+        )
+        anchored = engine._apply_temporal_anchor(
+            "现在什么时候截单？",
+            list(base),
+            top_k=4,
+            kind=None,
+            exclude_ids=set(),
+            now=now,
+        )
+        contents = [r.item.content for r in anchored]
+        self.assertTrue(any("7月20日团购群公告" in c for c in contents))
+        # 米有虫 carries no 大米 bigram; the problem anchor still finds it
+        base = [
+            result
+            for result in engine.recall(
+                "大米多少钱？出了什么问题？",
+                top_k=6,
+                problem_anchor=False,
+                value_anchor=False,
+            )
+            if "米有虫" not in result.item.content
+        ][:4]
+        anchored = engine._apply_problem_anchor(
+            "大米多少钱？出了什么问题？",
+            list(base),
+            top_k=4,
+            kind=None,
+            exclude_ids=set(),
+        )
+        contents = [r.item.content for r in anchored]
+        self.assertTrue(any("米有虫" in c for c in contents))
+        self.assertTrue(
+            any(
+                "问题锚点" in reason
+                for result in anchored
+                for reason in result.reasons
+            )
+        )
+
     def test_practice_report(self) -> None:
         engine = MemoryEngine()
         item = engine.remember(
