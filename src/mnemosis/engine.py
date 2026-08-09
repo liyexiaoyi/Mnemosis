@@ -55,6 +55,7 @@ _TEMPORAL_ACTION_SYNONYMS: tuple[tuple[str, str], ...] = (
     ("选品", "上新"),
     ("采摘", "摘", "收获", "收"),
     ("看电影", "观影", "看", "点映"),
+    ("保洁", "清洁", "除螨", "擦玻璃", "大扫除", "深度保洁", "家政"),
 )
 _TEMPORAL_EXCLUSIONS: tuple[tuple[str, str], ...] = (
     ("主观题", "客观题"),
@@ -612,7 +613,7 @@ class MemoryEngine:
     )
     _TEMPORAL_YEAR_RE = re.compile(r"(\d{4})\s*年")
     _TEMPORAL_NOTICE_RE = re.compile(
-        r"预约|通知|提醒|改到|调时间|约了|收到|说|协议|要求"
+        r"预约|通知|提醒|改到|调时间|约了|收到|说|协议|要求|请假"
     )
     _TEMPORAL_NOISE = (
         "是了的吗呢吧啊呀和与及或在有就都还也很这那"
@@ -748,7 +749,7 @@ class MemoryEngine:
             re.search(r"几点|什么时间|几点到几点", query)
         )
         money_marker = bool(_MONEY_Q_RE.search(query))
-        candidates: list[tuple[float, MemoryItem]] = []
+        candidates: list[tuple[float, int, MemoryItem]] = []
         for item in self.store.all_active(kind=kind):
             if item.id in seen or item.id in exclude_ids:
                 continue
@@ -757,7 +758,9 @@ class MemoryEngine:
             text = item.content + " " + " ".join(item.cues)
             item_terms = set(tokenize(text))
             overlap = len(query_terms & item_terms)
-            if overlap < 2:
+            if (overlap < 1 and money_marker) or (
+                overlap < 2 and not money_marker
+            ):
                 continue
             # A money question ("多少钱/价格") must anchor a record that
             # carries an amount (元/块/万), not any dated value record
@@ -769,21 +772,21 @@ class MemoryEngine:
                 score = 0.62
             else:
                 score = 0.60
-            candidates.append((score, item))
+            candidates.append((score, overlap, item))
         if not candidates:
             return results
-        recency = bool(_RECENCY_Q_RE.search(query))
-        if recency:
+        if money_marker:
             candidates.sort(
                 key=lambda pair: (
                     -pair[0],
-                    tuple(-d for d in self._latest_date(pair[1].content)),
-                    pair[1].id,
+                    -pair[1],
+                    tuple(-d for d in self._latest_date(pair[2].content)),
+                    pair[2].id,
                 )
             )
         else:
-            candidates.sort(key=lambda pair: (-pair[0], pair[1].id))
-        for score, candidate in candidates[:1]:
+            candidates.sort(key=lambda pair: (-pair[0], pair[2].id))
+        for score, _overlap, candidate in candidates[:1]:
             return self._append_anchor(
                 results,
                 candidate,
@@ -1092,6 +1095,10 @@ class MemoryEngine:
             # with a 截单 cue must not block the 公告 that actually says
             # 每日截单.
             if not (query_terms & set(tokenize(result.item.content))):
+                continue
+            if _MONEY_Q_RE.search(query) and not _MONEY_PAT_RE.search(
+                result.item.content
+            ):
                 continue
             if not self._temporal_relevant(
                 query_terms,
