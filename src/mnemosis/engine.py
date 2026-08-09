@@ -56,10 +56,12 @@ _TEMPORAL_ACTION_SYNONYMS: tuple[tuple[str, str], ...] = (
     ("采摘", "摘", "收获", "收"),
     ("看电影", "观影", "看", "点映"),
     ("保洁", "清洁", "除螨", "擦玻璃", "大扫除", "深度保洁", "家政"),
+    ("陪诊", "看门诊", "门诊", "取药", "取报告", "复查", "复诊", "检查", "手术"),
 )
 _TEMPORAL_EXCLUSIONS: tuple[tuple[str, str], ...] = (
     ("主观题", "客观题"),
     ("爬山", "夜爬"),
+    ("复诊", "复查"),
     ("模考", "考试"),
     ("模考", "通过"),
     ("模考", "出分"),
@@ -595,7 +597,7 @@ class MemoryEngine:
     _TIME_RANGE_RE = None
     _TEMPORAL_PAST_RE = re.compile(
         r"上次|上一次|最近|最新|刚才|最后一次|前一次|"
-        r"现在|目前|当前|"
+        r"现在|目前|当前|第一次|首次|头一回|"
         r"什么时候[^？?]{0,6}(?:的|了)"
     )
     _TEMPORAL_FUTURE_RE = re.compile(
@@ -990,6 +992,9 @@ class MemoryEngine:
         want_past = bool(past_marker) and (
             not future_marker or past_marker.start() <= future_marker.start()
         )
+        want_earliest = bool(
+            re.search(r"第一次|首次|头一回", query)
+        )
         candidates: list[tuple[float, MemoryItem]] = []
         for item in self.store.all_active(kind=kind):
             if item.id in seen or item.id in exclude_ids:
@@ -1034,7 +1039,10 @@ class MemoryEngine:
                 item.content
             ):
                 continue
-            target = max(side) if want_past else min(side)
+            if want_earliest:
+                target = min(side)
+            else:
+                target = max(side) if want_past else min(side)
             # A record whose own full date is the direction target is the
             # event record (strong anchor). Records that merely mention
             # the date ("报名 3 月 20 日") score lower, so they cannot
@@ -1044,7 +1052,9 @@ class MemoryEngine:
                 if want_past
                 else [d for d in full if d > today]
             )
-            extreme = max(full) if want_past else min(full)
+            extreme = (
+                min(full) if want_earliest else max(full)
+            ) if want_past else min(full)
             score = (
                 0.62
                 if full_side and target == extreme
@@ -1055,7 +1065,9 @@ class MemoryEngine:
             return results
         candidates.sort(
             key=lambda pair: (
-                tuple(-d for d in pair[1]) if want_past else pair[1],
+                tuple(-d for d in pair[1])
+                if want_past and not want_earliest
+                else pair[1],
                 -pair[0],
                 pair[2].id,
             )
@@ -1095,8 +1107,8 @@ class MemoryEngine:
             if result.item.id in exclude_ids:
                 continue
             text = result.item.content + " " + " ".join(result.item.cues)
-            full, _all_dates = _dates(text)
-            if not full:
+            full, all_dates = _dates(text)
+            if not all_dates:
                 continue
             if (
                 want_past
@@ -1108,7 +1120,15 @@ class MemoryEngine:
             # content (not just cues) carries a query term: "新规则生效"
             # with a 截单 cue must not block the 公告 that actually says
             # 每日截单.
-            if not (query_terms & set(tokenize(result.item.content))):
+            if not self._temporal_relevant(
+                query_terms,
+                result.item.content,
+                topic_len,
+                query_finals,
+                verb_stems,
+                action_groups,
+                excluded_terms,
+            ):
                 continue
             if _MONEY_Q_RE.search(query) and not _MONEY_PAT_RE.search(
                 result.item.content
@@ -1124,21 +1144,33 @@ class MemoryEngine:
                 excluded_terms,
             ):
                 continue
-            side = [d for d in full if d <= today] if want_past else [
-                d for d in full if d > today
+            pool = full if want_past else all_dates
+            side = [d for d in pool if d <= today] if want_past else [
+                d for d in pool if d > today
             ]
             if not side:
                 continue
-            seen_best = max(side) if want_past else min(side)
-            if (want_past and seen_best >= target) or (
+            if want_earliest:
+                seen_best = min(side)
+            else:
+                seen_best = max(side) if want_past else min(side)
+            if (want_earliest and seen_best <= target) or (
+                want_past and not want_earliest and seen_best >= target
+            ) or (
                 not want_past and seen_best <= target
             ):
+                # The blocking record is already the strongest answer;
+                # move it to the front so the answer model cannot miss it.
+                results.remove(result)
+                results.insert(0, result)
                 return results
         return self._append_anchor(
             results,
             candidate,
             score,
-            "时间锚点(上次)" if want_past else "时间锚点(下次)",
+            "时间锚点(最早)" if want_earliest else (
+                "时间锚点(上次)" if want_past else "时间锚点(下次)"
+            ),
             top_k,
         )
 
@@ -1408,6 +1440,11 @@ class MemoryEngine:
             if excluded
             else ""
         )
+        if re.search(r"第一次|首次|头一回", query):
+            return (
+                "提示：问题在问第一次/首次发生的事，答案应选日期最早"
+                "且话题匹配的那条记忆。" + note
+            )
         if self._TEMPORAL_PAST_RE.search(query):
             return (
                 "提示：问题在问过去/最近/现在的情况，答案应选日期最新"
