@@ -110,7 +110,7 @@ _SCOPE_Q_RE = re.compile(
 )
 _SCOPE_WORD_RE = re.compile(
     r"范围|包括|包含|均可|不收|种类|分类|清单|项目|内容|车型|型号|类型|"
-    r"科室|部门"
+    r"科室|部门|设施"
 )
 _PURCHASE_WORD_RE = re.compile(
     r"买|购买|购入|入手|添置|存放|放入|存了|装了|收纳|放进|搁置"
@@ -1097,11 +1097,18 @@ class MemoryEngine:
             # Past-direction questions ask about the event itself, not a
             # notice about it: 预约/通知/提醒/调时间 records (source
             # monitoring; Johnson & Raye, 1981) are skipped unless the
-            # query is itself asking about the notice.
+            # query is itself asking about the notice OR the record also
+            # carries the queried action (第一次预约篮球馆，办月卡 is the
+            # 办卡 event, not just a reminder).
             if (
                 want_past
                 and not notice_q
                 and self._TEMPORAL_NOTICE_RE.search(text)
+                and not any(
+                    word in text
+                    for stem in verb_stems
+                    for word in _TEMPORAL_STEM_WORDS.get(stem, (stem,))
+                )
             ):
                 continue
             # Candidates must carry the topic in their own content, not
@@ -1169,8 +1176,17 @@ class MemoryEngine:
             event_rows = [
                 result
                 for result in results
-                if not self._TEMPORAL_NOTICE_RE.search(
-                    result.item.content + " " + " ".join(result.item.cues)
+                if not (
+                    self._TEMPORAL_NOTICE_RE.search(
+                        result.item.content
+                        + " "
+                        + " ".join(result.item.cues)
+                    )
+                    and not any(
+                        word in result.item.content
+                        for stem in verb_stems
+                        for word in _TEMPORAL_STEM_WORDS.get(stem, (stem,))
+                    )
                 )
             ]
             if event_rows:
@@ -1218,6 +1234,11 @@ class MemoryEngine:
                 want_past
                 and not notice_q
                 and self._TEMPORAL_NOTICE_RE.search(text)
+                and not any(
+                    word in text
+                    for stem in verb_stems
+                    for word in _TEMPORAL_STEM_WORDS.get(stem, (stem,))
+                )
             ):
                 continue
             # A seen record only "covers" the question when its own
