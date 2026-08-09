@@ -1022,9 +1022,11 @@ def _overlap(query_terms: set[str], item_terms: frozenset[str]) -> float:
     if not query_terms or not item_terms:
         return 0.0
     hits = len(query_terms & item_terms)
-    return hits / max(
-        1.0, math.sqrt(len(query_terms) * max(len(item_terms), 1))
-    )
+    # Cap the item-length factor: dividing by sqrt(|query| * |item|) lets
+    # long records dilute the discriminating terms, which broke retrieval
+    # when facts were buried in long noisy text (large-volume benchmark).
+    capped = min(len(item_terms), max(len(query_terms) * 2, 8))
+    return hits / max(1.0, math.sqrt(len(query_terms) * capped))
 
 
 __all__ = ["DualTrackStore"]
