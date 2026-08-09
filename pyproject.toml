@@ -25,6 +25,12 @@ classifiers = [
 [project.optional-dependencies]
 dev = ["pytest>=8"]
 
+[project.urls]
+Homepage = "https://github.com/liyexiaoyi/Mnemosis"
+Documentation = "https://github.com/liyexiaoyi/Mnemosis#readme"
+Repository = "https://github.com/liyexiaoyi/Mnemosis"
+Issues = "https://github.com/liyexiaoyi/Mnemosis/issues"
+
 [project.scripts]
 mnemosis = "mnemosis.cli:main"
 mnemosis-mcp = "mnemosis.mcp_server:main"

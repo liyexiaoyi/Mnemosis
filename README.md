@@ -11,7 +11,7 @@ human memory actually works.
 [![PyPI version](https://img.shields.io/pypi/v/mnemosis.svg)](https://pypi.org/project/mnemosis/)
 [![Python versions](https://img.shields.io/pypi/pyversions/mnemosis.svg)](https://pypi.org/project/mnemosis/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![CI](https://github.com/OWNER/mnemosis/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/mnemosis/actions/workflows/ci.yml)
+[![CI](https://github.com/liyexiaoyi/Mnemosis/actions/workflows/ci.yml/badge.svg)](https://github.com/liyexiaoyi/Mnemosis/actions/workflows/ci.yml)
 
 ## Install
 
