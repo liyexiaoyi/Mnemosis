@@ -1889,6 +1889,24 @@ class MCPServer:
                 },
             },
             {
+                "name": "temporal_anchor",
+                "description": (
+                    "Show which memory the time-anchor pass inserted for "
+                    "a '上次/下次/最近/什么时候' style question, so agents can "
+                    "verify last-vs-next retrieval picks the record with "
+                    "the right date (ordinal time processing; Gauthier et "
+                    "al., 2020). Read-only."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string"},
+                        "top_k": {"type": "integer"},
+                    },
+                    "required": ["query"],
+                },
+            },
+            {
                 "name": "retrieval_snapshot",
                 "description": (
                     "Capture a compact memory-state snapshot (knowledge "
@@ -2714,6 +2732,11 @@ class MCPServer:
             )
         if name == "concept_cover":
             return self.engine.concept_cover(
+                query=str(args.get("query", "")),
+                top_k=int(args.get("top_k", 4)),
+            )
+        if name == "temporal_anchor":
+            return self.engine.temporal_anchor(
                 query=str(args.get("query", "")),
                 top_k=int(args.get("top_k", 4)),
             )

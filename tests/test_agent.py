@@ -8,7 +8,7 @@ accumulation (Smolen et al., 2016).
 from __future__ import annotations
 
 import unittest
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 from mnemosis import MemoryEngine
 from mnemosis.mcp_server import MCPServer
@@ -4763,6 +4763,140 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
             "数值锚点",
             [reason for result in off for reason in result.reasons],
         )
+
+    def test_temporal_anchor_recall(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        for content, cues in (
+            ("2026年6月25日面试完成：问项目、算法，一周内通知。", ["面试"]),
+            ("2026年7月18日终面完成：聊薪资，期望 28k。", ["终面"]),
+            ("2026年8月2日体检：肝功能正常，建议 8 月 30 日复查。", ["体检"]),
+            ("2026年8月16日复查：指标正常，下次复诊约在 9 月 10 日。", ["复查"]),
+            ("2026年9月5日预约：下次复诊改到 9 月 8 日。", ["预约"]),
+            ("购物清单：买牛奶和鸡蛋。", ["购物"]),
+            ("2026年8月20日部门团建：定了 9 月 5 日轰趴馆。", ["团建"]),
+            (
+                "2026年7月2日申请报销：键盘 899 元、显示器 1599 元，发票已提交。",
+                ["报销"],
+            ),
+        ):
+            engine.remember(
+                content,
+                kind=MemoryKind.EPISODIC,
+                source=user,
+                cues=cues,
+                auto_cues=False,
+            )
+        now = datetime(2026, 9, 1, tzinfo=timezone.utc)
+        # 上次 -> latest past interview record
+        base_last = [
+            result
+            for result in engine.recall(
+                "上次面试是什么时候？结果如何？",
+                top_k=6,
+                now=now,
+                temporal_anchor=False,
+            )
+            if "7月18日终面" not in result.item.content
+        ][:2]
+        anchored_last = engine._apply_temporal_anchor(
+            "上次面试是什么时候？结果如何？",
+            list(base_last),
+            top_k=2,
+            kind=None,
+            exclude_ids=set(),
+            now=now,
+        )
+        contents = [r.item.content for r in anchored_last]
+        self.assertTrue(any("7月18日终面" in c for c in contents))
+        self.assertTrue(
+            any(
+                "时间锚点(上次)" in reason
+                for result in anchored_last
+                for reason in result.reasons
+            )
+        )
+        # 下次 -> closest future follow-up record (9/8 beats 9/10)
+        base_next = [
+            result
+            for result in engine.recall(
+                "下次复诊是什么时候？",
+                top_k=6,
+                now=now,
+                temporal_anchor=False,
+            )
+            if "9 月 8 日" not in result.item.content
+        ][:2]
+        anchored_next = engine._apply_temporal_anchor(
+            "下次复诊是什么时候？",
+            list(base_next),
+            top_k=2,
+            kind=None,
+            exclude_ids=set(),
+            now=now,
+        )
+        contents = [r.item.content for r in anchored_next]
+        self.assertTrue(any("9 月 8 日" in c for c in contents))
+        self.assertTrue(
+            any(
+                "时间锚点(下次)" in reason
+                for result in anchored_next
+                for reason in result.reasons
+            )
+        )
+        # a query without a direction marker gets no temporal anchor
+        plain = engine.recall("猫粮还有多少？", top_k=2)
+        self.assertNotIn(
+            "时间锚点",
+            [reason for result in plain for reason in result.reasons],
+        )
+        # disabled explicitly
+        off = engine.recall(
+            "上次面试是什么时候？结果如何？",
+            top_k=2,
+            temporal_anchor=False,
+        )
+        self.assertNotIn(
+            "时间锚点",
+            [reason for result in off for reason in result.reasons],
+        )
+        # explicit calendar date -> the record carrying that exact date
+        base_date = [
+            result
+            for result in engine.recall(
+                "7月2日报销了哪些东西？一共多少钱？",
+                top_k=6,
+                temporal_anchor=False,
+                value_anchor=False,
+            )
+            if "7月2日申请报销" not in result.item.content
+        ][:2]
+        anchored_date = engine._apply_temporal_anchor(
+            "7月2日报销了哪些东西？一共多少钱？",
+            list(base_date),
+            top_k=2,
+            kind=None,
+            exclude_ids=set(),
+            now=now,
+        )
+        contents = [r.item.content for r in anchored_date]
+        self.assertTrue(any("7月2日申请报销" in c for c in contents))
+        self.assertTrue(
+            any(
+                "时间锚点(日期:7月2日)" in reason
+                for result in anchored_date
+                for reason in result.reasons
+            )
+        )
+        # MCP tool is registered and answers deterministically
+        server = MCPServer(engine=engine)
+        via_mcp = server._call_tool(
+            "temporal_anchor",
+            {"query": "上次面试是什么时候？结果如何？", "top_k": 6},
+        )
+        self.assertEqual(via_mcp["query"], "上次面试是什么时候？结果如何？")
+        self.assertIsInstance(via_mcp["final_top_k"], list)
+        self.assertIn(via_mcp["verdict"], {"anchored", "none"})
 
     def test_practice_report(self) -> None:
         engine = MemoryEngine()

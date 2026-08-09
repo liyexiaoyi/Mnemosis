@@ -225,6 +225,7 @@ class MemoryEngine:
         concept_coverage: bool = True,
         entity_anchor: bool = True,
         value_anchor: bool = True,
+        temporal_anchor: bool = True,
         exclude_ids: set[str] | None = None,
     ) -> list[RecallResult]:
         embedder = embedder or self.embedder
@@ -310,6 +311,15 @@ class MemoryEngine:
                 top_k=top_k,
                 kind=kind,
                 exclude_ids=exclude_ids,
+            )
+        if temporal_anchor:
+            results = self._apply_temporal_anchor(
+                query,
+                results,
+                top_k=top_k,
+                kind=kind,
+                exclude_ids=exclude_ids,
+                now=now,
             )
         return results
 
@@ -512,6 +522,8 @@ class MemoryEngine:
     _VALUE_QUESTION_RE = None
     _VALUE_PATTERN_RE = None
     _TIME_RANGE_RE = None
+    _TEMPORAL_QUESTION_RE = None
+    _TEMPORAL_DATE_RE = None
 
     def _apply_entity_anchor(
         self,
@@ -574,7 +586,12 @@ class MemoryEngine:
             return results
         candidates.sort(key=lambda pair: (-pair[0], pair[1].id))
         for score, candidate in candidates[:1]:
-            result = RecallResult(candidate, score)
+            # The anchor is a deliberate cue: even when a generic memory
+            # already ranks higher, the exact record must not be pushed
+            # out of top-k by the truncation step.
+            result = RecallResult(
+                candidate, max(score, results[0].score + 0.01)
+            )
             result.reasons.append("实体锚点(编号记录)")
             results.append(result)
         results.sort(key=lambda result: result.score, reverse=True)
@@ -644,11 +661,270 @@ class MemoryEngine:
             return results
         candidates.sort(key=lambda pair: (-pair[0], pair[1].id))
         for score, candidate in candidates[:1]:
-            result = RecallResult(candidate, score)
+            result = RecallResult(
+                candidate, max(score, results[0].score + 0.01)
+            )
             result.reasons.append("数值锚点(值记录)")
             results.append(result)
         results.sort(key=lambda result: result.score, reverse=True)
         return results[: max(1, int(top_k))]
+
+    def _apply_temporal_anchor(
+        self,
+        query: str,
+        results: list[RecallResult],
+        *,
+        top_k: int,
+        kind: MemoryKind | None,
+        exclude_ids: set[str],
+        now: datetime | None = None,
+    ) -> list[RecallResult]:
+        """Anchor "last/next/exact-date" questions to the dated record.
+
+        Episodic retrieval is organized along a temporal-context axis
+        (Howard & Kahana, 2002: the temporal context model), and the
+        hippocampus encodes time cells that order events across scales
+        (Howard & Eichenbaum, 2013). Human ordinal-time processing
+        (Gauthier et al., 2020) means "上次复查" selects the latest past
+        event while "下次复查" selects the closest future one; Dehaene &
+        Brannon (2011) formalize this as a monotone ordering on the
+        mental time/number line. An explicit calendar date ("7月2日") is
+        treated as a precise point on that line: the record carrying the
+        exact month-day is anchored directly. Direction questions parse
+        dates as (year, month, day) tuples, keep only records whose date
+        lies in the asked direction, and insert the strongest matching
+        record into top-k with a 时间锚点 reason. Because a direction
+        marker is a strong ordinal retrieval cue, the anchored record is
+        scored just above the current best so it survives top-k
+        truncation instead of being pushed out by an already-high-ranking
+        generic match.
+        """
+        import re
+
+        if self._TEMPORAL_QUESTION_RE is None:
+            self._TEMPORAL_QUESTION_RE = re.compile(
+                r"(上次|上一次|最近|最新|刚才|最后一次|前一次)"
+                r"|(下次|下一次|接下来|"
+                r"什么时候(续费|到期|上门|开工|交房|开始|结束|还款|复诊|面试|入职|复查))"
+            )
+            self._TEMPORAL_DATE_RE = re.compile(
+                r"(\d{4})年(\d{1,2})月(\d{1,2})日"
+                r"|(\d{4})-(\d{1,2})-(\d{1,2})"
+            )
+        if not results:
+            return results
+        past_marker = re.search(
+            r"上次|上一次|最近|最新|刚才|最后一次|前一次", query
+        )
+        future_marker = re.search(
+            r"下次|下一次|接下来|"
+            r"什么时候(续费|到期|上门|开工|交房|开始|结束|还款|复诊|面试|入职|复查)",
+            query,
+        )
+        date_marker = re.search(
+            r"(\d{1,2})\s*月\s*(\d{1,2})\s*日", query
+        )
+        if not past_marker and not future_marker and not date_marker:
+            return results
+        now = now or utcnow()
+        today = (now.year, now.month, now.day)
+
+        def _dates(text: str) -> list[tuple[int, int, int]]:
+            out: list[tuple[int, int, int]] = []
+            for match in self._TEMPORAL_DATE_RE.finditer(text):
+                if match.group(1):
+                    out.append(
+                        (
+                            int(match.group(1)),
+                            int(match.group(2)),
+                            int(match.group(3)),
+                        )
+                    )
+                else:
+                    out.append(
+                        (
+                            int(match.group(4)),
+                            int(match.group(5)),
+                            int(match.group(6)),
+                        )
+                    )
+            return out
+
+        if date_marker:
+            month, day = (
+                int(date_marker.group(1)),
+                int(date_marker.group(2)),
+            )
+            date_frag = f"{month}月{day}日"
+            year = re.search(r"(\d{4})\s*年", query)
+            target_frag = (
+                f"{int(year.group(1))}年{date_frag}" if year else date_frag
+            )
+            seen = {result.item.id for result in results}
+            query_terms = self._concept_terms(query)
+            if not query_terms:
+                return results
+            candidates: list[tuple[float, MemoryItem]] = []
+            for item in self.store.all_active(kind=kind):
+                if item.id in seen or item.id in exclude_ids:
+                    continue
+                text = item.content + " " + " ".join(item.cues)
+                norm = re.sub(r"\s+", "", text)
+                if target_frag not in norm:
+                    continue
+                if not self._temporal_relevant(query, query_terms, text):
+                    continue
+                candidates.append((0.62, item))
+            if not candidates:
+                return results
+            candidates.sort(key=lambda pair: (-pair[0], pair[1].id))
+            result = RecallResult(
+                candidates[0][1],
+                max(candidates[0][0], results[0].score + 0.01),
+            )
+            result.reasons.append(f"时间锚点(日期:{date_frag})")
+            results.append(result)
+            results.sort(key=lambda result: result.score, reverse=True)
+            return results[: max(1, int(top_k))]
+
+        # Past wins when both directions appear ("上次体检和下次体检分别
+        # 是什么时候"): the multi-concept pass still queries each chunk, so
+        # a direction-based tie-break keeps the post-pass deterministic.
+        want_past = bool(past_marker) and (
+            not future_marker or past_marker.start() <= future_marker.start()
+        )
+        seen = {result.item.id for result in results}
+        query_terms = self._concept_terms(query)
+        if not query_terms:
+            return results
+        candidates: list[tuple[float, MemoryItem]] = []
+        for item in self.store.all_active(kind=kind):
+            if item.id in seen or item.id in exclude_ids:
+                continue
+            text = item.content + " " + " ".join(item.cues)
+            dates = _dates(text)
+            if not dates:
+                continue
+            side = (
+                [d for d in dates if d <= today]
+                if want_past
+                else [d for d in dates if d >= today]
+            )
+            if not side:
+                continue
+            if not self._temporal_relevant(query, query_terms, text):
+                continue
+            target = max(side) if want_past else min(side)
+            # A record whose strongest direction date is also its most
+            # extreme overall date is a stronger anchor (single coherent
+            # date); records with both directions score slightly lower.
+            extreme = max(dates) if want_past else min(dates)
+            score = 0.62 if target == extreme else 0.60
+            candidates.append((score, target, item))
+        if not candidates:
+            return results
+        candidates.sort(
+            key=lambda pair: (
+                -pair[0],
+                tuple(-d for d in pair[1]) if want_past else pair[1],
+                pair[2].id,
+            )
+        )
+        score, _target, candidate = candidates[0]
+        result = RecallResult(
+            candidate, max(score, results[0].score + 0.01)
+        )
+        result.reasons.append(
+            "时间锚点(上次)" if want_past else "时间锚点(下次)"
+        )
+        results.append(result)
+        results.sort(key=lambda result: result.score, reverse=True)
+        return results[: max(1, int(top_k))]
+
+    @staticmethod
+    def _temporal_relevant(
+        query: str,
+        query_terms: set[str],
+        text: str,
+    ) -> bool:
+        """Relevance gate for temporal anchors.
+
+        Bigram overlap is the primary signal; a character-level fallback
+        catches Chinese near-synonyms that share a morpheme but not a
+        bigram ("面试" vs "终面" share 面). Only word-final shared
+        characters count (the shared char must sit right after a Chinese
+        character in both the query and the record), so "试用期" cannot
+        masquerade as an interview memory via its 试. Function/noise
+        characters are excluded so "上次/哪天/是什么" do not create false
+        hits.
+        """
+        from .types import tokenize
+
+        if query_terms & set(tokenize(text)):
+            return True
+
+        def _cjk(ch: str) -> bool:
+            return "\u4e00" <= ch <= "\u9fff"
+
+        noise = set(
+            "是了的吗呢吧啊呀和与及或在有就都还也很这那"
+            "什么哪一天上下次第几多少怎么如何何时几号点分"
+        )
+        query_finals = {
+            ch
+            for i, ch in enumerate(query)
+            if _cjk(ch)
+            and ch not in noise
+            and i > 0
+            and _cjk(query[i - 1])
+        }
+        if not query_finals:
+            return False
+        return any(
+            ch in query_finals and j > 0 and _cjk(text[j - 1])
+            for j, ch in enumerate(text)
+        )
+
+    def temporal_anchor(
+        self,
+        query: str,
+        *,
+        top_k: int = 4,
+        kind: MemoryKind | None = None,
+        now: datetime | None = None,
+    ) -> dict:
+        """Expose the temporal-anchor retrieval path to agents (round 265).
+
+        Runs a normal recall and reports which memories were inserted by
+        the time-anchor pass, so an agent can verify that "上次/下次" style
+        questions surface the record carrying the requested date
+        (ordinal-time processing; Gauthier et al., 2020). Read-only.
+        """
+        final = self.recall(query, top_k=top_k, kind=kind, now=now)
+        anchored = [
+            {
+                "id": result.item.id,
+                "preview": result.item.content[:60],
+                "score": round(result.score, 3),
+                "reasons": result.reasons,
+            }
+            for result in final
+            if any(reason.startswith("时间锚点") for reason in result.reasons)
+        ]
+        return {
+            "query": query,
+            "anchored": anchored,
+            "final_top_k": [
+                {
+                    "id": result.item.id,
+                    "preview": result.item.content[:60],
+                    "score": round(result.score, 3),
+                    "reasons": result.reasons,
+                }
+                for result in final
+            ],
+            "verdict": "anchored" if anchored else "none",
+        }
 
     def get_recall_log(self, limit: int = 50) -> list[dict]:
         """Return the most recent recall entries (bounded audit log)."""
