@@ -86,12 +86,26 @@ _PROBLEM_WORD_RE = re.compile(
 )
 _MONEY_Q_RE = re.compile(r"多少钱|价格|费用|价钱|多少元|几块|票价")
 _MONEY_PAT_RE = re.compile(r"\d+(?:\.\d+)?\s*(?:元|块|万)")
+_MONEY_PRICE_RE = re.compile(
+    r"价格|售价|成交价|费用|花了|花费|买成|入手价|报价|标价|收费"
+)
 _CONTACT_Q_RE = re.compile(r"电话|号码|联系方式")
 _CONTACT_PAT_RE = re.compile(
     r"(?:\d{3,4}-){1,2}\d{3,4}|\d{3,4}-\d{7,8}|400-\d{3}-\d{4}"
 )
-_PURCHASE_Q_RE = re.compile(r"买了什么|买了哪些|买过什么|买了什么设备|买了什么装备")
-_PURCHASE_WORD_RE = re.compile(r"买|购买|购入|入手|添置")
+_PURCHASE_Q_RE = re.compile(
+    r"买了什么|买了哪些|买过什么|买了什么设备|买了什么装备|"
+    r"放了哪些|放了什么|存放了哪些|存放了些什么|存了什么|"
+    r"装了哪些|收纳了哪些|放了什么物品|存了哪些"
+)
+_STORAGE_Q_RE = re.compile(
+    r"放了哪些|放了什么|存放了哪些|存放了些什么|存了什么|"
+    r"装了哪些|收纳了哪些|放了什么物品|存了哪些"
+)
+_PURCHASE_WORD_RE = re.compile(
+    r"买|购买|购入|入手|添置|存放|放入|存了|装了|收纳|放进|搁置"
+)
+_STORAGE_WORD_RE = re.compile(r"存放|放入|存了|装了|收纳|放进|搁置")
 
 class MemoryEngine:
     """The one thing most users touch.
@@ -761,9 +775,12 @@ class MemoryEngine:
             re.search(r"几点|什么时间|几点到几点", query)
         )
         money_marker = bool(_MONEY_Q_RE.search(query))
-        candidates: list[tuple[float, int, MemoryItem]] = []
+        candidates: list[tuple[float, int, MemoryItem, bool]] = []
         for item in self.store.all_active(kind=kind):
-            if item.id in seen or item.id in exclude_ids:
+            if item.id in exclude_ids:
+                continue
+            seen_flag = item.id in seen
+            if not money_marker and seen_flag:
                 continue
             if not self._VALUE_PATTERN_RE.search(item.content):
                 continue
@@ -779,34 +796,58 @@ class MemoryEngine:
             # like "日销 80 碗" (number-line units; Dehaene & Brannon,
             # 2011: the unit is part of the quantity).
             if money_marker and _MONEY_PAT_RE.search(item.content):
-                score = 0.62
+                # Prefer the record whose amount is the price of the
+                # queried item (价格/费用/花了), not a related payment
+                # like 年费/续费/充值 that merely sits on the same topic.
+                score = 0.63 if _MONEY_PRICE_RE.search(item.content) else 0.62
             elif time_marker and self._TIME_RANGE_RE.search(item.content):
                 score = 0.62
             else:
                 score = 0.60
-            candidates.append((score, overlap, item))
+            candidates.append((score, overlap, item, seen_flag))
         if not candidates:
             return results
         if money_marker:
             candidates.sort(
                 key=lambda pair: (
-                    -pair[0],
                     -pair[1],
+                    -(
+                        1
+                        if _MONEY_PRICE_RE.search(pair[2].content)
+                        else 0
+                    ),
                     tuple(-d for d in self._latest_date(pair[2].content)),
                     pair[2].id,
                 )
             )
         else:
             candidates.sort(key=lambda pair: (-pair[0], pair[2].id))
-        for score, _overlap, candidate in candidates[:1]:
-            return self._append_anchor(
-                results,
-                candidate,
-                score,
-                "数值锚点(值记录)",
-                top_k,
-            )
-        return results
+        chosen = None
+        for score, _overlap, candidate, seen_flag in candidates:
+            # Already the top row? Keep it and look for a missing record
+            # instead (the anchor adds, it does not duplicate).
+            if seen_flag and results and results[0].item.id == candidate.id:
+                continue
+            chosen = (score, candidate)
+            break
+        if chosen is None:
+            return results
+        score, candidate = chosen
+        if any(result.item.id == candidate.id for result in results):
+            results = [
+                result
+                for result in results
+                if result.item.id != candidate.id
+            ]
+            if not results:
+                results = [RecallResult(candidate, 0.0)]
+        return self._append_anchor(
+            results,
+            candidate,
+            score,
+            "数值锚点(值记录)",
+            top_k,
+        )
 
     @staticmethod
     def _append_anchor(
@@ -1335,18 +1376,21 @@ class MemoryEngine:
             query_terms = expand_synonyms(query_terms)
         if not query_terms:
             return results
+        storage_q = bool(_STORAGE_Q_RE.search(query))
+        word_re = _STORAGE_WORD_RE if storage_q else _PURCHASE_WORD_RE
         candidates: list[tuple[int, tuple[int, int, int], MemoryItem]] = []
         for item in self.store.all_active(kind=kind):
             if item.id in seen or item.id in exclude_ids:
                 continue
-            if not _PURCHASE_WORD_RE.search(item.content):
+            text = item.content + " " + " ".join(item.cues)
+            if not word_re.search(text):
                 continue
 
-            overlap = len(query_terms & set(tokenize(item.content)))
+            overlap = len(query_terms & set(tokenize(text)))
             if overlap == 0:
                 continue
             candidates.append(
-                (overlap, self._latest_date(item.content), item)
+                (overlap, self._latest_date(text), item)
             )
         if not candidates:
             return results
