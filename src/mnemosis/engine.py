@@ -102,6 +102,14 @@ _STORAGE_Q_RE = re.compile(
     r"放了哪些|放了什么|存放了哪些|存放了些什么|存了什么|"
     r"装了哪些|收纳了哪些|放了什么物品|存了哪些"
 )
+_SCOPE_Q_RE = re.compile(
+    r"收哪些|收什么|可以收什么|有哪些|包含哪些|包括哪些|"
+    r"有哪几类|分几类|什么书|哪些种类|哪些项目|哪些内容|"
+    r"哪些服务|哪些业务|提供哪些|卖哪些"
+)
+_SCOPE_WORD_RE = re.compile(
+    r"范围|包括|包含|均可|不收|种类|分类|清单|项目|服务"
+)
 _PURCHASE_WORD_RE = re.compile(
     r"买|购买|购入|入手|添置|存放|放入|存了|装了|收纳|放进|搁置"
 )
@@ -306,6 +314,7 @@ class MemoryEngine:
         problem_anchor: bool = True,
         contact_anchor: bool = True,
         purchase_anchor: bool = True,
+        scope_anchor: bool = True,
         exclude_ids: set[str] | None = None,
     ) -> list[RecallResult]:
         embedder = embedder or self.embedder
@@ -419,6 +428,14 @@ class MemoryEngine:
             )
         if purchase_anchor:
             results = self._apply_purchase_anchor(
+                query,
+                results,
+                top_k=top_k,
+                kind=kind,
+                exclude_ids=exclude_ids,
+            )
+        if scope_anchor:
+            results = self._apply_scope_anchor(
                 query,
                 results,
                 top_k=top_k,
@@ -1403,6 +1420,65 @@ class MemoryEngine:
                 candidate,
                 min(0.62, 0.60 + 0.01 * score),
                 "购买锚点(购置记录)",
+                top_k,
+            )
+        return results
+
+    def _apply_scope_anchor(
+        self,
+        query: str,
+        results: list[RecallResult],
+        *,
+        top_k: int,
+        kind: MemoryKind | None,
+        exclude_ids: set[str],
+    ) -> list[RecallResult]:
+        """Anchor scope/list questions ("收哪些书/有哪些服务") to the
+        record that enumerates the categories (范围/包括/均可/不收).
+
+        Generic recall ranks event records (回收了20本) above the rule
+        that actually lists the accepted items, so the enumeration gets
+        pushed out of top-k. This post-pass re-inserts it, mirroring
+        semantic category memory (Collins & Quillian, 1969: a category
+        node stores its members at one hop).
+        """
+
+        if not _SCOPE_Q_RE.search(query) or not results:
+            return results
+        seen = {result.item.id for result in results}
+        query_terms = self._concept_terms(query)
+        if has_cjk(query):
+            query_terms = expand_synonyms(query_terms)
+        if not query_terms:
+            return results
+        candidates: list[tuple[int, tuple[int, int, int], MemoryItem]] = []
+        for item in self.store.all_active(kind=kind):
+            if item.id in seen or item.id in exclude_ids:
+                continue
+            text = item.content + " " + " ".join(item.cues)
+            if not _SCOPE_WORD_RE.search(text):
+                continue
+            overlap = len(query_terms & set(tokenize(text)))
+            if overlap == 0:
+                continue
+            candidates.append(
+                (overlap, self._latest_date(text), item)
+            )
+        if not candidates:
+            return results
+        candidates.sort(
+            key=lambda pair: (
+                -pair[0],
+                tuple(-d for d in pair[1]),
+                pair[2].id,
+            )
+        )
+        for overlap, _date, candidate in candidates[:1]:
+            return self._append_anchor(
+                results,
+                candidate,
+                min(0.62, 0.60 + 0.01 * overlap),
+                "范围锚点(清单记录)",
                 top_k,
             )
         return results
