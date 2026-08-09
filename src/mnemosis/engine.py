@@ -78,8 +78,6 @@ _CONTACT_Q_RE = re.compile(r"电话|号码|联系方式")
 _CONTACT_PAT_RE = re.compile(
     r"(?:\d{3,4}-){1,2}\d{3,4}|\d{3,4}-\d{7,8}|400-\d{3}-\d{4}"
 )
-_RECENCY_Q_RE = re.compile(r"现在|最近|当前|上次|最新")
-
 
 class MemoryEngine:
     """The one thing most users touch.
@@ -592,8 +590,6 @@ class MemoryEngine:
     _VALUE_QUESTION_RE = None
     _VALUE_PATTERN_RE = None
     _TIME_RANGE_RE = None
-    _MONEY_QUESTION_RE = None
-    _MONEY_PATTERN_RE = None
     _TEMPORAL_PAST_RE = re.compile(
         r"上次|上一次|最近|最新|刚才|最后一次|前一次|"
         r"现在|目前|当前|"
