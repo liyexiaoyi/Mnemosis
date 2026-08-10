@@ -903,11 +903,22 @@ class DualTrackStore:
         return cached
 
     def _embedding(self, item: MemoryItem, embedder: Embedder) -> list[float]:
-        """Cached embedding for an item (keyed by content hash)."""
-        cached = self._embed_cache.get(item.content_hash)
+        """Cached embedding for an item.
+
+        Keyed by content hash plus the embedder's type and optional stable
+        ``cache_key`` (e.g. a model name or cache path) so different
+        embedders never share vectors. ``id()`` is intentionally avoided:
+        object addresses can be reused after garbage collection.
+        """
+        key = (
+            item.content_hash,
+            f"{type(embedder).__module__}.{type(embedder).__name__}",
+            getattr(embedder, "cache_key", ""),
+        )
+        cached = self._embed_cache.get(key)
         if cached is None:
             cached = embedder.embed(item.content)
-            self._embed_cache[item.content_hash] = cached
+            self._embed_cache[key] = cached
         return cached
 
     def _spread_activation(

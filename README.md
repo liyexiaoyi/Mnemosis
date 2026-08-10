@@ -10,6 +10,7 @@ human memory actually works.
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/liyexiaoyi/Mnemosis/actions/workflows/ci.yml/badge.svg)](https://github.com/liyexiaoyi/Mnemosis/actions/workflows/ci.yml)
+[![Open in GitHub Codespaces](https://img.shields.io/badge/Codespaces-一键打开-181717?logo=github)](https://codespaces.new/liyexiaoyi/Mnemosis)
 
 中文说明：[README.zh-CN.md](README.zh-CN.md) · English: README.md
 
@@ -90,7 +91,13 @@ pip install git+https://github.com/liyexiaoyi/Mnemosis.git
 python examples/demo.py          # 仓库内
 ```
 
-不想安装？直接在 [Google Colab 打开演示笔记本](https://colab.research.google.com/github/liyexiaoyi/Mnemosis/blob/main/examples/Mnemosis_demo.ipynb)。
+不想安装？可以在线体验：
+
+- [Google Colab 打开演示笔记本](https://colab.research.google.com/github/liyexiaoyi/Mnemosis/blob/main/examples/Mnemosis_demo.ipynb)
+  （部分地区访问不了 Colab，可改用下面的方式）
+- [GitHub Codespaces 一键打开](https://codespaces.new/liyexiaoyi/Mnemosis)：云端环境，
+  打开终端执行 `python examples/demo.py` 即可
+- 下载 `examples/Mnemosis_demo.ipynb` 后，用本地 Jupyter 或百度 AI Studio 打开
 
 ## Use with your AI client (MCP)
 

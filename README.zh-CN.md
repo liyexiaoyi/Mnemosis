@@ -81,6 +81,13 @@ python examples/demo.py
 
 或在 [Google Colab](https://colab.research.google.com/github/liyexiaoyi/Mnemosis/blob/main/examples/Mnemosis_demo.ipynb) 在线体验。
 
+> 注意：国内网络通常无法访问 Google Colab。替代方式：
+>
+> - [GitHub Codespaces 一键打开](https://codespaces.new/liyexiaoyi/Mnemosis)：
+>   云端环境，打开终端执行 `python examples/demo.py`
+> - 下载 `examples/Mnemosis_demo.ipynb`，用本地 Jupyter 或百度 AI Studio 打开
+> - 最稳的方式：本地 `pip install` 后直接跑 `python examples/demo.py`
+
 ## 命令行
 
 ```bash

@@ -448,6 +448,50 @@ class MemoryEngine:
             )
         return results
 
+    def recall_fused(
+        self,
+        query: str,
+        *,
+        kind: MemoryKind | None = None,
+        top_k: int = 5,
+        now: datetime | None = None,
+        pass_k: int = 24,
+        rrf_k: int = 60,
+        kw_weight: float = 1.0,
+        ng_weight: float = 1.0,
+        dense_embedder=None,
+        dense_weight: float = 1.6,
+        recency_weight: float = 0.08,
+        cue_weight: float = 0.12,
+        date_weight: float = 0.28,
+        expansion: bool = True,
+    ) -> list[RecallResult]:
+        """Fused multi-path recall.
+
+        Combines keyword and character n-gram rankings with reciprocal rank
+        fusion, then adds light signals from recency direction, stored cues
+        and query date hints (LongMemEval-style time-aware retrieval).
+        """
+        from .hybrid import fused_recall
+
+        return fused_recall(
+            self,
+            query,
+            kind=kind,
+            top_k=top_k,
+            now=now,
+            pass_k=pass_k,
+            rrf_k=rrf_k,
+            kw_weight=kw_weight,
+            ng_weight=ng_weight,
+            dense_embedder=dense_embedder,
+            dense_weight=dense_weight,
+            recency_weight=recency_weight,
+            cue_weight=cue_weight,
+            date_weight=date_weight,
+            expansion=expansion,
+        )
+
     def _concept_chunks(self, query: str) -> list[str]:
         """Split a Chinese multi-concept query into chunks (working memory
         chunking; Miller, 1956). "A 和 B 分别是多少" becomes [A, B] so each

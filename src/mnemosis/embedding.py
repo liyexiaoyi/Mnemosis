@@ -22,6 +22,8 @@ from typing import Callable
 class Embedder:
     """Protocol-ish base: `embed(text) -> list[float]` + cosine."""
 
+    cache_key: str = ""
+
     def embed(self, text: str) -> list[float]:
         raise NotImplementedError
 
