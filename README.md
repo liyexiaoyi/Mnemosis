@@ -114,6 +114,10 @@ One-line MCP integration for Claude Desktop, Cursor, Codex and any MCP client:
 }
 ```
 
+**Windows users**: if the client reports that `mnemosis-mcp` is not found,
+add Python's `Scripts` directory to `PATH`, or use an absolute path, e.g.
+`"command": "C:\\Users\\you\\AppData\\Local\\Programs\\Python\\Python312\\Scripts\\mnemosis-mcp.exe"`.
+
 Full guide (including Cursor and Codex configs): [`docs/mcp-quickstart.md`](docs/mcp-quickstart.md).
 
 ## Command line

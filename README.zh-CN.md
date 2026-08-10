@@ -106,6 +106,10 @@ Claude Desktop、Cursor、Codex 等支持 MCP 的客户端，加一行配置即�
 }
 ```
 
+**Windows 用户**：如果客户端提示找不到 `mnemosis-mcp`，把 Python 的
+`Scripts` 目录加入 `PATH`，或改用绝对路径，例如
+`"command": "C:\\Users\\you\\AppData\\Local\\Programs\\Python\\Python312\\Scripts\\mnemosis-mcp.exe"`。
+
 详细配置（含 Cursor、Codex 写法）见 [`docs/mcp-quickstart.md`](docs/mcp-quickstart.md)。
 
 ## 测试

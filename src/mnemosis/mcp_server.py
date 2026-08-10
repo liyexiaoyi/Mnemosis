@@ -15,6 +15,7 @@ import sys
 from datetime import datetime
 from typing import Any, Sequence
 
+from . import __version__ as _MNEMOSIS_VERSION
 from .engine import MemoryEngine
 from .embedding import NGramEmbedder
 from .types import MemoryKind, SourceRecord, SourceType
@@ -2044,7 +2045,10 @@ class MCPServer:
                 {
                     "protocolVersion": PROTOCOL_VERSION,
                     "capabilities": {"tools": {}},
-                    "serverInfo": {"name": "mnemosis", "version": "0.2.1"},
+                    "serverInfo": {
+                        "name": "mnemosis",
+                        "version": _MNEMOSIS_VERSION,
+                    },
                 },
             )
         if method == "ping":
