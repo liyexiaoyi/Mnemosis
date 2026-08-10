@@ -126,35 +126,6 @@ mnemosis --db memory.db check "用户最喜欢的电影是什么？"
 mnemosis mcp --db memory.db   # or: mnemosis-mcp --db memory.db
 ```
 
-## Features
-
-- **Dual-track memory** — episodic ("what happened") and semantic ("what is
-  true") stored and recalled separately (complementary learning systems).
-- **Forgetting curve** — memories decay with time; access and review strengthen
-  them (Ebbinghaus + spaced repetition).
-- **Sleep consolidation** — offline pass promotes repeated experiences into
-  stable knowledge, prunes noise, dedupes, and detects contradictions.
-- **Source monitoring** — every memory keeps origin, timestamp, trust, and
-  confidence, so the system can say "I'm not sure" instead of confabulating.
-- **Active forgetting** — unimportant memories fade; deletions go to a
-  recyclable trash, never silently.
-- **Metacognition** — confidence labels, contradiction reports, and knowledge
-  gaps before the agent answers.
-- **Associative recall** — memories are indexed by multiple cues (time, topic,
-  people, keywords) and linked, so any angle can reach them.
-- **Pattern completion** — a partial cue re-activates a whole integrated
-  pattern (Rolls, 2013; Theves et al., 2024).
-- **Memory updating** — `update()` revises facts, tracks revisions, and
-  destabilizes before re-stabilizing (Nader et al., 2000).
-- **Chinese-optimized retrieval** — CJK stopword filtering, zh date
-  normalization, pinyin/English-mixed records, verified at 10k-memory scale
-  (total hit@5 50.3% → 98.8%).
-- **Temporal reasoning** — time-cell anchored ordering for "after/before/next"
-  questions (Eichenbaum, 2014; Gilboa & Marlatte, 2017).
-- **Planning & reasoning memory** — successful plans, steps, and outcomes are
-  remembered and reused; failed steps are avoided on replan.
-- **Local-first, zero runtime dependencies** — pure Python stdlib + SQLite.
-
 ## Docs & research basis
 
 - [`docs/memory-model.md`](docs/memory-model.md) — the memory model
