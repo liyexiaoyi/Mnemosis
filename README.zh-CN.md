@@ -115,15 +115,6 @@ python -m unittest discover -s tests -q   # 320 项单元测试
 python benchmarks/locomo_bench.py --mode keyword   # LoCoMo 式长对话评测
 ```
 
-## 文档
-
-- [`docs/memory-model.md`](docs/memory-model.md) —— 记忆模型设计
-- [`docs/research.md`](docs/research.md) —— 背后的认知科学研究
-- [`docs/architecture.md`](docs/architecture.md) —— 架构说明
-- [`docs/mcp-quickstart.md`](docs/mcp-quickstart.md) —— MCP 接入指南
-- [`docs/roadmap.md`](docs/roadmap.md) —— 路线图
-- [`CHANGELOG.md`](CHANGELOG.md) —— 版本记录
-
 ## 许可
 
 MIT，见 [LICENSE](LICENSE)。

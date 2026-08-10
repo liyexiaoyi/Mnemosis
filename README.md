@@ -126,15 +126,6 @@ mnemosis --db memory.db check "用户最喜欢的电影是什么？"
 mnemosis mcp --db memory.db   # or: mnemosis-mcp --db memory.db
 ```
 
-## Docs & research basis
-
-- [`docs/memory-model.md`](docs/memory-model.md) — the memory model
-- [`docs/research.md`](docs/research.md) — human-memory papers behind each feature
-- [`docs/architecture.md`](docs/architecture.md) — architecture
-- [`docs/mcp-quickstart.md`](docs/mcp-quickstart.md) — MCP integration
-- [`docs/roadmap.md`](docs/roadmap.md) — roadmap
-- [`CHANGELOG.md`](CHANGELOG.md) — every round of iteration, with measured results
-
 ## Testing
 
 ```bash
