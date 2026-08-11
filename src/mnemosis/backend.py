@@ -764,7 +764,7 @@ class SQLiteBackend(Backend):
             self._term_pending = 0
         self._conn.close()
 
-    def __enter__(self) -> "SQLiteBackend":
+    def __enter__(self) -> SQLiteBackend:
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:

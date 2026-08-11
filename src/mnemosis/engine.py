@@ -8834,7 +8834,7 @@ class MemoryEngine:
         if hasattr(self.backend, "close"):
             self.backend.close()
 
-    def __enter__(self) -> "MemoryEngine":
+    def __enter__(self) -> MemoryEngine:
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:
