@@ -44,6 +44,7 @@ class VectorIndex:
         self._dim = dim
         self._lock = threading.Lock()
         self._pending = 0
+        self._matrix_cache: tuple[list[str], object] | None = None
         self._conn = sqlite3.connect(self.path, check_same_thread=False)
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute(
@@ -126,6 +127,7 @@ class VectorIndex:
     # -- write / read -----------------------------------------------------
 
     def add(self, memory_id: str, vector: list[float]) -> None:
+        self._matrix_cache = None
         if self._dim is None:
             self._dim = len(vector)
         with self._lock:
@@ -149,6 +151,7 @@ class VectorIndex:
 
     def clear(self) -> None:
         with self._lock:
+            self._matrix_cache = None
             self._conn.execute("DELETE FROM vectors")
             self._conn.execute("DELETE FROM buckets")
             self._conn.execute("DELETE FROM meta WHERE key='proj'")
@@ -164,10 +167,21 @@ class VectorIndex:
         with self._lock:
             total = self.size
             if total <= self.full_scan_threshold:
+                cached = self._matrix_cache
+                if (
+                    cached is not None
+                    and cached[1] is not None
+                    and len(cached[0]) == total
+                ):
+                    return self._rerank_matrix(
+                        cached[0], cached[1], query_vector, top_k
+                    )
                 rows = self._conn.execute(
                     "SELECT memory_id, vec FROM vectors"
                 ).fetchall()
-                return self._rerank(rows, query_vector, top_k)
+                result = self._rerank(rows, query_vector, top_k)
+                self._matrix_cache = self._build_matrix(rows)
+                return result
             projection = self._projection()
             signature = self._signature(query_vector, projection)
             buckets: set[int] = set()
@@ -247,6 +261,35 @@ class VectorIndex:
                 scored.append((memory_id, dot / (norm * qnorm + 1e-9)))
             scored.sort(key=lambda row: -row[1])
             return scored[:top_k]
+
+    def _build_matrix(self, rows: list[tuple[str, bytes]]):
+        ids = [row[0] for row in rows]
+        try:
+            import numpy as np  # noqa: PLC0415
+
+            payload = b"".join(row[1] for row in rows)
+            dim = payload and len(payload) // len(rows) // 8 or 0
+            matrix = np.frombuffer(payload, dtype=np.float64).reshape(
+                len(rows), dim
+            ).astype(np.float32)
+            return ids, matrix
+        except ImportError:
+            return ids, None
+
+    def _rerank_matrix(self, ids, matrix, query_vector, top_k):
+        import numpy as np  # noqa: PLC0415
+
+        query = np.asarray(query_vector, dtype=np.float32)
+        norms = np.linalg.norm(matrix, axis=1)
+        qnorm = float(np.linalg.norm(query))
+        if qnorm == 0.0:
+            return []
+        scores = matrix @ query / (norms * qnorm + 1e-9)
+        order = np.argsort(-scores)[:top_k]
+        return [
+            (ids[int(index)], float(scores[int(index)]))
+            for index in order
+        ]
 
     def flush(self) -> None:
         with self._lock:

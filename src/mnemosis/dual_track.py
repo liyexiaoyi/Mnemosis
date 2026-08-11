@@ -210,7 +210,22 @@ class DualTrackStore:
             for term in query_terms:
                 hit_ids |= term_index.get(term, set())
             if hit_ids:
-                ids = sorted(hit_ids - set(exclude_ids or set()))
+                ids = hit_ids - set(exclude_ids or set())
+                if len(ids) > 100:
+                    # Cheap pre-ranking with hit counts (tf-free BM25-style
+                    # signal, Robertson & Zaragoza, 2009): keep the top-300
+                    # candidates before loading full items for scoring.
+                    counts: dict[str, int] = {}
+                    for term in query_terms:
+                        for memory_id in term_index.get(term, ()):
+                            counts[memory_id] = counts.get(memory_id, 0) + 1
+                    ids = {
+                        memory_id
+                        for memory_id, _ in sorted(
+                            counts.items(), key=lambda row: -row[1]
+                        )[:100]
+                    }
+                ids = sorted(ids)
                 candidates = self.backend.get_many(ids)
         if not candidates:
             candidates = self.backend.list(kind=kind)
