@@ -130,6 +130,9 @@ mnemosis --db memory.db check "用户最喜欢的电影是什么？"
 mnemosis mcp --db memory.db   # or: mnemosis-mcp --db memory.db
 ```
 
+By default the MCP server hides experimental tools from `tools/list`
+(they stay callable). Add `--expose experimental` to show all 100+ tools.
+
 ## Threading
 
 `MemoryEngine` is designed for one agent loop per instance: SQLite access and

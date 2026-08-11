@@ -26,6 +26,23 @@ PROTOCOL_VERSION = "2025-03-26"
 MAX_MESSAGE_SIZE = 10 * 1024 * 1024
 _LOG = logging.getLogger(__name__)
 
+EXPERIMENTAL_TOOLS = frozenset(
+    {
+        "emotion_advice", "rumination_check", "sleep_advice",
+        "nightly_routine", "weekly_review", "cramming_plan",
+        "transfer_prompt", "analogy_prompt", "mastery_map",
+        "attention_filter", "test_generator", "community_report",
+        "learner_profile", "encoding_quality", "source_calibration",
+        "cue_diversity", "goal_progress", "recognition_check",
+        "affect_decay", "retrieval_snapshot", "retrieval_assist",
+        "memory_integration", "difficulty_estimator",
+        "reconsolidation_plan", "consolidation_forecast",
+        "forgetting_balance", "metacog_report", "sleep_inference",
+        "schema_fit", "transfer_report", "bridge_suggestions",
+        "forgetting_export",
+    }
+)
+
 
 def _kind(value: Any) -> MemoryKind | None:
     if value is None:
@@ -54,7 +71,11 @@ def _source_type(value: Any) -> SourceType:
 
 
 class MCPServer:
-    def __init__(self, engine: MemoryEngine | None = None) -> None:
+    def __init__(
+        self,
+        engine: MemoryEngine | None = None,
+        expose: str = "advanced",
+    ) -> None:
         self.engine = engine or MemoryEngine()
         self._tools = [
             {
@@ -2047,6 +2068,12 @@ class MCPServer:
                 },
             },
         ]
+        if expose != "experimental":
+            self._tools = [
+                tool
+                for tool in self._tools
+                if tool["name"] not in EXPERIMENTAL_TOOLS
+            ]
 
     def handle_line(self, line: str) -> str | None:
         """Handle one JSON-RPC message; return a response line or None."""
@@ -2878,7 +2905,10 @@ def _write_message(text: str, framed: bool) -> None:
     sys.stdout.buffer.flush()
 
 
-def run_stdio(db_path: str | None = None) -> None:
+def run_stdio(
+    db_path: str | None = None,
+    expose: str = "advanced",
+) -> None:
     if db_path:
         db_path = os.path.abspath(os.path.expanduser(db_path))
     for stream in (sys.stdin, sys.stdout, sys.stderr):
@@ -2886,7 +2916,7 @@ def run_stdio(db_path: str | None = None) -> None:
             stream.reconfigure(encoding="utf-8")
         except (AttributeError, ValueError):
             pass
-    server = MCPServer(MemoryEngine(db_path))
+    server = MCPServer(MemoryEngine(db_path), expose=expose)
     while True:
         message, framed = _read_message()
         if message is None:
@@ -2911,8 +2941,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         action="version",
         version=f"mnemosis-mcp {_MNEMOSIS_VERSION}",
     )
+    parser.add_argument(
+        "--expose",
+        choices=("advanced", "experimental"),
+        default="advanced",
+        help=(
+            "advanced: hide experimental tools from tools/list "
+            "(default); experimental: show all 100+ tools"
+        ),
+    )
     args = parser.parse_args(argv)
-    run_stdio(args.db)
+    run_stdio(args.db, expose=args.expose)
     return 0
 
 

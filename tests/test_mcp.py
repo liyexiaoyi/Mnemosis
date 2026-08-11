@@ -5,7 +5,12 @@ import sys
 import unittest
 
 from mnemosis import MemoryEngine
-from mnemosis.mcp_server import MCPServer, MAX_MESSAGE_SIZE, _read_message
+from mnemosis.mcp_server import (
+    EXPERIMENTAL_TOOLS,
+    MCPServer,
+    MAX_MESSAGE_SIZE,
+    _read_message,
+)
 
 
 class MCPTest(unittest.TestCase):
@@ -108,6 +113,15 @@ class MCPTest(unittest.TestCase):
             "working_set",
         ]:
             self.assertIn(expected, names)
+
+    def test_tool_tiers(self):
+        advanced = MCPServer(MemoryEngine(), expose="advanced")
+        experimental = MCPServer(MemoryEngine(), expose="experimental")
+        advanced_names = {tool["name"] for tool in advanced._tools}
+        experimental_names = {tool["name"] for tool in experimental._tools}
+        self.assertIn("remember", advanced_names)
+        self.assertTrue(EXPERIMENTAL_TOOLS - advanced_names)
+        self.assertTrue(EXPERIMENTAL_TOOLS <= experimental_names)
 
     def test_remember_recall_roundtrip(self):
         saved = self.call(
