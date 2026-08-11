@@ -108,8 +108,15 @@ class DualTrackStore:
             self.backend.add(item)
             stored = item
         self.backend.add_cues(stored.id, stored.cues)
+        self.backend.index_terms(stored.id, self._terms(stored), stored.kind)
         self.invalidate_term_index()
         return stored
+
+    def reindex_terms(self, item: MemoryItem) -> None:
+        """Rebuild the persisted term index for a changed item."""
+        self.backend.remove_terms(item.id)
+        self.backend.index_terms(item.id, self._terms(item), item.kind)
+        self.invalidate_term_index()
 
     def recall(
         self,
@@ -169,11 +176,7 @@ class DualTrackStore:
         exclude_ids: set[str] | None = None,
     ) -> list[RecallResult]:
         now = now or utcnow()
-        candidates = self.backend.list(kind=kind)
-        if exclude_ids:
-            candidates = [
-                item for item in candidates if item.id not in exclude_ids
-            ]
+        candidates: list[MemoryItem] = []
         query_terms = set(tokenize(query))
         if zh_synonyms and any("\u4e00" <= ch <= "\u9fff" for ch in query):
             # Chinese synonym expansion: questions often use different words
@@ -207,8 +210,13 @@ class DualTrackStore:
             for term in query_terms:
                 hit_ids |= term_index.get(term, set())
             if hit_ids:
+                ids = sorted(hit_ids - set(exclude_ids or set()))
+                candidates = self.backend.get_many(ids)
+        if not candidates:
+            candidates = self.backend.list(kind=kind)
+            if exclude_ids:
                 candidates = [
-                    item for item in candidates if item.id in hit_ids
+                    item for item in candidates if item.id not in exclude_ids
                 ]
         query_vector = embedder.embed(query) if embedder is not None else None
         query_mood = _query_mood(query) if mood_congruent_boost else None
@@ -802,10 +810,7 @@ class DualTrackStore:
         cached = self._inverted.get(key)
         if cached is not None:
             return cached
-        index: dict[str, set[str]] = {}
-        for item in self.backend.list(kind=kind):
-            for term in self._terms(item):
-                index.setdefault(term, set()).add(item.id)
+        index = self.backend.all_terms(kind=kind)
         self._inverted[key] = index
         return index
 

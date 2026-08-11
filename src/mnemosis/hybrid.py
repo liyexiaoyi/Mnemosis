@@ -315,13 +315,27 @@ def fused_recall(
     all_results = []
     if kw_weight > 0:
         kw_results = engine.recall(
-            rewritten, kind=kind, top_k=pass_k, embedder=None
+            rewritten,
+            kind=kind,
+            top_k=pass_k,
+            embedder=None,
+            elaborate_links=False,
+            suppression_factor=0.0,
+            temporal_reason=False,
+            reasoning_pack=False,
         )
         passes.append(([r.item.id for r in kw_results], kw_weight))
         all_results.extend(kw_results)
     if ng_weight > 0:
         ng_results = engine.recall(
-            rewritten, kind=kind, top_k=pass_k, embedder=NGramEmbedder()
+            rewritten,
+            kind=kind,
+            top_k=pass_k,
+            embedder=NGramEmbedder(),
+            elaborate_links=False,
+            suppression_factor=0.0,
+            temporal_reason=False,
+            reasoning_pack=False,
         )
         passes.append(([r.item.id for r in ng_results], ng_weight))
         all_results.extend(ng_results)

@@ -278,6 +278,7 @@ class MemoryEngine:
             item.cues = normalize_cues(cues)
             self.backend.add_cues(item.id, item.cues)
         self.backend.update(item)
+        self.store.reindex_terms(item)
         return item
 
     def recall(

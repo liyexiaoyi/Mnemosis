@@ -38,10 +38,29 @@ class Backend(ABC):
     def get(self, memory_id: str) -> MemoryItem | None: ...
 
     @abstractmethod
+    def get_many(self, memory_ids: Iterable[str]) -> list[MemoryItem]: ...
+
+    @abstractmethod
     def update(self, item: MemoryItem) -> None: ...
 
     @abstractmethod
     def delete(self, memory_id: str) -> None: ...
+
+    @abstractmethod
+    def index_terms(
+        self, memory_id: str, terms: Iterable[str], kind: MemoryKind
+    ) -> None: ...
+
+    @abstractmethod
+    def remove_terms(self, memory_id: str) -> None: ...
+
+    @abstractmethod
+    def find_by_terms(
+        self, terms: Iterable[str], kind: MemoryKind | None
+    ) -> set[str]: ...
+
+    @abstractmethod
+    def all_terms(self, kind: MemoryKind | None) -> dict[str, set[str]]: ...
 
     @abstractmethod
     def list(
@@ -86,6 +105,7 @@ class DictBackend(Backend):
         self._cues: dict[str, set[str]] = {}
         self._links: dict[tuple[str, str], float] = {}
         self._adj: dict[str, set[str]] = {}
+        self._terms_index: dict[str, set[str]] = {}
         self._seq = 0
 
     def add(self, item: MemoryItem) -> None:
@@ -115,11 +135,26 @@ class DictBackend(Backend):
     def get(self, memory_id: str) -> MemoryItem | None:
         return self._items.get(memory_id)
 
+    def get_many(self, memory_ids: Iterable[str]) -> list[MemoryItem]:
+        items = [
+            item
+            for memory_id in memory_ids
+            if (item := self._items.get(memory_id)) is not None
+            and item.status == MemoryStatus.ACTIVE
+        ]
+        items.sort(key=lambda item: item.seq, reverse=True)
+        return items
+
     def update(self, item: MemoryItem) -> None:
         self._items[item.id] = item
 
     def delete(self, memory_id: str) -> None:
         self._items.pop(memory_id, None)
+        self._terms_index = {
+            term: ids
+            for term, ids in self._terms_index.items()
+            if memory_id not in ids
+        }
         self._cues = {cue: ids for cue, ids in self._cues.items() if memory_id not in ids}
         self._links = {
             (a, b): w for (a, b), w in self._links.items() if a != memory_id and b != memory_id
@@ -127,6 +162,48 @@ class DictBackend(Backend):
         self._adj.pop(memory_id, None)
         for neighbors in self._adj.values():
             neighbors.discard(memory_id)
+
+    def index_terms(
+        self, memory_id: str, terms: Iterable[str], kind: MemoryKind
+    ) -> None:
+        self.remove_terms(memory_id)
+        for term in set(terms):
+            self._terms_index.setdefault(term, set()).add(memory_id)
+
+    def remove_terms(self, memory_id: str) -> None:
+        self._terms_index = {
+            term: ids
+            for term, ids in self._terms_index.items()
+            if memory_id not in ids
+        }
+
+    def find_by_terms(
+        self, terms: Iterable[str], kind: MemoryKind | None
+    ) -> set[str]:
+        found: set[str] = set()
+        for term in terms:
+            found |= self._terms_index.get(term, set())
+        if kind is None:
+            return found
+        return {
+            memory_id
+            for memory_id in found
+            if self._items.get(memory_id) is not None
+            and self._items[memory_id].kind == kind
+        }
+
+    def all_terms(self, kind: MemoryKind | None) -> dict[str, set[str]]:
+        if kind is None:
+            return {term: set(ids) for term, ids in self._terms_index.items()}
+        return {
+            term: {
+                memory_id
+                for memory_id in ids
+                if self._items.get(memory_id) is not None
+                and self._items[memory_id].kind == kind
+            }
+            for term, ids in self._terms_index.items()
+        }
 
     def list(
         self,
@@ -205,6 +282,7 @@ class SQLiteBackend(Backend):
 
     def __init__(self, path: str = "mnemosis.db") -> None:
         self._conn = sqlite3.connect(path)
+        self._term_pending = 0
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA synchronous=NORMAL")
@@ -271,6 +349,19 @@ class SQLiteBackend(Backend):
                     PRIMARY KEY (cue, memory_id)
                 )
                 """
+            )
+            self._conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS terms (
+                    term      TEXT NOT NULL,
+                    memory_id TEXT NOT NULL,
+                    kind      TEXT NOT NULL,
+                    PRIMARY KEY (term, memory_id)
+                )
+                """
+            )
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_terms_memory ON terms(memory_id)"
             )
         self._ensure_columns()
 
@@ -350,6 +441,23 @@ class SQLiteBackend(Backend):
         ).fetchone()
         return _row_to_item(row) if row else None
 
+    def get_many(self, memory_ids: Iterable[str]) -> list[MemoryItem]:
+        ids = list(memory_ids)
+        if not ids:
+            return []
+        items: list[MemoryItem] = []
+        for start in range(0, len(ids), 500):
+            chunk = ids[start : start + 500]
+            placeholders = ",".join("?" for _ in chunk)
+            rows = self._conn.execute(
+                f"SELECT * FROM memories WHERE status = 'active' "
+                f"AND id IN ({placeholders})",
+                tuple(chunk),
+            ).fetchall()
+            items.extend(_row_to_item(row) for row in rows)
+        items.sort(key=lambda item: item.seq, reverse=True)
+        return items
+
     def update(self, item: MemoryItem) -> None:
         with self._conn:
             self._conn.execute(
@@ -396,6 +504,72 @@ class SQLiteBackend(Backend):
             self._conn.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
             self._conn.execute("DELETE FROM cues WHERE memory_id = ?", (memory_id,))
             self._conn.execute("DELETE FROM links WHERE src = ? OR dst = ?", (memory_id, memory_id))
+            self._conn.execute("DELETE FROM terms WHERE memory_id = ?", (memory_id,))
+
+    def index_terms(
+        self, memory_id: str, terms: Iterable[str], kind: MemoryKind
+    ) -> None:
+        normalized = sorted(set(terms))
+        if not normalized:
+            return
+        self._conn.execute(
+            "DELETE FROM terms WHERE memory_id = ?", (memory_id,)
+        )
+        self._conn.executemany(
+            "INSERT OR REPLACE INTO terms (term, memory_id, kind) "
+            "VALUES (?, ?, ?)",
+            [(term, memory_id, kind.value) for term in normalized],
+        )
+        self._term_pending += 1
+        if self._term_pending >= 200:
+            self._conn.commit()
+            self._term_pending = 0
+
+    def remove_terms(self, memory_id: str) -> None:
+        self._conn.execute(
+            "DELETE FROM terms WHERE memory_id = ?", (memory_id,)
+        )
+        self._term_pending += 1
+        if self._term_pending >= 200:
+            self._conn.commit()
+            self._term_pending = 0
+
+    def find_by_terms(
+        self, terms: Iterable[str], kind: MemoryKind | None
+    ) -> set[str]:
+        normalized = sorted(set(terms))
+        if not normalized:
+            return set()
+        found: set[str] = set()
+        for start in range(0, len(normalized), 500):
+            chunk = normalized[start : start + 500]
+            placeholders = ",".join("?" for _ in chunk)
+            sql = (
+                "SELECT DISTINCT memory_id FROM terms "
+                f"WHERE term IN ({placeholders})"
+            )
+            params: list = list(chunk)
+            if kind is not None:
+                sql += " AND kind = ?"
+                params.append(kind.value)
+            rows = self._conn.execute(sql, tuple(params)).fetchall()
+            found.update(row[0] for row in rows)
+        return found
+
+    def all_terms(self, kind: MemoryKind | None) -> dict[str, set[str]]:
+        if kind is None:
+            rows = self._conn.execute(
+                "SELECT term, memory_id FROM terms"
+            ).fetchall()
+        else:
+            rows = self._conn.execute(
+                "SELECT term, memory_id FROM terms WHERE kind = ?",
+                (kind.value,),
+            ).fetchall()
+        index: dict[str, set[str]] = {}
+        for row in rows:
+            index.setdefault(row["term"], set()).add(row["memory_id"])
+        return index
 
     def list(
         self,
@@ -514,6 +688,9 @@ class SQLiteBackend(Backend):
         }
 
     def close(self) -> None:
+        if self._term_pending:
+            self._conn.commit()
+            self._term_pending = 0
         self._conn.close()
 
 
