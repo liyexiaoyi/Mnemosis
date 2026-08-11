@@ -427,12 +427,14 @@ def run_system_mnemosis(
             )
             if mode == "seg":
                 for segment in segment_text(content):
-                    engine.remember(
-                        segment,
-                        kind=MemoryKind.EPISODIC,
-                        source=source,
-                        cues=list(cues),
-                        importance=0.5,
+                    pending_records.append(
+                        {
+                            "content": segment,
+                            "kind": MemoryKind.EPISODIC,
+                            "source": source,
+                            "cues": list(cues),
+                            "importance": 0.5,
+                        }
                     )
                     turns += 1
                     all_contents.add(segment)

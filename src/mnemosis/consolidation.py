@@ -142,12 +142,16 @@ class Consolidator:
         total_before = self.backend.count()
         replayed = self._replay_recent(now)
         weak_replayed = self._replay_weak_important(now)
-        merged = self._merge_duplicates(now)
-        promoted = self._promote_episodic(now)
-        recycled = self._prune_noise(now)
+        # Load the episodic store once and share it across the phases that
+        # scan it; each phase filters ACTIVE status in memory, which matches
+        # the fresh-load semantics while avoiding ~5 full SQLite loads.
+        episodes = self.store.all_active(MemoryKind.EPISODIC)
+        merged = self._merge_duplicates(now, episodes)
+        promoted = self._promote_episodic(now, episodes)
+        recycled = self._prune_noise(now, episodes)
         conflicts = self.detect_conflicts()
-        rem_links, rem_resolved = self._rem_phase(now, conflicts)
-        emotion_boosted, emotion_links = self._emotion_phase(now)
+        rem_links, rem_resolved = self._rem_phase(now, conflicts, episodes)
+        emotion_boosted, emotion_links = self._emotion_phase(now, episodes)
         accommodated = self._accommodation_phase(now)
         reflected = self.reflect(summarizer or self.llm_summarizer, now)
         total_after = self.backend.count()
@@ -251,7 +255,9 @@ class Consolidator:
             return b, a
         return None, None
 
-    def _emotion_phase(self, now: datetime) -> tuple[int, int]:
+    def _emotion_phase(
+        self, now: datetime, episodes: list[MemoryItem] | None = None
+    ) -> tuple[int, int]:
         """Amygdala-modulated consolidation (McGaugh, 2004; Krenz et al., 2025).
 
         Emotionally arousing experiences are consolidated more strongly than
@@ -266,8 +272,16 @@ class Consolidator:
           strengthened (amygdala-hippocampal coupling), so one cue can
           re-activate the whole emotional cluster.
         """
-        episodes = self.store.all_active(MemoryKind.EPISODIC)
-        emotional = [item for item in episodes if item.affect]
+        episodes = (
+            episodes
+            if episodes is not None
+            else self.store.all_active(MemoryKind.EPISODIC)
+        )
+        emotional = [
+            item
+            for item in episodes
+            if item.status is MemoryStatus.ACTIVE and item.affect
+        ]
         boosted = 0
         for item in emotional:
             repeats = item.evidence_count
@@ -315,7 +329,9 @@ class Consolidator:
                     links += 1
         return boosted, links
 
-    def _merge_duplicates(self, now: datetime) -> int:
+    def _merge_duplicates(
+        self, now: datetime, episodes: list[MemoryItem] | None = None
+    ) -> int:
         """Merge near-duplicate episodic traces (complementary learning
         systems; McClelland et al., 1995).
 
@@ -325,9 +341,15 @@ class Consolidator:
         same-content-hash episodes are considered, so distinct events are
         never fused.
         """
-        episodes = self.store.all_active(MemoryKind.EPISODIC)
+        episodes = (
+            episodes
+            if episodes is not None
+            else self.store.all_active(MemoryKind.EPISODIC)
+        )
         by_hash: dict[str, list[MemoryItem]] = {}
         for item in episodes:
+            if item.status is not MemoryStatus.ACTIVE:
+                continue
             by_hash.setdefault(item.content_hash, []).append(item)
         merged = 0
         for items in by_hash.values():
@@ -348,7 +370,10 @@ class Consolidator:
         return merged
 
     def _rem_phase(
-        self, now: datetime, conflicts: list[Conflict] | None = None
+        self,
+        now: datetime,
+        conflicts: list[Conflict] | None = None,
+        episodes: list[MemoryItem] | None = None,
     ) -> tuple[int, int]:
         """REM sleep: associative strengthening + conflict resolution.
 
@@ -362,7 +387,12 @@ class Consolidator:
           little confidence, mirroring the "reconcile, don't keep both
           absolute" outcome of REM-mediated memory integration.
         """
-        episodes = self.store.all_active(MemoryKind.EPISODIC)
+        episodes = (
+            episodes
+            if episodes is not None
+            else self.store.all_active(MemoryKind.EPISODIC)
+        )
+        episodes = [item for item in episodes if item.status is MemoryStatus.ACTIVE]
         links = 0
         if len(episodes) >= 2:
             # Cue -> items index: only pairs that share at least one cue are
@@ -480,9 +510,18 @@ class Consolidator:
             reflected.append(semantic)
         return reflected
 
-    def _promote_episodic(self, now: datetime) -> list[MemoryItem]:
+    def _promote_episodic(
+        self, now: datetime, episodes: list[MemoryItem] | None = None
+    ) -> list[MemoryItem]:
         promoted: list[MemoryItem] = []
-        for item in self.store.all_active(MemoryKind.EPISODIC):
+        episodes = (
+            episodes
+            if episodes is not None
+            else self.store.all_active(MemoryKind.EPISODIC)
+        )
+        for item in episodes:
+            if item.status is not MemoryStatus.ACTIVE:
+                continue
             # Rasch & Born (2013): sleep preferentially consolidates salient
             # (here: emotionally tagged) experiences.
             access_needed = max(
@@ -527,9 +566,18 @@ class Consolidator:
             promoted.append(semantic)
         return promoted
 
-    def _prune_noise(self, now: datetime) -> list[str]:
+    def _prune_noise(
+        self, now: datetime, episodes: list[MemoryItem] | None = None
+    ) -> list[str]:
         recycled: list[str] = []
-        for item in self.store.all_active(MemoryKind.EPISODIC):
+        episodes = (
+            episodes
+            if episodes is not None
+            else self.store.all_active(MemoryKind.EPISODIC)
+        )
+        for item in episodes:
+            if item.status is not MemoryStatus.ACTIVE:
+                continue
             age_days = (now - item.created_at).total_seconds() / 86400.0
             if (
                 item.importance < self.prune_importance
