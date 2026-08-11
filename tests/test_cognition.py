@@ -799,5 +799,47 @@ class CognitionTest(unittest.TestCase):
         self.assertEqual(results[0].item.id, target.id)
 
 
+class ConflictAdviceTest(unittest.TestCase):
+    def _conflicting_pair(self, **kwargs):
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        defaults = {
+            "kind": MemoryKind.SEMANTIC,
+            "source": user,
+            "cues": ["项目"],
+            "importance": 0.5,
+            "confidence": 1.0,
+            "auto_cues": False,
+        }
+        defaults.update(kwargs)
+        first = engine.remember("项目预算是5万", **defaults)
+        second = engine.remember("项目预算是8万", **defaults)
+        return engine, first, second
+
+    def test_stronger_side_is_recommended(self):
+        engine, weak, strong = self._conflicting_pair(
+            importance=0.5, evidence_count=1,
+        )
+        # strong side: more evidence and higher importance
+        engine.backend.get(strong.id).importance = 0.9
+        engine.backend.get(strong.id).evidence_count = 5
+        engine.backend.update(engine.backend.get(strong.id))
+        report = engine.conflict_advice()
+        self.assertGreaterEqual(report["conflicts"], 1)
+        row = report["advice"][0]
+        self.assertNotEqual(row["verdict"], "clarify")
+        winner_id = (
+            row["id_a"] if row["verdict"] == "prefer_a" else row["id_b"]
+        )
+        self.assertEqual(winner_id, strong.id)
+        self.assertTrue(row["advice"])
+
+    def test_balanced_pair_asks_to_clarify(self):
+        engine, _, _ = self._conflicting_pair()
+        report = engine.conflict_advice()
+        self.assertGreaterEqual(report["conflicts"], 1)
+        self.assertEqual(report["advice"][0]["verdict"], "clarify")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -2833,6 +2833,75 @@ class AnalysisMixin:
             "confidence": item.confidence,
             "reasons": reasons[:5],
         }
+
+    def conflict_advice(
+        self,
+        now: datetime | None = None,
+        limit: int = 10,
+    ) -> dict:
+        """Give resolution advice for each detected memory conflict.
+
+        Every contradiction is scored on both sides by evidence count,
+        confidence, importance, access history, source trust and recency.
+        The report says which side is stronger, or asks the user to clarify
+        when the two sides are too close to call.
+        """
+        now = now or utcnow()
+        conflicts = self.consolidator.detect_conflicts()
+        rows: list[dict] = []
+
+        def _score(item: MemoryItem) -> float:
+            recency_hours = max(
+                0.0,
+                (
+                    now - (item.updated_at or item.created_at)
+                ).total_seconds()
+                / 3600.0,
+            )
+            recency = 1.0 / (1.0 + recency_hours / 168.0)
+            return (
+                item.evidence_count * 2.0
+                + item.confidence
+                + item.importance
+                + min(item.access_count, 5) * 0.2
+                + item.source.trust
+                + recency
+            )
+
+        for conflict in conflicts[: max(1, int(limit))]:
+            a, b = conflict.a, conflict.b
+            score_a, score_b = _score(a), _score(b)
+            gap = abs(score_a - score_b) / max(1.0, max(score_a, score_b))
+            if gap < 0.08:
+                verdict = "clarify"
+                advice = (
+                    "两边证据接近，建议向用户确认后保留正确的一方，"
+                    "并删除或修正另一方。"
+                )
+            else:
+                winner, loser = (a, b) if score_a > score_b else (b, a)
+                verdict = "prefer_a" if winner is a else "prefer_b"
+                advice = (
+                    f"证据对比后建议以“{winner.content[:32]}”为准"
+                    f"（证据{winner.evidence_count}条、"
+                    f"置信度{winner.confidence:.2f}），"
+                    f"复查并修正“{loser.content[:32]}”。"
+                )
+            rows.append(
+                {
+                    "id_a": a.id,
+                    "content_a": a.content[:80],
+                    "id_b": b.id,
+                    "content_b": b.content[:80],
+                    "reason": conflict.reason,
+                    "score_a": round(score_a, 3),
+                    "score_b": round(score_b, 3),
+                    "verdict": verdict,
+                    "advice": advice,
+                }
+            )
+        return {"conflicts": len(conflicts), "advice": rows}
+
     def interference_report(
         self,
         shared_cue_min: int = 3,

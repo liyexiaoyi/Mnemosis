@@ -372,6 +372,18 @@ class MCPServer:
                 "inputSchema": {"type": "object", "properties": {}},
             },
             {
+                "name": "conflict_advice",
+                "description": (
+                    "For each memory conflict, score both sides (evidence, "
+                    "confidence, recency, source trust) and recommend which "
+                    "to keep or ask the user to clarify."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {"limit": {"type": "integer"}},
+                },
+            },
+            {
                 "name": "memory_status",
                 "description": (
                     "Return a memory-health snapshot: active counts by "
@@ -2388,6 +2400,10 @@ class MCPServer:
                 }
                 for conflict in conflicts
             ]
+        if name == "conflict_advice":
+            return self.engine.conflict_advice(
+                limit=int(args.get("limit") or 10)
+            )
         if name == "memory_status":
             return self.engine.memory_status()
         if name == "review_batch":
