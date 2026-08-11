@@ -413,6 +413,31 @@ class MemoryEngineTest(unittest.TestCase):
         finally:
             engine.close()
 
+    def test_remember_many_builds_event_chain_in_order(self):
+        """Batch ingestion must keep input order for the event chain."""
+        engine = MemoryEngine()
+        source = SourceRecord(origin=SourceType.USER)
+        engine.remember_many(
+            [
+                {
+                    "content": "alice bought camera on 2026-03-01.",
+                    "kind": MemoryKind.EPISODIC,
+                    "source": source,
+                    "cues": ["alice", "2026-03-01"],
+                },
+                {
+                    "content": "alice visited kyoto on 2026-03-02.",
+                    "kind": MemoryKind.EPISODIC,
+                    "source": source,
+                    "cues": ["alice", "2026-03-02"],
+                },
+            ]
+        )
+        items = engine.backend.list()
+        first = next(item for item in items if "camera" in item.content)
+        second = next(item for item in items if "kyoto" in item.content)
+        self.assertEqual(engine.event_chain.next_event_id(first.id), second.id)
+
 
 if __name__ == "__main__":
     unittest.main()

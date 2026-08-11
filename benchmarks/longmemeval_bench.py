@@ -402,6 +402,7 @@ def run_system_mnemosis(
     t0 = time.perf_counter()
     session_ids = question.get("haystack_session_ids") or []
     session_dates = question.get("haystack_dates") or []
+    pending_records: list[dict] = []
     for s_index, session in enumerate(question["haystack_sessions"]):
         sid = (
             session_ids[s_index]
@@ -440,17 +441,24 @@ def run_system_mnemosis(
                     segment_source[segment] = content
                     segment_sid[segment] = sid
             else:
-                engine.remember(
-                    content,
-                    kind=MemoryKind.EPISODIC,
-                    source=source,
-                    cues=list(cues),
-                    importance=0.5,
+                pending_records.append(
+                    {
+                        "content": content,
+                        "kind": MemoryKind.EPISODIC,
+                        "source": source,
+                        "cues": list(cues),
+                        "importance": 0.5,
+                    }
                 )
                 turns += 1
                 all_contents.add(content)
                 if turn.get("has_answer"):
                     has_answer_contents.add(content)
+    if pending_records:
+        # Batch ingestion: same per-item semantics as the old loop, but term
+        # rows, links and (in dense mode) embeddings are committed in bulk,
+        # so 480-turn sessions ingest in seconds instead of a minute.
+        engine.remember_many(pending_records)
     ingest = time.perf_counter() - t0
 
     t0 = time.perf_counter()
@@ -555,7 +563,7 @@ def sample_questions(data: list[dict], count: int, seed: int) -> list[dict]:
         by_type.setdefault(item["question_type"], []).append(item)
     picked: list[dict] = []
     per_type = max(1, count // len(by_type))
-    for qtype, items in by_type.items():
+    for items in by_type.values():
         picked.extend(rng.sample(items, min(per_type, len(items))))
     remaining = count - len(picked)
     if remaining > 0:
@@ -659,17 +667,25 @@ def main() -> int:
         runners: list[tuple[str, object]] = []
         if "mem0" in pending:
             runners.append(
-                ("mem0", lambda: run_system_mem0(
-                    question, qid, args.top_k, workdir
-                ))
+                (
+                    "mem0",
+                    lambda question=question, qid=qid: run_system_mem0(
+                        question, qid, args.top_k, workdir
+                    ),
+                )
             )
         for mode in ("kw", "ngram", "hybrid", "dense", "seg"):
             name = f"mnemosis_{mode}"
             if name in pending:
                 runners.append(
-                    (name, lambda mode=mode: run_system_mnemosis(
-                        question, qid, args.top_k, workdir, mode
-                    ))
+                    (
+                        name,
+                        lambda mode=mode, question=question, qid=qid: (
+                            run_system_mnemosis(
+                                question, qid, args.top_k, workdir, mode
+                            )
+                        ),
+                    )
                 )
         for name, runner in runners:
             try:
