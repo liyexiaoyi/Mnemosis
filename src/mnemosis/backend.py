@@ -259,6 +259,19 @@ class DictBackend(Backend):
         items.sort(key=lambda i: i.seq, reverse=True)
         return items[:limit] if limit is not None else items
 
+    def count(
+        self,
+        *,
+        kind: MemoryKind | None = None,
+        status: MemoryStatus = MemoryStatus.ACTIVE,
+    ) -> int:
+        return sum(
+            1
+            for item in self._items.values()
+            if item.status == status
+            and (kind is None or item.kind == kind)
+        )
+
     def add_cues(self, memory_id: str, cues: Iterable[str]) -> None:
         for cue in normalize_cues(list(cues)):
             self._cues.setdefault(cue, set()).add(memory_id)
@@ -389,6 +402,10 @@ class SQLiteBackend(Backend):
             )
             self._conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_memories_status ON memories(status)"
+            )
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_memories_status_kind "
+                "ON memories(status, kind)"
             )
             self._conn.execute(
                 """
@@ -767,6 +784,21 @@ class SQLiteBackend(Backend):
         return [_row_to_item(r) for r in rows]
 
     @_locked
+    def count(
+        self,
+        *,
+        kind: MemoryKind | None = None,
+        status: MemoryStatus = MemoryStatus.ACTIVE,
+    ) -> int:
+        """Row count without loading any memory objects (cheap stats)."""
+        sql = "SELECT COUNT(*) FROM memories WHERE status = ?"
+        params: list = [status.value]
+        if kind is not None:
+            sql += " AND kind = ?"
+            params.append(kind.value)
+        return int(self._conn.execute(sql, params).fetchone()[0])
+
+    @_locked
     def add_cues(self, memory_id: str, cues: Iterable[str]) -> None:
         normalized = normalize_cues(list(cues))
         if not normalized:
@@ -961,7 +993,7 @@ class SQLiteBackend(Backend):
             self._term_pending = 0
         self._conn.close()
 
-    def __enter__(self) -> SQLiteBackend:
+    def __enter__(self) -> SQLiteBackend:  # noqa: PYI034 (3.10 CI)
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:

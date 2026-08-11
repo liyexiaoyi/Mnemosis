@@ -91,7 +91,7 @@ def _extract_date(text: str) -> datetime | None:
         return None
     year, month, day = (int(part) for part in match.groups())
     try:
-        return datetime(year, month, day)
+        return datetime(year, month, day)  # noqa: DTZ001  (naive on purpose)
     except ValueError:
         return None
 

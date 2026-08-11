@@ -11,7 +11,6 @@ from datetime import datetime, timedelta
 
 from .types import MemoryItem, utcnow
 
-
 EMOTIONAL_DECAY_FACTOR = 0.6
 """Emotionally arousing memories decay slower (Cahill & McGaugh, 1998)."""
 

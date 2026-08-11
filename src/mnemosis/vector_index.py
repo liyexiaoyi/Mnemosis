@@ -231,8 +231,8 @@ class VectorIndex:
             projection = self._projection()
             signature = self._signature(query_vector, projection)
             buckets: set[int] = set()
-            for signature in self._neighbour_signatures(signature):
-                buckets.update(self._bucket_ids(signature))
+            for neighbour in self._neighbour_signatures(signature):
+                buckets.update(self._bucket_ids(neighbour))
             placeholders = ",".join("?" for _ in buckets)
             rows = self._conn.execute(
                 f"SELECT DISTINCT memory_id FROM buckets "
@@ -347,7 +347,7 @@ class VectorIndex:
         self.flush()
         self._conn.close()
 
-    def __enter__(self) -> VectorIndex:
+    def __enter__(self) -> VectorIndex:  # noqa: PYI034 (3.10 CI)
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:

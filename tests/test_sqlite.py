@@ -121,6 +121,16 @@ class SQLiteBackendTest(unittest.TestCase):
         finally:
             backend.close()
 
+    def test_count_is_cheap_and_respects_status(self):
+        first = self.remember("count fact 1")
+        self.remember("count fact 2")
+        self.assertEqual(self.engine.backend.count(), 2)
+        self.assertEqual(
+            self.engine.backend.count(kind=MemoryKind.SEMANTIC), 2
+        )
+        self.engine.forget(first.id)
+        self.assertEqual(self.engine.backend.count(), 1)
+
     def test_persistence_across_reopen(self):
         self.remember("The password hint is 'blue whale'.", cues=["password"])
         self.engine.close()

@@ -760,8 +760,8 @@ class DualTrackStore:
                     overlap,
                     item,
                     reasons + [
-                        "\u8bc1\u636e\u52a0\u6743\u4fdd\u62a4"
-                        "(\u540c\u6a21\u5f0f\u4e2d\u8bc1\u636e\u6700\u591a)"
+                        ("\u8bc1\u636e\u52a0\u6743\u4fdd\u62a4"
+                        "(\u540c\u6a21\u5f0f\u4e2d\u8bc1\u636e\u6700\u591a)")
                     ],
                     matched,
                 )
@@ -780,8 +780,8 @@ class DualTrackStore:
                         overlap,
                         item,
                         reasons + [
-                            "\u5f31\u8bc1\u636e\u538b\u964d"
-                            "(\u88ab\u66f4\u5f3a\u8bc1\u636e\u53d6\u4ee3)"
+                            ("\u5f31\u8bc1\u636e\u538b\u964d"
+                            "(\u88ab\u66f4\u5f3a\u8bc1\u636e\u53d6\u4ee3)")
                         ],
                         matched,
                     )

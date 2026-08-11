@@ -91,7 +91,7 @@ class SqliteEmbeddingCache(Embedder):
                 self._memory.popitem(last=False)
             return vector
 
-    def __enter__(self) -> SqliteEmbeddingCache:
+    def __enter__(self) -> SqliteEmbeddingCache:  # noqa: PYI034 (3.10 CI)
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:

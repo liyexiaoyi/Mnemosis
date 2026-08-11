@@ -2,26 +2,13 @@
 
 from __future__ import annotations
 
-import math
 import random
 import re
-import threading
-import uuid
-from collections import Counter, defaultdict, deque
-from datetime import date, datetime, timedelta, timezone
+from collections import Counter, defaultdict
+from datetime import date, datetime, timedelta
 from itertools import combinations
 
-from .association import AssociationIndex
-from .backend import Backend, make_backend
-from .consolidation import ConsolidationReport, Consolidator
-from .dual_track import DualTrackStore
-from .embedding import Embedder
-from .forgetting import ForgettingCurve, ReviewScheduler
-from .importance import ImportanceScorer
-from .metacognition import ConfidenceLabel, Metacognition, MetacognitiveCheck
 from .reasoning import suggested_pack_size
-from .recycle import RecycleBin
-from .schema import EventChainIndex
 from .types import (
     MemoryItem,
     MemoryKind,
@@ -29,14 +16,10 @@ from .types import (
     RecallResult,
     SourceRecord,
     SourceType,
-    extract_cues,
-    hash_content,
-    normalize_cues,
     tokenize,
     utcnow,
 )
 from .zh_nlp import expand_synonyms, has_cjk
-
 
 
 class AnalysisMixin:
@@ -65,7 +48,7 @@ class AnalysisMixin:
         suppressed = self.suppressed_report()["count"]
         penalties = {
             "isolated": min(
-                20, int(round((1.0 - linked_ratio) * 50))
+                20, round((1.0 - linked_ratio) * 50)
             ),
             "crowded": min(15, crowded * 3),
             "conflicts": min(20, conflicts * 4),
@@ -341,7 +324,7 @@ class AnalysisMixin:
         else:
             score += 5
             suggestions.append("内容太短，补充一点细节")
-        score = min(100, int(round(score)))
+        score = min(100, round(score))
         if score >= 80:
             verdict = "well_encoded"
         elif score >= 60:
@@ -2654,9 +2637,9 @@ class AnalysisMixin:
         if previous and previous.get("snapshot"):
             prev = previous["snapshot"]
             diff = {}
-            for key in snapshot:
+            for key, value in snapshot.items():
                 if key in prev:
-                    diff[key] = round(snapshot[key] - prev[key], 3)
+                    diff[key] = round(value - prev[key], 3)
             progress = sum(
                 1
                 for key in ("avg_retrievability", "reviewed_ratio",

@@ -2,42 +2,18 @@
 
 from __future__ import annotations
 
-import math
-import random
 import re
-import threading
-import uuid
-from collections import Counter, defaultdict, deque
-from datetime import date, datetime, timedelta, timezone
-from itertools import combinations
+from datetime import datetime
 
-from .association import AssociationIndex
-from .backend import Backend, make_backend
-from .consolidation import ConsolidationReport, Consolidator
-from .dual_track import DualTrackStore
 from .embedding import Embedder
-from .forgetting import ForgettingCurve, ReviewScheduler
-from .importance import ImportanceScorer
-from .metacognition import ConfidenceLabel, Metacognition, MetacognitiveCheck
-from .reasoning import suggested_pack_size
-from .recycle import RecycleBin
-from .schema import EventChainIndex
 from .types import (
     MemoryItem,
     MemoryKind,
-    MemoryStatus,
     RecallResult,
-    SourceRecord,
-    SourceType,
-    extract_cues,
-    hash_content,
-    normalize_cues,
     tokenize,
     utcnow,
 )
 from .zh_nlp import expand_synonyms, has_cjk
-
-
 
 _TEMPORAL_STEM_WORDS: dict[str, tuple[str, ...]] = {
     "修": ("修", "维修", "检修", "检测"),

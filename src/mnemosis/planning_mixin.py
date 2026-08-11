@@ -3,40 +3,20 @@
 from __future__ import annotations
 
 import math
-import random
 import re
-import threading
 import uuid
-from collections import Counter, defaultdict, deque
-from datetime import date, datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from itertools import combinations
 
-from .association import AssociationIndex
-from .backend import Backend, make_backend
-from .consolidation import ConsolidationReport, Consolidator
-from .dual_track import DualTrackStore
-from .embedding import Embedder
-from .forgetting import ForgettingCurve, ReviewScheduler
-from .importance import ImportanceScorer
-from .metacognition import ConfidenceLabel, Metacognition, MetacognitiveCheck
-from .reasoning import suggested_pack_size
-from .recycle import RecycleBin
-from .schema import EventChainIndex
 from .types import (
     MemoryItem,
     MemoryKind,
-    MemoryStatus,
     RecallResult,
     SourceRecord,
     SourceType,
-    extract_cues,
-    hash_content,
-    normalize_cues,
     tokenize,
     utcnow,
 )
-from .zh_nlp import expand_synonyms, has_cjk
-
 
 
 class PlanningMixin:
@@ -308,10 +288,10 @@ class PlanningMixin:
             0,
             min(
                 100,
-                int(round(
+                round(
                     25 + verb_score + order_score + context_score
                     - count_penalty - dup_penalty
-                )),
+                ),
             ),
         )
         verdict = "good" if score >= 75 else (
@@ -1006,7 +986,7 @@ class PlanningMixin:
         successes = [p for p in per_step if p["status"] == "success"]
         failures = [p for p in per_step if p["status"] == "failure"]
         success_rate = round(len(successes) / max(1, len(per_step)), 3)
-        score = int(round(success_rate * 100))
+        score = round(success_rate * 100)
         verdict = (
             "good" if score >= 80 else (
                 "fair" if score >= 50 else "poor"
@@ -1403,7 +1383,7 @@ class PlanningMixin:
                 else content[:2]
             )
             match_key = ""
-            for (operson, noun), total in outcome_by_step.items():
+            for (operson, noun) in outcome_by_step:
                 if operson == person and noun and noun in content:
                     match_key = (operson, noun)
                     break

@@ -12,8 +12,8 @@ from enum import Enum
 
 from .consolidation import Conflict
 from .dual_track import DualTrackStore
-from .forgetting import ForgettingCurve
 from .embedding import Embedder
+from .forgetting import ForgettingCurve
 from .types import MemoryItem, SourceType, tokenize, utcnow
 
 

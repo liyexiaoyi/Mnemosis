@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import re
 
-
 _SYNONYM_GROUPS: tuple[frozenset[str], ...] = (
     frozenset({"旅游", "旅行"}),
     frozenset({"准备", "筹备", "安排"}),
@@ -90,4 +89,4 @@ def expand_synonyms(terms: set[str]) -> set[str]:
     return out
 
 
-__all__ = ["has_cjk", "expand_synonyms"]
+__all__ = ["expand_synonyms", "has_cjk"]

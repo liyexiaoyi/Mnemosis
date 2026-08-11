@@ -231,6 +231,25 @@ Then tell your agent in its system prompt:
 memories with automatic cues, so agents do not need to hand-write
 `remember` calls for each fact.
 
+### Batch ingestion (importing large histories)
+
+`remember_many` imports a batch of memories with the same per-item
+semantics as `remember` (semantic dedupe, cues, term index, association
+graph), but commits storage, term rows and links in bulk:
+
+```python
+engine.remember_many([
+    {"content": "用户喜欢喝咖啡。", "kind": MemoryKind.SEMANTIC, "cues": ["用户"]},
+    {"content": "上周修了空调。", "kind": MemoryKind.EPISODIC},
+    {"content": "阿丽在2026年3月1日买了笔记本。", "kind": MemoryKind.EPISODIC},
+])
+```
+
+10,000 memories take about 13 seconds via `remember_many` vs ~70 seconds in
+a single-`remember` loop. When a vector index + Ollama/OpenAI embedder is
+enabled, embedding is also batched (100 texts per call, chunked by size,
+with automatic retry on 429/5xx).
+
 ## Threading
 
 `MemoryEngine` is designed for one agent loop per instance: SQLite access and

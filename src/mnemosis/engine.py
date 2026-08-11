@@ -3,47 +3,46 @@
 from __future__ import annotations
 
 import math
-import random
 import re
 import statistics
 import threading
-import uuid
-from collections import Counter, defaultdict, deque
-from datetime import date, datetime, timedelta, timezone
-from itertools import combinations
+from collections import deque
+from datetime import datetime
+from typing import ClassVar
 
+from .analysis_mixin import AnalysisMixin
 from .association import AssociationIndex
 from .backend import Backend, make_backend
-from .consolidation import ConsolidationReport, Consolidator
+from .consolidation import (  # noqa: F401  (public re-exports)
+    ConsolidationReport,
+    Consolidator,
+)
 from .dual_track import DualTrackStore
 from .embedding import Embedder
 from .forgetting import ForgettingCurve, ReviewScheduler
 from .importance import ImportanceScorer
 from .metacognition import ConfidenceLabel, Metacognition, MetacognitiveCheck
-from .reasoning import suggested_pack_size
+from .planning_mixin import PlanningMixin
 from .recycle import RecycleBin
+from .retrieval_mixin import RetrievalMixin
+from .review_mixin import ReviewMixin
 from .schema import EventChainIndex
 from .types import (
     MemoryItem,
     MemoryKind,
     MemoryStatus,
-    RecallResult,
+    RecallResult,  # noqa: F401  (public re-export)
     SourceRecord,
     SourceType,
+    _zh_numeral,
     extract_cues,
     hash_content,
     normalize_cues,
-    tokenize,
+    tokenize,  # noqa: F401  (public re-export)
     utcnow,
-    _zh_numeral,
 )
-from .zh_nlp import expand_synonyms, has_cjk
+from .zh_nlp import expand_synonyms, has_cjk  # noqa: F401  (public re-exports)
 
-
-from .retrieval_mixin import RetrievalMixin
-from .planning_mixin import PlanningMixin
-from .review_mixin import ReviewMixin
-from .analysis_mixin import AnalysisMixin
 
 class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
     """The one thing most users touch.
@@ -583,7 +582,7 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
         ("方程", "方程"),
         ("百分", "百分数"),
     )
-    _MATH_SYMBOLS = {
+    _MATH_SYMBOLS: ClassVar[dict[str, str]] = {
         "加法": "a + b = c",
         "减法": "a - b = c",
         "乘法": "a × b = c",
@@ -616,7 +615,7 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
         ("匀速", "匀速运动"),
         ("每小时", "速度"),
     )
-    _PHYSICS_RULES = {
+    _PHYSICS_RULES: ClassVar[dict[str, str]] = {
         "自由落体": "下落时间 ≈ √(2h/g)，g≈9.8米/秒²",
         "抛体": "水平方向匀速，竖直方向自由落体",
         "推力": "加速度 a = F/m（牛顿第二定律）",
@@ -874,7 +873,7 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
         ):
             self.vector_index.close()
 
-    def __enter__(self) -> MemoryEngine:
+    def __enter__(self) -> MemoryEngine:  # noqa: PYI034 (3.10 CI)
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:

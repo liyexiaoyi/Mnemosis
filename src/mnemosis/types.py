@@ -96,7 +96,7 @@ class SourceRecord:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "SourceRecord":
+    def from_dict(cls, data: dict[str, Any]) -> SourceRecord:
         return cls(
             origin=SourceType(data.get("origin", SourceType.EXTERNAL.value)),
             ref=data.get("ref"),
@@ -188,7 +188,7 @@ class MemoryItem:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "MemoryItem":
+    def from_dict(cls, data: dict[str, Any]) -> MemoryItem:
         return cls(
             content=data["content"],
             kind=MemoryKind(data["kind"]),

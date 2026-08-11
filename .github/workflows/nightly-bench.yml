@@ -1,0 +1,44 @@
+name: nightly-bench
+
+on:
+  schedule:
+    # UTC 18:00 == Beijing 02:00; independent LongMemEval regression.
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+    inputs:
+      questions:
+        description: "LongMemEval questions to run"
+        required: false
+        default: "2"
+
+permissions:
+  contents: read
+
+jobs:
+  longmemeval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: pip install -e .
+      - name: Fetch official LongMemEval dataset
+        run: python benchmarks/fetch_longmemeval.py
+      - name: Run retrieval benchmark (keyword + ngram, no LLM judging)
+        run: |
+          python benchmarks/longmemeval_bench.py \
+            --data work/longmemeval_s_cleaned.json \
+            --questions "${{ github.event.inputs.questions || '2' }}" \
+            --modes kw,ngram \
+            --skip-mem0 \
+            --skip-answers \
+            --out benchmarks/results/longmemeval_nightly.json
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: longmemeval-nightly
+          path: benchmarks/results/longmemeval_nightly.json
+          retention-days: 3

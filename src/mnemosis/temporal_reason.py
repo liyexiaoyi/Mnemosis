@@ -35,7 +35,6 @@ from datetime import date
 from .schema import _date_of, _person_and_session
 from .types import MemoryItem, MemoryKind
 
-
 _AFTER_MARKERS = (
     "after", "next", "then", "following", "followed", "subsequent",
     "later", "之后", "随后", "接着", "接下来", "后来", "再然后",
@@ -239,15 +238,7 @@ def apply_time_cell_reasoning(
         index = by_id.get(memory_id)
         if index is not None:
             old_score, overlap, item, reasons, matched = scored[index]
-            if force:
-                scored[index] = (
-                    old_score + boost,
-                    overlap,
-                    item,
-                    reasons + [reason],
-                    matched,
-                )
-            elif boost > old_score:
+            if force or boost > old_score:
                 scored[index] = (
                     old_score + boost,
                     overlap,
@@ -296,7 +287,7 @@ def apply_time_cell_reasoning(
 
 
 __all__ = [
-    "temporal_question_kind",
     "anchor_dates",
     "apply_time_cell_reasoning",
+    "temporal_question_kind",
 ]

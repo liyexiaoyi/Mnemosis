@@ -7,6 +7,7 @@ reconciles contradictions.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -21,6 +22,8 @@ from .types import (
     tokenize,
     utcnow,
 )
+
+_LOG = logging.getLogger(__name__)
 
 _MAX_CUE_GROUP = 120
 """Strongest items compared per shared cue during sleep/conflict scans."""
@@ -136,7 +139,7 @@ class Consolidator:
         summarizer: Callable[[list[str]], str] | None = None,
     ) -> ConsolidationReport:
         now = now or utcnow()
-        total_before = len(self.store.all_active())
+        total_before = self.backend.count()
         replayed = self._replay_recent(now)
         weak_replayed = self._replay_weak_important(now)
         merged = self._merge_duplicates(now)
@@ -147,7 +150,7 @@ class Consolidator:
         emotion_boosted, emotion_links = self._emotion_phase(now)
         accommodated = self._accommodation_phase(now)
         reflected = self.reflect(summarizer or self.llm_summarizer, now)
-        total_after = len(self.store.all_active())
+        total_after = self.backend.count()
         return ConsolidationReport(
             promoted=promoted,
             recycled=recycled,
@@ -308,7 +311,7 @@ class Consolidator:
         for item in episodes:
             by_hash.setdefault(item.content_hash, []).append(item)
         merged = 0
-        for _hash, items in by_hash.items():
+        for items in by_hash.values():
             if len(items) < 2:
                 continue
             items.sort(key=lambda i: (i.seq, i.id))
@@ -446,7 +449,8 @@ class Consolidator:
             episodes.sort(key=lambda e: (e.created_at, e.content))
             try:
                 summary = (summarizer([e.content for e in episodes]) or "").strip()
-            except Exception:
+            except Exception as exc:  # noqa: BLE001
+                _LOG.debug("sleep summarizer failed: %s", exc)
                 continue
             if not summary or summary == semantic.content:
                 continue

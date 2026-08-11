@@ -30,7 +30,6 @@ import re
 
 from .types import MemoryItem
 
-
 _MATH_RE = re.compile(
     r"(多少|几(?:个|本|元|天|次|人|公里|岁)?|一共|总共|单价|每[本个元天公里]"
     r"|花了?\s*[\d一二三四五六七八九十百千万]+\s*(?:元|块)"
@@ -181,7 +180,7 @@ def apply_premise_pack(
 
 
 __all__ = [
+    "apply_premise_pack",
     "reasoning_question_kind",
     "suggested_pack_size",
-    "apply_premise_pack",
 ]

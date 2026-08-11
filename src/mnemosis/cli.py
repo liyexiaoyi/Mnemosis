@@ -3,12 +3,11 @@
 from __future__ import annotations
 
 import argparse
-from typing import Sequence
+from collections.abc import Sequence
 
-from .engine import MemoryEngine
 from .embedding import Embedder, NGramEmbedder, make_embedder
+from .engine import MemoryEngine
 from .types import MemoryKind, SourceRecord, SourceType
-
 
 _EMBEDDER_CHOICES = ["ngram", "ollama", "openai", "none"]
 

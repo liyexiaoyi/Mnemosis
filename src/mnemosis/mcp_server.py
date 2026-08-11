@@ -15,15 +15,14 @@ import json
 import logging
 import os
 import sys
-import threading
 import uuid
+from collections.abc import Sequence
 from datetime import datetime, timezone
-from typing import Any, Sequence
+from typing import Any
 
 from . import __version__ as _MNEMOSIS_VERSION
-from .embedding import make_embedder
+from .embedding import NGramEmbedder, make_embedder
 from .engine import MemoryEngine
-from .embedding import NGramEmbedder
 from .types import MemoryKind, SourceRecord, SourceType
 from .vector_index import VectorIndex
 
@@ -3539,7 +3538,7 @@ if __name__ == "__main__":
 __all__ = [
     "MCPServer",
     "build_http_server",
+    "main",
     "run_http",
     "run_stdio",
-    "main",
 ]

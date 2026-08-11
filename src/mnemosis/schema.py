@@ -10,12 +10,12 @@ chain, the same way "after X, what happened?" is answered from a script.
 
 from __future__ import annotations
 
+import itertools
 import re
 from datetime import date
 
 from .backend import Backend
 from .types import MemoryItem, MemoryKind, MemoryStatus
-
 
 _DATE_RE = re.compile(r"(\d{4}-\d{2}-\d{2})")
 _SESSION_RE = re.compile(r"session(\d+)")
@@ -82,7 +82,7 @@ class EventChainIndex:
         chain: dict[str, str | None] = {}
         for items in groups.values():
             items.sort(key=lambda i: (_date_of(i) or date.min, i.seq))
-            for current, following in zip(items, items[1:]):
+            for current, following in itertools.pairwise(items):
                 chain[current.id] = following.id
         self._cache = chain
         self._built_version = self._version

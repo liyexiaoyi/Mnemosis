@@ -7,10 +7,9 @@ An optional LLM scorer can replace the rules.
 
 from __future__ import annotations
 
-from typing import Callable
+from collections.abc import Callable
 
 from .types import SourceRecord
-
 
 STRONG_WORDS = {
     "重要", "记住", "务必", "必须", "永远", "关键", "核心", "最重要",
