@@ -434,7 +434,7 @@ def run_system_mnemosis(
     dense_embedder = None
     if mode in ("dense", "seg"):
         cache_path = os.path.join(
-            workdir, "vectors", f"{qid}_{mode}.sqlite"
+            _WORK, "vectors_persist", f"{qid}_{mode}.sqlite"
         )
         dense_embedder = make_nomic_embedder(cache_path)
         pw0 = time.perf_counter()
