@@ -8,7 +8,7 @@ import re
 import threading
 import uuid
 from collections import Counter, defaultdict, deque
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from itertools import combinations
 
 from .association import AssociationIndex
@@ -1855,6 +1855,8 @@ class MemoryEngine:
         """
 
         now = now or utcnow()
+        if due_at.tzinfo is None:
+            due_at = due_at.replace(tzinfo=timezone.utc)
         record = {
             "id": uuid.uuid4().hex,
             "content": content.strip(),

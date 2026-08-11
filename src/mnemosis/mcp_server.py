@@ -14,7 +14,7 @@ import json
 import logging
 import os
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Sequence
 
 from . import __version__ as _MNEMOSIS_VERSION
@@ -35,12 +35,15 @@ def _kind(value: Any) -> MemoryKind | None:
 
 def _dt(value: str, field: str) -> datetime:
     try:
-        return datetime.fromisoformat(value)
+        parsed = datetime.fromisoformat(value)
     except ValueError:
         raise ValueError(
             f"{field} 需要 ISO 格式时间（如 2026-08-11T18:00:00），"
             f"收到：{value!r}"
         )
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
 
 
 def _source_type(value: Any) -> SourceType:

@@ -959,6 +959,13 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
             thread.join()
         self.assertEqual(errors, [])
 
+    def test_remember_intent_naive_datetime(self) -> None:
+        engine = MemoryEngine()
+        record = engine.remember_intent("买牛奶", due_at=datetime.now())
+        self.assertTrue(record["due_at"].endswith("+00:00"))
+        self.assertEqual(engine.intent_report()["active"], 1)
+        self.assertIsNotNone(engine.complete_intent(record["id"]))
+
     def test_concurrent_recall_cache(self) -> None:
         engine = MemoryEngine()
         user = SourceRecord(origin=SourceType.USER)
