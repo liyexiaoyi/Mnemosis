@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import math
 import re
+import threading
 from datetime import datetime
 
 from .backend import Backend
@@ -67,6 +68,7 @@ class DualTrackStore:
         self._term_cache: dict[tuple, frozenset[str]] = {}
         self._embed_cache: dict[str, list[float]] = {}
         self._inverted: dict[str, dict[str, set[str]]] = {}
+        self._lock = threading.RLock()
         self.pattern_completions = 0
 
     def remember(
@@ -817,15 +819,17 @@ class DualTrackStore:
         dominant cost at 10k+ memories).
         """
         key = kind.value if kind is not None else "all"
-        cached = self._inverted.get(key)
-        if cached is not None:
-            return cached
-        index = self.backend.all_terms(kind=kind)
-        self._inverted[key] = index
-        return index
+        with self._lock:
+            cached = self._inverted.get(key)
+            if cached is not None:
+                return cached
+            index = self.backend.all_terms(kind=kind)
+            self._inverted[key] = index
+            return index
 
     def invalidate_term_index(self) -> None:
-        self._inverted = {}
+        with self._lock:
+            self._inverted = {}
 
     def _follow_event_chain(
         self,
@@ -911,11 +915,12 @@ class DualTrackStore:
     def _terms(self, item: MemoryItem) -> frozenset[str]:
         """Cached token terms for an item (auto-invalidated on change)."""
         key = (item.id, item.content_hash, item.revision_count, tuple(item.cues))
-        cached = self._term_cache.get(key)
-        if cached is None:
-            cached = frozenset(tokenize(item.content)) | frozenset(item.cues)
-            self._term_cache[key] = cached
-        return cached
+        with self._lock:
+            cached = self._term_cache.get(key)
+            if cached is None:
+                cached = frozenset(tokenize(item.content)) | frozenset(item.cues)
+                self._term_cache[key] = cached
+            return cached
 
     def _embedding(self, item: MemoryItem, embedder: Embedder) -> list[float]:
         """Cached embedding for an item.
@@ -930,11 +935,12 @@ class DualTrackStore:
             f"{type(embedder).__module__}.{type(embedder).__name__}",
             getattr(embedder, "cache_key", ""),
         )
-        cached = self._embed_cache.get(key)
-        if cached is None:
-            cached = embedder.embed(item.content)
-            self._embed_cache[key] = cached
-        return cached
+        with self._lock:
+            cached = self._embed_cache.get(key)
+            if cached is None:
+                cached = embedder.embed(item.content)
+                self._embed_cache[key] = cached
+            return cached
 
     def _spread_activation(
         self,

@@ -12,6 +12,7 @@ import threading
 from datetime import datetime, timedelta, timezone
 
 from mnemosis import MemoryEngine
+from mnemosis.embedding import NGramEmbedder
 from mnemosis.mcp_server import MCPServer
 from mnemosis.types import MemoryKind, SourceRecord, SourceType, utcnow
 
@@ -952,6 +953,49 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         threads = [
             threading.Thread(target=worker, args=(n,)) for n in range(4)
         ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        self.assertEqual(errors, [])
+
+    def test_concurrent_recall_cache(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        for i in range(30):
+            engine.remember(
+                f"并发缓存测试{i}：内容是数字{i}。",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                auto_cues=False,
+            )
+        errors: list[str] = []
+
+        def reader(n: int) -> None:
+            try:
+                for _ in range(25):
+                    engine.recall(
+                        f"并发缓存测试{n % 30}",
+                        embedder=NGramEmbedder(),
+                    )
+            except Exception as exc:
+                errors.append(repr(exc))
+
+        def writer() -> None:
+            try:
+                for i in range(30, 38):
+                    engine.remember(
+                        f"并发缓存测试{i}：新写入内容。",
+                        kind=MemoryKind.SEMANTIC,
+                        source=user,
+                        auto_cues=False,
+                    )
+            except Exception as exc:
+                errors.append(repr(exc))
+
+        threads = [
+            threading.Thread(target=reader, args=(n,)) for n in range(4)
+        ] + [threading.Thread(target=writer)]
         for thread in threads:
             thread.start()
         for thread in threads:
