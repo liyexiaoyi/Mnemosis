@@ -55,6 +55,15 @@ def _kind(value: Any) -> MemoryKind | None:
     return MemoryKind(value)
 
 
+def _bounded(args: dict[str, Any], key: str, default: int, lo: int, hi: int) -> int:
+    """Read an int arg clamped to [lo, hi]; malformed/absent -> default."""
+    try:
+        value = int(args.get(key, default))
+    except (TypeError, ValueError):
+        value = default
+    return max(lo, min(hi, value))
+
+
 def _dt(value: str, field: str) -> datetime:
     try:
         parsed = datetime.fromisoformat(value)
@@ -2266,7 +2275,7 @@ class MCPServer:
     def _tool_remember_turn(self, args: dict[str, Any]) -> Any:
         return self.engine.remember_turn(
             args["text"],
-            max_segments=int(args.get("max_segments") or 4),
+            max_segments=_bounded(args, "max_segments", 4, 1, 50),
         )
 
     @_tool("recall")
@@ -2279,7 +2288,7 @@ class MCPServer:
         results = self.engine.recall(
             args["query"],
             kind=_kind(args.get("kind")),
-            top_k=int(args.get("top_k") or 5),
+            top_k=_bounded(args, "top_k", 5, 1, 500),
             context=args.get("context"),
             embedder=embedder,
         )
@@ -2299,7 +2308,7 @@ class MCPServer:
         return self.engine.search_batch(
             args["queries"],
             kind=_kind(args.get("kind")),
-            top_k=int(args.get("top_k") or 3),
+            top_k=_bounded(args, "top_k", 3, 1, 500),
         )
 
     @_tool("sleep")
@@ -2315,7 +2324,7 @@ class MCPServer:
 
     @_tool("check")
     def _tool_check(self, args: dict[str, Any]) -> Any:
-        check = self.engine.check(args["query"], top_k=int(args.get("top_k") or 3))
+        check = self.engine.check(args["query"], top_k=_bounded(args, "top_k", 3, 1, 500))
         return {
             "items": [
                 {
@@ -2376,7 +2385,7 @@ class MCPServer:
                     else None
                 ),
             }
-            for item in self.engine.working_set(limit=int(args.get("limit") or 8))
+            for item in self.engine.working_set(limit=_bounded(args, "limit", 8, 1, 5000))
         ]
 
     @_tool("review_due")
@@ -2390,7 +2399,7 @@ class MCPServer:
                 ),
             }
             for item in self.engine.review_due(
-                limit=int(args.get("limit") or 10),
+                limit=_bounded(args, "limit", 10, 1, 5000),
                 desirable_difficulty=bool(
                     args.get("desirable_difficulty", False)
                 ),
@@ -2419,7 +2428,7 @@ class MCPServer:
         results = self.engine.plan_for_goal(
             args["goal"],
             top_k=(
-                int(args.get("top_k") or 8)
+                _bounded(args, "top_k", 8, 1, 500)
                 if args.get("top_k") is not None
                 else None
             ),
@@ -2437,7 +2446,7 @@ class MCPServer:
     @_tool("reason")
     def _tool_reason(self, args: dict[str, Any]) -> Any:
         results = self.engine.recall_reasoning(
-            args["query"], top_k=int(args.get("top_k") or 8)
+            args["query"], top_k=_bounded(args, "top_k", 8, 1, 500)
         )
         return [
             {
@@ -2468,7 +2477,7 @@ class MCPServer:
             args["goal"],
             args["failed_step"],
             top_k=(
-                int(args.get("top_k") or 8)
+                _bounded(args, "top_k", 8, 1, 500)
                 if args.get("top_k") is not None
                 else None
             ),
@@ -2494,7 +2503,7 @@ class MCPServer:
     def _tool_search(self, args: dict[str, Any]) -> Any:
         results = self.engine.recall(
             args["query"],
-            top_k=int(args.get("top_k") or 5),
+            top_k=_bounded(args, "top_k", 5, 1, 500),
             context=args.get("context") or None,
         )
         return [
@@ -2525,7 +2534,7 @@ class MCPServer:
     @_tool("conflict_advice")
     def _tool_conflict_advice(self, args: dict[str, Any]) -> Any:
         return self.engine.conflict_advice(
-            limit=int(args.get("limit") or 10)
+            limit=_bounded(args, "limit", 10, 1, 5000)
         )
 
     @_tool("memory_status")
@@ -2548,13 +2557,13 @@ class MCPServer:
     def _tool_practice_session(self, args: dict[str, Any]) -> Any:
         return self.engine.practice_session(
             args["answers"],
-            limit=int(args.get("limit") or 5),
+            limit=_bounded(args, "limit", 5, 1, 5000),
         )
 
     @_tool("sleep_and_plan")
     def _tool_sleep_and_plan(self, args: dict[str, Any]) -> Any:
         return self.engine.sleep_and_plan(
-            days=int(args.get("days") or 7)
+            days=_bounded(args, "days", 7, 1, 3650)
         )
 
     @_tool("memory_audit")
@@ -2572,7 +2581,7 @@ class MCPServer:
     @_tool("review_load")
     def _tool_review_load(self, args: dict[str, Any]) -> Any:
         return self.engine.review_load(
-            days=int(args.get("days") or 7)
+            days=_bounded(args, "days", 7, 1, 3650)
         )
 
     @_tool("tag_memories")
@@ -2586,26 +2595,26 @@ class MCPServer:
     @_tool("recall_log")
     def _tool_recall_log(self, args: dict[str, Any]) -> Any:
         return self.engine.get_recall_log(
-            limit=int(args.get("limit") or 50)
+            limit=_bounded(args, "limit", 50, 1, 5000)
         )
 
     @_tool("cleanup_preview")
     def _tool_cleanup_preview(self, args: dict[str, Any]) -> Any:
         return self.engine.cleanup_preview(
-            limit=int(args.get("limit", 100))
+            limit=_bounded(args, "limit", 100, 1, 5000)
         )
 
     @_tool("similarity_report")
     def _tool_similarity_report(self, args: dict[str, Any]) -> Any:
         return self.engine.similarity_report(
             threshold=float(args.get("threshold", 0.6)),
-            limit=int(args.get("limit", 20)),
+            limit=_bounded(args, "limit", 20, 1, 5000),
         )
 
     @_tool("association_report")
     def _tool_association_report(self, args: dict[str, Any]) -> Any:
         return self.engine.association_report(
-            limit=int(args.get("limit", 10)),
+            limit=_bounded(args, "limit", 10, 1, 5000),
         )
 
     @_tool("intent_remember")
@@ -2621,7 +2630,7 @@ class MCPServer:
     @_tool("intent_due")
     def _tool_intent_due(self, args: dict[str, Any]) -> Any:
         return self.engine.intent_due(
-            limit=int(args.get("limit", 10)),
+            limit=_bounded(args, "limit", 10, 1, 5000),
         )
 
     @_tool("intent_complete")
@@ -2640,13 +2649,13 @@ class MCPServer:
     def _tool_retrieval_assist(self, args: dict[str, Any]) -> Any:
         return self.engine.retrieval_assist(
             args["query"],
-            limit=int(args.get("limit", 8)),
+            limit=_bounded(args, "limit", 8, 1, 5000),
         )
 
     @_tool("schema_report")
     def _tool_schema_report(self, args: dict[str, Any]) -> Any:
         return self.engine.schema_report(
-            limit=int(args.get("limit", 20)),
+            limit=_bounded(args, "limit", 20, 1, 5000),
         )
 
     @_tool("suppress_memories")
@@ -2675,7 +2684,7 @@ class MCPServer:
                 if args.get("end")
                 else None
             ),
-            limit=int(args.get("limit", 200)),
+            limit=_bounded(args, "limit", 200, 1, 5000),
         )
 
     @_tool("recognition_check")
@@ -2687,15 +2696,15 @@ class MCPServer:
     @_tool("interference_report")
     def _tool_interference_report(self, args: dict[str, Any]) -> Any:
         return self.engine.interference_report(
-            shared_cue_min=int(args.get("shared_cue_min", 3)),
-            limit=int(args.get("limit", 20)),
+            shared_cue_min=_bounded(args, "shared_cue_min", 3, 1, 100),
+            limit=_bounded(args, "limit", 20, 1, 5000),
         )
 
     @_tool("life_story")
     def _tool_life_story(self, args: dict[str, Any]) -> Any:
         return self.engine.life_story(
-            period_days=int(args.get("period_days", 30)),
-            limit=int(args.get("limit", 20)),
+            period_days=_bounded(args, "period_days", 30, 1, 3650),
+            limit=_bounded(args, "limit", 20, 1, 5000),
         )
 
     @_tool("intent_conflicts")
@@ -2713,8 +2722,8 @@ class MCPServer:
     @_tool("memory_map")
     def _tool_memory_map(self, args: dict[str, Any]) -> Any:
         return self.engine.memory_map(
-            limit=int(args.get("limit") or 200),
-            topic_min=int(args.get("topic_min") or 1),
+            limit=_bounded(args, "limit", 200, 1, 5000),
+            topic_min=_bounded(args, "topic_min", 1, 1, 100),
         )
 
     @_tool("kg_export")
@@ -2729,8 +2738,8 @@ class MCPServer:
     def _tool_context_pack(self, args: dict[str, Any]) -> Any:
         return self.engine.context_pack(
             args["queries"],
-            top_k=int(args.get("top_k", 3)),
-            max_chars=int(args.get("max_chars", 1200)),
+            top_k=_bounded(args, "top_k", 3, 1, 500),
+            max_chars=_bounded(args, "max_chars", 1200, 1, 100000),
         )
 
     @_tool("encoding_quality")
@@ -2750,7 +2759,7 @@ class MCPServer:
     @_tool("action_queue")
     def _tool_action_queue(self, args: dict[str, Any]) -> Any:
         return self.engine.action_queue(
-            limit=int(args.get("limit", 20)),
+            limit=_bounded(args, "limit", 20, 1, 5000),
         )
 
     @_tool("summarize_cluster")
@@ -2761,8 +2770,8 @@ class MCPServer:
     def _tool_multi_hop_report(self, args: dict[str, Any]) -> Any:
         return self.engine.multi_hop_report(
             args["start_id"],
-            depth=int(args.get("depth", 2)),
-            limit=int(args.get("limit", 20)),
+            depth=_bounded(args, "depth", 2, 1, 20),
+            limit=_bounded(args, "limit", 20, 1, 5000),
         )
 
     @_tool("cramming_plan")
@@ -2771,36 +2780,36 @@ class MCPServer:
         return self.engine.cramming_plan(
             _dt(args["target_at"], "target_at"),
             hours_available=float(args.get("hours_available", 6.0)),
-            session_minutes=int(args.get("session_minutes", 30)),
-            limit=int(args.get("limit", 20)),
+            session_minutes=_bounded(args, "session_minutes", 30, 1, 10080),
+            limit=_bounded(args, "limit", 20, 1, 5000),
         )
 
     @_tool("session_summary")
     def _tool_session_summary(self, args: dict[str, Any]) -> Any:
         return self.engine.session_summary(
             args["memory_ids"],
-            compare_limit=int(args.get("compare_limit", 20)),
+            compare_limit=_bounded(args, "compare_limit", 20, 1, 1000),
         )
 
     @_tool("topic_drift_report")
     def _tool_topic_drift_report(self, args: dict[str, Any]) -> Any:
         return self.engine.topic_drift_report(
-            period_days=int(args.get("period_days", 30)),
-            limit=int(args.get("limit", 20)),
+            period_days=_bounded(args, "period_days", 30, 1, 3650),
+            limit=_bounded(args, "limit", 20, 1, 5000),
         )
 
     @_tool("forgetting_export")
     def _tool_forgetting_export(self, args: dict[str, Any]) -> Any:
         return self.engine.forgetting_export(
             args["memory_id"],
-            days=int(args.get("days", 30)),
-            step_days=int(args.get("step_days", 1)),
+            days=_bounded(args, "days", 30, 1, 3650),
+            step_days=_bounded(args, "step_days", 1, 1, 3650),
         )
 
     @_tool("coverage_report")
     def _tool_coverage_report(self, args: dict[str, Any]) -> Any:
         return self.engine.coverage_report(
-            limit=int(args.get("limit", 20)),
+            limit=_bounded(args, "limit", 20, 1, 5000),
         )
 
     @_tool("source_calibration")
@@ -2810,13 +2819,13 @@ class MCPServer:
     @_tool("forgetting_risk")
     def _tool_forgetting_risk(self, args: dict[str, Any]) -> Any:
         return self.engine.forgetting_risk(
-            limit=int(args.get("limit", 20)),
+            limit=_bounded(args, "limit", 20, 1, 5000),
         )
 
     @_tool("bridge_suggestions")
     def _tool_bridge_suggestions(self, args: dict[str, Any]) -> Any:
         return self.engine.bridge_suggestions(
-            limit=int(args.get("limit", 20)),
+            limit=_bounded(args, "limit", 20, 1, 5000),
         )
 
     @_tool("plan_quality")
@@ -2831,7 +2840,7 @@ class MCPServer:
         return self.engine.project_brief(
             args["title"],
             memory_ids=args.get("memory_ids"),
-            limit=int(args.get("limit", 8)),
+            limit=_bounded(args, "limit", 8, 1, 5000),
         )
 
     @_tool("numeric_reasoning")
@@ -2845,7 +2854,7 @@ class MCPServer:
     def _tool_plan_support(self, args: dict[str, Any]) -> Any:
         return self.engine.plan_support(
             args["plan"],
-            top_k=int(args.get("top_k", 3)),
+            top_k=_bounded(args, "top_k", 3, 1, 500),
         )
 
     @_tool("dependency_map")
@@ -2856,7 +2865,7 @@ class MCPServer:
     def _tool_project_risk(self, args: dict[str, Any]) -> Any:
         return self.engine.project_risk(
             memory_ids=args.get("memory_ids"),
-            compare_limit=int(args.get("compare_limit", 20)),
+            compare_limit=_bounded(args, "compare_limit", 20, 1, 1000),
         )
 
     @_tool("plan_tracker")
@@ -2874,7 +2883,7 @@ class MCPServer:
     def _tool_lesson_learned(self, args: dict[str, Any]) -> Any:
         return self.engine.lesson_learned(
             memory_ids=args.get("memory_ids"),
-            limit=int(args.get("limit", 10)),
+            limit=_bounded(args, "limit", 10, 1, 5000),
         )
 
     @_tool("effort_estimate")
@@ -2902,21 +2911,21 @@ class MCPServer:
     def _tool_retrieval_quality(self, args: dict[str, Any]) -> Any:
         return self.engine.retrieval_quality(
             queries=args.get("queries"),
-            top_k=int(args.get("top_k", 5)),
-            limit=int(args.get("limit", 10)),
+            top_k=_bounded(args, "top_k", 5, 1, 500),
+            limit=_bounded(args, "limit", 10, 1, 5000),
         )
 
     @_tool("recall_trace")
     def _tool_recall_trace(self, args: dict[str, Any]) -> Any:
         return self.engine.recall_trace(
             args["query"],
-            top_k=int(args.get("top_k", 5)),
+            top_k=_bounded(args, "top_k", 5, 1, 500),
         )
 
     @_tool("community_report")
     def _tool_community_report(self, args: dict[str, Any]) -> Any:
         return self.engine.community_report(
-            limit=int(args.get("limit", 10)),
+            limit=_bounded(args, "limit", 10, 1, 5000),
         )
 
     @_tool("sleep_advice")
@@ -2932,13 +2941,13 @@ class MCPServer:
     @_tool("difficulty_estimator")
     def _tool_difficulty_estimator(self, args: dict[str, Any]) -> Any:
         return self.engine.difficulty_estimator(
-            limit=int(args.get("limit", 10)),
+            limit=_bounded(args, "limit", 10, 1, 5000),
         )
 
     @_tool("memory_integration")
     def _tool_memory_integration(self, args: dict[str, Any]) -> Any:
         return self.engine.memory_integration(
-            limit=int(args.get("limit", 10)),
+            limit=_bounded(args, "limit", 10, 1, 5000),
         )
 
     @_tool("reasoning_trace")
@@ -2946,7 +2955,7 @@ class MCPServer:
         return self.engine.reasoning_trace(
             problem=str(args.get("problem", "")),
             topic=args.get("topic"),
-            top_k=int(args.get("top_k", 4)),
+            top_k=_bounded(args, "top_k", 4, 1, 500),
             store_conclusion=bool(
                 args.get("store_conclusion", True)
             ),
@@ -2956,27 +2965,27 @@ class MCPServer:
     def _tool_goal_replay(self, args: dict[str, Any]) -> Any:
         return self.engine.goal_replay(
             goal=str(args.get("goal", "")),
-            top_k=int(args.get("top_k", 5)),
+            top_k=_bounded(args, "top_k", 5, 1, 500),
         )
 
     @_tool("sleep_inference")
     def _tool_sleep_inference(self, args: dict[str, Any]) -> Any:
         return self.engine.sleep_inference(
-            limit=int(args.get("limit", 5)),
+            limit=_bounded(args, "limit", 5, 1, 5000),
         )
 
     @_tool("schema_fit")
     def _tool_schema_fit(self, args: dict[str, Any]) -> Any:
         return self.engine.schema_fit(
-            limit=int(args.get("limit", 20)),
+            limit=_bounded(args, "limit", 20, 1, 5000),
         )
 
     @_tool("working_set_budget")
     def _tool_working_set_budget(self, args: dict[str, Any]) -> Any:
         return self.engine.working_set_budget(
-            limit=int(args.get("limit", 8)),
-            capacity=int(args.get("capacity", 7)),
-            optimal=int(args.get("optimal", 4)),
+            limit=_bounded(args, "limit", 8, 1, 5000),
+            capacity=_bounded(args, "capacity", 7, 1, 1000),
+            optimal=_bounded(args, "optimal", 4, 1, 100),
         )
 
     @_tool("test_generator")
@@ -2984,26 +2993,26 @@ class MCPServer:
         return self.engine.test_generator(
             topic=args.get("topic"),
             memory_ids=args.get("memory_ids"),
-            count=int(args.get("count", 4)),
+            count=_bounded(args, "count", 4, 1, 100),
         )
 
     @_tool("spacing_plan")
     def _tool_spacing_plan(self, args: dict[str, Any]) -> Any:
         return self.engine.spacing_plan(
-            days=int(args.get("days", 7)),
-            limit=int(args.get("limit", 20)),
+            days=_bounded(args, "days", 7, 1, 3650),
+            limit=_bounded(args, "limit", 20, 1, 5000),
         )
 
     @_tool("rumination_check")
     def _tool_rumination_check(self, args: dict[str, Any]) -> Any:
         return self.engine.rumination_check(
-            access_threshold=int(args.get("access_threshold", 5)),
+            access_threshold=_bounded(args, "access_threshold", 5, 0, 1000000),
         )
 
     @_tool("consolidation_forecast")
     def _tool_consolidation_forecast(self, args: dict[str, Any]) -> Any:
         return self.engine.consolidation_forecast(
-            limit=int(args.get("limit", 5)),
+            limit=_bounded(args, "limit", 5, 1, 5000),
         )
 
     @_tool("forgetting_balance")
@@ -3012,13 +3021,13 @@ class MCPServer:
             imbalance_ratio=float(
                 args.get("imbalance_ratio", 3.0)
             ),
-            limit=int(args.get("limit", 10)),
+            limit=_bounded(args, "limit", 10, 1, 5000),
         )
 
     @_tool("metacog_report")
     def _tool_metacog_report(self, args: dict[str, Any]) -> Any:
         return self.engine.metacog_report(
-            min_attempts=int(args.get("min_attempts", 3)),
+            min_attempts=_bounded(args, "min_attempts", 3, 1, 100),
         )
 
     @_tool("reconsolidation_plan")
@@ -3031,21 +3040,21 @@ class MCPServer:
     def _tool_mastery_map(self, args: dict[str, Any]) -> Any:
         return self.engine.mastery_map(
             threshold=float(args.get("threshold", 0.5)),
-            min_attempts=int(args.get("min_attempts", 3)),
+            min_attempts=_bounded(args, "min_attempts", 3, 1, 100),
         )
 
     @_tool("attention_filter")
     def _tool_attention_filter(self, args: dict[str, Any]) -> Any:
         return self.engine.attention_filter(
             task=str(args.get("task", "")),
-            top_k=int(args.get("top_k", 5)),
+            top_k=_bounded(args, "top_k", 5, 1, 500),
         )
 
     @_tool("analogy_bridge")
     def _tool_analogy_bridge(self, args: dict[str, Any]) -> Any:
         return self.engine.analogy_bridge(
             min_structure=float(args.get("min_structure", 0.3)),
-            limit=int(args.get("limit", 5)),
+            limit=_bounded(args, "limit", 5, 1, 5000),
         )
 
     @_tool("next_interval")
@@ -3057,14 +3066,14 @@ class MCPServer:
     @_tool("nightly_routine")
     def _tool_nightly_routine(self, args: dict[str, Any]) -> Any:
         return self.engine.nightly_routine(
-            review_limit=int(args.get("review_limit", 3)),
-            quiz_count=int(args.get("quiz_count", 3)),
+            review_limit=_bounded(args, "review_limit", 3, 1, 500),
+            quiz_count=_bounded(args, "quiz_count", 3, 1, 100),
         )
 
     @_tool("cue_diversity")
     def _tool_cue_diversity(self, args: dict[str, Any]) -> Any:
         return self.engine.cue_diversity(
-            limit=int(args.get("limit", 20)),
+            limit=_bounded(args, "limit", 20, 1, 5000),
         )
 
     @_tool("weekly_review")
@@ -3074,7 +3083,7 @@ class MCPServer:
     @_tool("transfer_prompt")
     def _tool_transfer_prompt(self, args: dict[str, Any]) -> Any:
         return self.engine.transfer_prompt(
-            count=int(args.get("count", 3)),
+            count=_bounded(args, "count", 3, 1, 100),
             min_mastery=float(args.get("min_mastery", 0.7)),
         )
 
@@ -3082,14 +3091,14 @@ class MCPServer:
     def _tool_curve_fit(self, args: dict[str, Any]) -> Any:
         return self.engine.curve_fit(
             memory_id=args.get("memory_id"),
-            horizon_days=int(args.get("horizon_days", 30)),
+            horizon_days=_bounded(args, "horizon_days", 30, 1, 3650),
             threshold=float(args.get("threshold", 0.4)),
         )
 
     @_tool("affect_decay")
     def _tool_affect_decay(self, args: dict[str, Any]) -> Any:
         return self.engine.affect_decay(
-            limit=int(args.get("limit", 20)),
+            limit=_bounded(args, "limit", 20, 1, 5000),
         )
 
     @_tool("goal_progress")
@@ -3109,21 +3118,21 @@ class MCPServer:
     def _tool_math_ladder(self, args: dict[str, Any]) -> Any:
         return self.engine.math_ladder(
             problem=str(args.get("problem", "")),
-            top_k=int(args.get("top_k", 4)),
+            top_k=_bounded(args, "top_k", 4, 1, 500),
         )
 
     @_tool("physics_simulate")
     def _tool_physics_simulate(self, args: dict[str, Any]) -> Any:
         return self.engine.physics_simulate(
             scene=str(args.get("scene", "")),
-            top_k=int(args.get("top_k", 4)),
+            top_k=_bounded(args, "top_k", 4, 1, 500),
         )
 
     @_tool("analogy_prompt")
     def _tool_analogy_prompt(self, args: dict[str, Any]) -> Any:
         return self.engine.analogy_prompt(
             topic=args.get("topic"),
-            count=int(args.get("count", 3)),
+            count=_bounded(args, "count", 3, 1, 100),
             min_mastery=float(args.get("min_mastery", 0.7)),
         )
 
@@ -3134,28 +3143,28 @@ class MCPServer:
     @_tool("learning_loop")
     def _tool_learning_loop(self, args: dict[str, Any]) -> Any:
         return self.engine.learning_loop(
-            count=int(args.get("count", 1)),
+            count=_bounded(args, "count", 1, 1, 100),
         )
 
     @_tool("agent_learning_session")
     def _tool_agent_learning_session(self, args: dict[str, Any]) -> Any:
         return self.engine.agent_learning_session(
             answers=args.get("answers"),
-            count=int(args.get("count", 1)),
+            count=_bounded(args, "count", 1, 1, 100),
         )
 
     @_tool("concept_cover")
     def _tool_concept_cover(self, args: dict[str, Any]) -> Any:
         return self.engine.concept_cover(
             query=str(args.get("query", "")),
-            top_k=int(args.get("top_k", 4)),
+            top_k=_bounded(args, "top_k", 4, 1, 500),
         )
 
     @_tool("temporal_anchor")
     def _tool_temporal_anchor(self, args: dict[str, Any]) -> Any:
         return self.engine.temporal_anchor(
             query=str(args.get("query", "")),
-            top_k=int(args.get("top_k", 4)),
+            top_k=_bounded(args, "top_k", 4, 1, 500),
         )
 
     @_tool("retrieval_snapshot")
@@ -3169,7 +3178,7 @@ class MCPServer:
         kind_value = args.get("kind")
 
         return self.engine.practice_due(
-            limit=int(args.get("limit", 5)),
+            limit=_bounded(args, "limit", 5, 1, 5000),
             desirable_difficulty=bool(
                 args.get("desirable_difficulty", True)
             ),
@@ -3206,13 +3215,13 @@ class MCPServer:
     @_tool("practice_plan")
     def _tool_practice_plan(self, args: dict[str, Any]) -> Any:
         return self.engine.practice_plan(
-            limit=int(args.get("limit", 5))
+            limit=_bounded(args, "limit", 5, 1, 5000)
         )
 
     @_tool("practice_forecast")
     def _tool_practice_forecast(self, args: dict[str, Any]) -> Any:
         return self.engine.practice_forecast(
-            days=int(args.get("days", 7))
+            days=_bounded(args, "days", 7, 1, 3650)
         )
 
     def _result(self, message_id: Any, result: Any) -> str:

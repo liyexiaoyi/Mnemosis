@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import unittest
+import os
+import tempfile
+from datetime import timedelta
 
 from mnemosis import MemoryEngine
 from mnemosis.metacognition import ConfidenceLabel
-from mnemosis.types import MemoryKind, SourceRecord, SourceType
+from mnemosis.types import MemoryKind, SourceRecord, SourceType, utcnow
 
 
 class CalibrationTest(unittest.TestCase):
@@ -121,6 +124,40 @@ class CalibrationTest(unittest.TestCase):
             aware_engine.scheduler.next_interval_hours(aware_item.review_streak),
             naive_engine.scheduler.next_interval_hours(naive_item.review_streak),
         )
+
+    def test_calibrated_decay_rate_persists_across_reopen(self) -> None:
+        handle, path = tempfile.mkstemp(suffix=".db")
+        os.close(handle)
+        try:
+            engine = MemoryEngine(path)
+            user = SourceRecord(origin=SourceType.USER)
+            for index in range(6):
+                item = engine.remember(
+                    f"fact {index} is stable.",
+                    kind=MemoryKind.SEMANTIC,
+                    source=user,
+                    cues=[f"cue{index}"],
+                )
+                item.created_at = utcnow() - timedelta(days=30)
+                item.last_access_at = utcnow()
+                item.access_count = 1
+                engine.backend.update(item)
+            report = engine.calibrate_decay_rate()
+            self.assertTrue(report["calibrated"])
+            self.assertTrue(report["persisted"])
+            engine.close()
+
+            reopened = MemoryEngine(path)
+            self.assertAlmostEqual(
+                reopened.curve.decay_rate, report["decay_rate"]
+            )
+            reopened.close()
+        finally:
+            for suffix in ("", "-wal", "-shm"):
+                try:
+                    os.remove(path + suffix)
+                except FileNotFoundError:
+                    pass
 
 
 if __name__ == "__main__":

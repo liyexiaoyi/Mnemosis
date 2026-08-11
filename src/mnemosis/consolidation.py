@@ -7,9 +7,9 @@ reconciles contradictions.
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Callable
 
 from .backend import Backend
 from .dual_track import DualTrackStore
@@ -21,6 +21,33 @@ from .types import (
     tokenize,
     utcnow,
 )
+
+_MAX_CUE_GROUP = 120
+"""Strongest items compared per shared cue during sleep/conflict scans."""
+
+_MAX_PAIRS_PER_CUE = 1000
+"""Pairwise budget per cue so sleep stays O(N) worst-case on huge stores."""
+
+
+def _bounded_pairs(items: list[MemoryItem]) -> Iterator[tuple[MemoryItem, MemoryItem]]:
+    """Yield at most ``_MAX_PAIRS_PER_CUE`` pairs from the strongest items.
+
+    The strongest facts (highest confidence/importance) carry the most
+    information for accommodation and conflict detection; truncating the
+    weakest tail keeps large stores from exploding into O(N^2) work.
+    """
+    pool = sorted(
+        items,
+        key=lambda item: (item.confidence, item.importance, item.seq),
+        reverse=True,
+    )[:_MAX_CUE_GROUP]
+    budget = _MAX_PAIRS_PER_CUE
+    for i in range(len(pool)):
+        for j in range(i + 1, len(pool)):
+            if budget <= 0:
+                return
+            budget -= 1
+            yield pool[i], pool[j]
 
 
 @dataclass(slots=True)
@@ -189,22 +216,20 @@ class Consolidator:
         accommodated = 0
         seen_pairs: set[frozenset[str]] = set()
         for items in groups.values():
-            for i in range(len(items)):
-                for j in range(i + 1, len(items)):
-                    a, b = items[i], items[j]
-                    if a.content_hash == b.content_hash:
-                        continue
-                    pair = frozenset({a.id, b.id})
-                    if pair in seen_pairs:
-                        continue
-                    seen_pairs.add(pair)
-                    dominant, weaker = self._dominant(a, b)
-                    if dominant is None:
-                        continue
-                    weaker.status = MemoryStatus.RECYCLED
-                    weaker.updated_at = now
-                    self.backend.update(weaker)
-                    accommodated += 1
+            for a, b in _bounded_pairs(items):
+                if a.content_hash == b.content_hash:
+                    continue
+                pair = frozenset({a.id, b.id})
+                if pair in seen_pairs:
+                    continue
+                seen_pairs.add(pair)
+                dominant, weaker = self._dominant(a, b)
+                if dominant is None:
+                    continue
+                weaker.status = MemoryStatus.RECYCLED
+                weaker.updated_at = now
+                self.backend.update(weaker)
+                accommodated += 1
         return accommodated
 
     @staticmethod
@@ -485,31 +510,29 @@ class Consolidator:
         conflicts: list[Conflict] = []
         seen_pairs: set[frozenset[str]] = set()
         for cue, items in groups.items():
-            for i in range(len(items)):
-                for j in range(i + 1, len(items)):
-                    a, b = items[i], items[j]
-                    if a.content_hash == b.content_hash:
-                        continue
-                    pair = frozenset({a.id, b.id})
-                    if pair in seen_pairs:
-                        continue
-                    seen_pairs.add(pair)
-                    cue_tokens = set(tokenize(cue))
-                    common = (
-                        set(tokenize(a.content)) & set(tokenize(b.content))
-                    ) - cue_tokens
-                    if not common:
-                        continue
-                    conflicts.append(
-                        Conflict(
-                            a=a,
-                            b=b,
-                            reason=(
-                                f"confident facts share cue '{cue}' and "
-                                "topic but differ"
-                            ),
-                        )
+            for a, b in _bounded_pairs(items):
+                if a.content_hash == b.content_hash:
+                    continue
+                pair = frozenset({a.id, b.id})
+                if pair in seen_pairs:
+                    continue
+                seen_pairs.add(pair)
+                cue_tokens = set(tokenize(cue))
+                common = (
+                    set(tokenize(a.content)) & set(tokenize(b.content))
+                ) - cue_tokens
+                if not common:
+                    continue
+                conflicts.append(
+                    Conflict(
+                        a=a,
+                        b=b,
+                        reason=(
+                            f"confident facts share cue '{cue}' and "
+                            "topic but differ"
+                        ),
                     )
+                )
         return conflicts
 
 

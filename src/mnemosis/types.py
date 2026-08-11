@@ -290,7 +290,7 @@ def tokenize(text: str) -> list[str]:
     # Chinese numeral + money/measure unit: "三百元" also emits "300元",
     # "三本" also emits "3本" (numeric normalization for zh content).
     for zh_num, unit in re.findall(
-        r"([一二三四五六七八九十零]+)(元|块|本|个|台|条|张|件|杯|瓶)",
+        r"([一二三四五六七八九十零两]+)(元|块|本|个|台|条|张|件|杯|瓶)",
         lowered,
     ):
         value = _zh_numeral(zh_num)
@@ -315,17 +315,36 @@ def tokenize(text: str) -> list[str]:
 
 
 def _zh_numeral(text: str) -> int:
-    """Convert simple Chinese numerals (1-99) to an int."""
+    """Convert Chinese numerals (1..99,999,999) to an int.
+
+    Handles 十/百/千/万/亿 and 两 (e.g. 三百 -> 300, 两千五百 -> 2500,
+    一万二千 -> 12000, 一亿五千万 -> 150000000). Returns 0 on malformed
+    input so callers can safely skip the normalization.
+    """
     digits = {
-        "零": 0, "一": 1, "二": 2, "三": 3, "四": 4,
+        "零": 0, "一": 1, "二": 2, "两": 2, "三": 3, "四": 4,
         "五": 5, "六": 6, "七": 7, "八": 8, "九": 9,
     }
-    if "十" in text:
-        parts = text.split("十")
-        tens = digits.get(parts[0], 1) if parts[0] else 1
-        ones = digits.get(parts[1], 0) if len(parts) > 1 and parts[1] else 0
-        return tens * 10 + ones
-    return digits.get(text, 0)
+    units = {"十": 10, "百": 100, "千": 1000, "万": 10000, "亿": 100000000}
+    total = 0      # completed 万/亿 sections
+    section = 0    # current section value
+    number = 0     # pending digit
+    for char in text:
+        if char in digits:
+            number = digits[char]
+            continue
+        unit = units.get(char)
+        if unit is None:
+            return 0
+        if unit >= 10000:
+            section = (section + number) * unit
+            total += section
+            section = 0
+            number = 0
+        else:
+            section += (number or 1) * unit
+            number = 0
+    return total + section + number
 
 
 def extract_cues(content: str, limit: int = 6) -> list[str]:

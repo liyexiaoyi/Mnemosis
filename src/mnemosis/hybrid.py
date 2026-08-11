@@ -28,6 +28,13 @@ from .types import RecallResult, utcnow
 
 _LOG = logging.getLogger(__name__)
 
+_DENSE_FULL_SCAN_LIMIT = 1500
+"""Max active memories embedded per query when no vector index exists.
+
+Embedding every memory on every query is unbounded work; above this safety
+threshold the dense pass is skipped and retrieval stays on lexical routes.
+"""
+
 _DATE_RE = re.compile(r"(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})")
 _YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
 _MONTHS = {
@@ -253,6 +260,11 @@ def _dense_results(
                 )
         return results
     items = store.all_active(kind=kind) if store is not None else []
+    if len(items) > _DENSE_FULL_SCAN_LIMIT:
+        # Without a vector index every active memory would be embedded on
+        # every query; beyond the safety threshold we skip the dense pass and
+        # keep the lexical routes (keyword/cue/temporal) as the answer.
+        return []
     query_vector = embedder.embed(query)
     vectors = [embedder.embed(item.content) for item in items]
     try:

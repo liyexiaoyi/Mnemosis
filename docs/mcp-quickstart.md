@@ -78,3 +78,22 @@ echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | mnemosis-mcp --db demo.d
 - 首次使用建议给 AI 一句话说明：*“用 mnemosis 的 remember 记住关键信息，recall 回忆，check 不确定时先查缺口。”*
 - 数据库文件可以放在任何位置，记得备份；删除走 `forget`，不会静默丢失。
 - 完整工具与参数见 MCP 服务器源码 `src/mnemosis/mcp_server.py`。
+
+## 独立公开基准验证（LongMemEval）
+
+为了确认记忆能力不是只在自建数据上有效，项目用 ICLR 2025 的
+LongMemEval（约 11.5 万 token 长对话、高干扰）与官方 `mem0` 包做对比。
+先下载官方数据（已存在则直接复用，也支持断网时用本地目录导入）：
+
+```bash
+python benchmarks/fetch_longmemeval.py
+```
+
+再运行对比（需要装 mem0 的 Python 环境，以及 Ollama 或云端
+embedding/LLM 用于稠密模式）：
+
+```bash
+python benchmarks/longmemeval_bench.py --data work/longmemeval_s_cleaned.json --questions 20
+```
+
+结果会输出双方在长对话中的检索命中率、回答正确率和耗时对比。

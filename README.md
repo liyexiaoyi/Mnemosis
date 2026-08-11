@@ -200,7 +200,8 @@ Vectors are cached next to the DB (`memory.db.cache`) and indexed in
 
 After enough usage, call the `calibrate_decay` MCP tool to fit the
 forgetting curve to your real retrieval history (median survival span ->
-per-user decay rate).
+per-user decay rate). The fitted rate is persisted in the SQLite database
+and automatically reloaded the next time you open it.
 
 To see what the memory actually holds, call `memory_map` (topics with
 counts/retrievability plus a weak/ok/strong histogram), or render a Chinese
@@ -240,8 +241,38 @@ threads, serialize the high-level calls yourself.
 ## Testing
 
 ```bash
-python -m unittest discover -s tests -q   # 320 unit tests
+python -m unittest discover -s tests -q   # 372 unit tests
 python benchmarks/locomo_bench.py --mode keyword   # LoCoMo-style long dialogue
+```
+
+### Independent public benchmark (LongMemEval)
+
+Mnemosis is also validated against an external, non-self-built benchmark:
+[LongMemEval](https://github.com/xiaowu0162/LongMemEval) (Wu et al., ICLR 2025),
+which uses ~115k tokens of real chat history per question and heavy
+interference. The comparison with the official `mem0` package is in
+`benchmarks/longmemeval_bench.py`.
+
+First fetch the official dataset (cached copies are detected and reused):
+
+```bash
+python benchmarks/fetch_longmemeval.py            # oracle + S set (~290 MB)
+python benchmarks/fetch_longmemeval.py --all      # also the 2.7 GB M set
+```
+
+If Hugging Face is unreachable from your network, download the files from
+`huggingface.co/datasets/xiaowu0162/longmemeval-cleaned` and point the
+script at the local folder:
+
+```bash
+python benchmarks/fetch_longmemeval.py --source-dir /path/to/downloads
+```
+
+Then run a head-to-head against mem0 (requires a Python with `mem0`
+installed, plus Ollama or a cloud embedder/LLM for the dense mode):
+
+```bash
+python benchmarks/longmemeval_bench.py --data work/longmemeval_s_cleaned.json --questions 20
 ```
 
 ## License

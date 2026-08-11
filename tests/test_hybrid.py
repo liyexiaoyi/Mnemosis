@@ -7,6 +7,8 @@ import unittest
 from mnemosis import MemoryEngine
 from mnemosis.embedding import Embedder
 from mnemosis.hybrid import (
+    _DENSE_FULL_SCAN_LIMIT,
+    _dense_results,
     english_inflections,
     rrf_scores,
     temporal_intent,
@@ -38,6 +40,27 @@ class _TaggedEmbedder(Embedder):
     def embed(self, text: str) -> list[float]:
         self.seen.append(text)
         return [1.0, 0.0]
+
+
+class _CountingEmbedder(Embedder):
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def embed(self, text: str) -> list[float]:
+        self.calls += 1
+        return [1.0, 0.0]
+
+
+class _BigStore:
+    """Fake store with more active memories than the dense scan threshold."""
+
+    def all_active(self, kind=None):
+        return [object() for _ in range(_DENSE_FULL_SCAN_LIMIT + 1)]
+
+
+class _FakeEngine:
+    def __init__(self) -> None:
+        self.store = _BigStore()
 
 
 class HybridRetrievalTests(unittest.TestCase):
@@ -117,6 +140,15 @@ class HybridRetrievalTests(unittest.TestCase):
         self.assertTrue(second.seen)
         self.assertTrue(any("bicycle" in text for text in first.seen))
         self.assertTrue(any("bicycle" in text for text in second.seen))
+
+    def test_dense_full_scan_is_skipped_above_threshold(self) -> None:
+        """Without a vector index, huge stores must not embed everything."""
+        embedder = _CountingEmbedder()
+        results = _dense_results(
+            _FakeEngine(), "some query", None, embedder, top_k=5
+        )
+        self.assertEqual(results, [])
+        self.assertEqual(embedder.calls, 0)
 
 
 if __name__ == "__main__":

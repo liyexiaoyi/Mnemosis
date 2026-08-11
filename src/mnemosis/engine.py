@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import random
 import re
+import statistics
 import threading
 import uuid
 from collections import Counter, defaultdict, deque
@@ -34,6 +35,7 @@ from .types import (
     normalize_cues,
     tokenize,
     utcnow,
+    _zh_numeral,
 )
 from .zh_nlp import expand_synonyms, has_cjk
 
@@ -60,7 +62,7 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
         self,
         memory_file: str | None = None,
         *,
-        decay_rate: float = 0.002,
+        decay_rate: float | None = None,
         base_interval_hours: float = 24.0,
         importance_scorer: ImportanceScorer | None = None,
         embedder: Embedder | None = None,
@@ -68,6 +70,12 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
         index_embedder: Embedder | None = None,
     ) -> None:
         self.backend: Backend = make_backend(memory_file)
+        if decay_rate is None:
+            stored = self.backend.get_setting("decay_rate")
+            try:
+                decay_rate = float(stored) if stored is not None else 0.002
+            except (TypeError, ValueError):
+                decay_rate = 0.002
         self.curve = ForgettingCurve(decay_rate)
         self.scheduler = ReviewScheduler(self.curve, base_interval_hours)
         self.scorer = importance_scorer or ImportanceScorer()
@@ -281,6 +289,14 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
     _TEMPORAL_MD_RE = re.compile(
         r"(?<!年)(\d{1,2})\s*月\s*(\d{1,2})\s*日"
     )
+    _TEMPORAL_ZH_DATE_RE = re.compile(
+        r"(\d{4})年([一二三四五六七八九十零两]+)月"
+        r"([一二三四五六七八九十零两]+)日"
+    )
+    _TEMPORAL_ZH_MD_RE = re.compile(
+        r"(?<!年)([一二三四五六七八九十零两]+)月"
+        r"([一二三四五六七八九十零两]+)日"
+    )
     _TEMPORAL_YEAR_RE = re.compile(r"(\d{4})\s*年")
     _TEMPORAL_NOTICE_RE = re.compile(
         r"预约|通知|提醒|改到|调时间|约了|收到|说|协议|要求|请假"
@@ -317,9 +333,24 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
                 year = int(match.group(4))
                 cur = (year, int(match.group(5)), int(match.group(6)))
             best = max(best, cur)
+        for match in MemoryEngine._TEMPORAL_ZH_DATE_RE.finditer(text):
+            cur = (
+                int(match.group(1)),
+                _zh_numeral(match.group(2)),
+                _zh_numeral(match.group(3)),
+            )
+            year = cur[0]
+            best = max(best, cur)
         if year is not None:
             for match in MemoryEngine._TEMPORAL_MD_RE.finditer(text):
                 cur = (year, int(match.group(1)), int(match.group(2)))
+                best = max(best, cur)
+            for match in MemoryEngine._TEMPORAL_ZH_MD_RE.finditer(text):
+                cur = (
+                    year,
+                    _zh_numeral(match.group(1)),
+                    _zh_numeral(match.group(2)),
+                )
                 best = max(best, cur)
         return best
 
@@ -590,15 +621,15 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
         importing the same payload twice creates duplicates.
         """
 
-        imported = 0
-        for data in payload.get("memories", []):
-            item = MemoryItem.from_dict(data)
-            self.backend.add(item)
-            self.backend.add_cues(item.id, item.cues)
-            self.associations.index(item)
-            self.associations.link_related(item)
-            imported += 1
         with self._lock:
+            items = [
+                MemoryItem.from_dict(data)
+                for data in payload.get("memories", [])
+            ]
+            self.backend.add_many(items)
+            for item in items:
+                self.associations.index(item)
+                self.associations.link_related(item)
             for record in payload.get("intents", []):
                 record = dict(record)
                 if record.get("id"):
@@ -608,7 +639,7 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
             ).items():
                 if self.backend.get(memory_id) is not None:
                     self._suppressed_ids[memory_id] = suppressed_at
-        return imported
+        return len(items)
 
 
 
@@ -632,26 +663,31 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
             raise ValueError("action must be 'add' or 'remove'")
         new_tags = set(normalize_cues(tags))
         updated = added = removed = 0
-        for memory_id in memory_ids:
-            item = self.backend.get(memory_id)
-            if item is None:
-                continue
-            cues = set(item.cues)
-            if action == "add":
-                added_tags = new_tags - cues
-                added += len(added_tags)
-                cues |= new_tags
-            else:
-                removed_tags = cues & new_tags
-                removed += len(removed_tags)
-                cues -= new_tags
-            item.cues = normalize_cues(list(cues))
-            self.backend.update(item)
+        with self._lock:
+            changed: list[MemoryItem] = []
+            cue_changes: list[tuple[str, set[str]]] = []
+            for memory_id in memory_ids:
+                item = self.backend.get(memory_id)
+                if item is None:
+                    continue
+                cues = set(item.cues)
+                if action == "add":
+                    added_tags = new_tags - cues
+                    added += len(added_tags)
+                    cues |= new_tags
+                else:
+                    removed_tags = cues & new_tags
+                    removed += len(removed_tags)
+                    cues -= new_tags
+                item.cues = normalize_cues(list(cues))
+                changed.append(item)
+                cue_changes.append((item.id, added_tags if action == "add" else removed_tags))
+                updated += 1
+            self.backend.update_many(changed)
             if action == "remove":
-                self.backend.remove_cues(item.id, removed_tags)
+                self.backend.remove_cues_many(cue_changes)
             else:
-                self.backend.add_cues(item.id, added_tags)
-            updated += 1
+                self.backend.add_cues_many(cue_changes)
         return {"updated": updated, "added": added, "removed": removed}
 
 
@@ -748,16 +784,18 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
                     f"a >= {min_span_hours}h span"
                 ),
             }
-        median = sorted(spans)[len(spans) // 2]
+        median = statistics.median(spans)
         rate = min(cap, max(floor, math.log(2.0) / median))
         old = self.curve.decay_rate
         self.curve.decay_rate = rate
+        self.backend.set_setting("decay_rate", str(rate))
         return {
             "calibrated": True,
             "old_decay_rate": old,
             "decay_rate": rate,
             "median_survival_hours": round(median, 1),
             "samples": len(spans),
+            "persisted": True,
         }
 
     def close(self) -> None:

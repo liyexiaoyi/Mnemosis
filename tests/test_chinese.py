@@ -138,6 +138,38 @@ class ChineseOptimizationTest(unittest.TestCase):
         self.assertTrue(results2)
         self.assertEqual(results2[0].item.content, "小王买了三本书。")
 
+    def test_large_chinese_numerals_normalize(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        engine.remember(
+            "阿丽花了两千五百元买了电脑。",
+            kind=MemoryKind.EPISODIC,
+            source=user,
+            cues=["阿丽"],
+        )
+        engine.remember(
+            "公司融资了一亿五千万元。",
+            kind=MemoryKind.EPISODIC,
+            source=user,
+            cues=["公司"],
+        )
+        engine.remember(
+            "小李买了两本书。",
+            kind=MemoryKind.EPISODIC,
+            source=user,
+            cues=["小李"],
+        )
+        results = engine.recall("阿丽 2500元", top_k=3)
+        self.assertEqual(
+            results[0].item.content, "阿丽花了两千五百元买了电脑。"
+        )
+        results2 = engine.recall("公司 150000000元", top_k=3)
+        self.assertEqual(
+            results2[0].item.content, "公司融资了一亿五千万元。"
+        )
+        results3 = engine.recall("小李 2本", top_k=3)
+        self.assertEqual(results3[0].item.content, "小李买了两本书。")
+
 
 if __name__ == "__main__":
     unittest.main()

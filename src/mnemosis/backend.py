@@ -111,12 +111,39 @@ class DictBackend(Backend):
         self._links: dict[tuple[str, str], float] = {}
         self._adj: dict[str, set[str]] = {}
         self._terms_index: dict[str, set[str]] = {}
+        self._settings: dict[str, str] = {}
         self._seq = 0
 
     def add(self, item: MemoryItem) -> None:
         self._seq += 1
         item.seq = self._seq
         self._items[item.id] = item
+
+    def add_many(self, items: list[MemoryItem]) -> None:
+        for item in items:
+            self.add(item)
+
+    def update_many(self, items: list[MemoryItem]) -> None:
+        for item in items:
+            self.update(item)
+
+    def add_cues_many(
+        self, pairs: Iterable[tuple[str, Iterable[str]]]
+    ) -> None:
+        for memory_id, cues in pairs:
+            self.add_cues(memory_id, cues)
+
+    def remove_cues_many(
+        self, pairs: Iterable[tuple[str, Iterable[str]]]
+    ) -> None:
+        for memory_id, cues in pairs:
+            self.remove_cues(memory_id, cues)
+
+    def get_setting(self, key: str, default: str | None = None) -> str | None:
+        return self._settings.get(key, default)
+
+    def set_setting(self, key: str, value: str) -> None:
+        self._settings[key] = value
 
     def upsert(self, item: MemoryItem) -> MemoryItem:
         existing = self.find_by_hash(item.kind, item.content_hash)
@@ -385,7 +412,30 @@ class SQLiteBackend(Backend):
             self._conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_terms_memory ON terms(memory_id)"
             )
+            self._conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS settings (
+                    key   TEXT PRIMARY KEY,
+                    value TEXT NOT NULL
+                )
+                """
+            )
         self._ensure_columns()
+
+    @_locked
+    def get_setting(self, key: str, default: str | None = None) -> str | None:
+        row = self._conn.execute(
+            "SELECT value FROM settings WHERE key = ?", (key,)
+        ).fetchone()
+        return row["value"] if row else default
+
+    @_locked
+    def set_setting(self, key: str, value: str) -> None:
+        with self._conn:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                (key, value),
+            )
 
     def _ensure_columns(self) -> None:
         """Migrate older databases by adding missing columns."""
@@ -434,6 +484,45 @@ class SQLiteBackend(Backend):
                 """,
                 _item_row(item),
             )
+
+    @_locked
+    def add_many(self, items: list[MemoryItem]) -> None:
+        """Insert many memories and their cues in one atomic transaction."""
+        if not items:
+            return
+        with self._conn:
+            row = self._conn.execute(
+                "SELECT COALESCE(MAX(seq), 0) AS next FROM memories"
+            ).fetchone()
+            seq = int(row["next"])
+            rows: list[tuple] = []
+            cue_rows: list[tuple[str, str]] = []
+            for item in items:
+                seq += 1
+                item.seq = seq
+                rows.append(_item_row(item))
+                cue_rows.extend(
+                    (cue, item.id) for cue in normalize_cues(item.cues)
+                )
+            self._conn.executemany(
+                """
+                INSERT INTO memories (
+                    id, kind, content, content_hash, source_json, cues_json,
+                    created_at, last_access_at, access_count, importance,
+                    strength, confidence, status, context, affect, evidence_count,
+                    storage_strength, updated_at, revision_count, seq,
+                    last_review_at, review_streak, retrieval_successes,
+                    retrieval_failures
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                          ?, ?, ?, ?)
+                """,
+                rows,
+            )
+            if cue_rows:
+                self._conn.executemany(
+                    "INSERT OR IGNORE INTO cues (cue, memory_id) VALUES (?, ?)",
+                    cue_rows,
+                )
 
     @_locked
     def upsert(self, item: MemoryItem) -> MemoryItem:
@@ -525,6 +614,56 @@ class SQLiteBackend(Backend):
                     item.retrieval_failures,
                     item.id,
                 ),
+            )
+
+    @_locked
+    def update_many(self, items: list[MemoryItem]) -> None:
+        """Update many memory rows in one atomic transaction."""
+        if not items:
+            return
+        rows = []
+        for item in items:
+            rows.append(
+                (
+                    item.content,
+                    item.content_hash,
+                    json.dumps(item.source.to_dict()),
+                    json.dumps(item.cues),
+                    item.created_at.isoformat(),
+                    item.last_access_at.isoformat() if item.last_access_at else None,
+                    item.access_count,
+                    item.importance,
+                    item.strength,
+                    item.confidence,
+                    item.status.value,
+                    item.context,
+                    item.affect,
+                    item.evidence_count,
+                    item.storage_strength,
+                    item.updated_at.isoformat() if item.updated_at else None,
+                    item.revision_count,
+                    item.seq,
+                    item.last_review_at.isoformat() if item.last_review_at else None,
+                    item.review_streak,
+                    item.retrieval_successes,
+                    item.retrieval_failures,
+                    item.id,
+                )
+            )
+        with self._conn:
+            self._conn.executemany(
+                """
+                UPDATE memories SET
+                    content = ?, content_hash = ?, source_json = ?, cues_json = ?,
+                    created_at = ?, last_access_at = ?, access_count = ?,
+                    importance = ?, strength = ?, confidence = ?, status = ?,
+                    context = ?, affect = ?, evidence_count = ?,
+                    storage_strength = ?, updated_at = ?, revision_count = ?,
+                    seq = ?, last_review_at = ?, review_streak = ?,
+                    retrieval_successes = ?, retrieval_failures = ?
+                WHERE id = ?
+                """,
+                rows,
             )
 
     @_locked
@@ -636,6 +775,22 @@ class SQLiteBackend(Backend):
             )
 
     @_locked
+    def add_cues_many(self, pairs: Iterable[tuple[str, Iterable[str]]]) -> None:
+        """Add cues for many memories in one atomic transaction."""
+        rows = [
+            (cue, memory_id)
+            for memory_id, cues in pairs
+            for cue in normalize_cues(list(cues))
+        ]
+        if not rows:
+            return
+        with self._conn:
+            self._conn.executemany(
+                "INSERT OR IGNORE INTO cues (cue, memory_id) VALUES (?, ?)",
+                rows,
+            )
+
+    @_locked
     def remove_cues(self, memory_id: str, cues: Iterable[str]) -> None:
         normalized = normalize_cues(list(cues))
         if not normalized:
@@ -644,6 +799,22 @@ class SQLiteBackend(Backend):
             self._conn.executemany(
                 "DELETE FROM cues WHERE memory_id = ? AND cue = ?",
                 [(memory_id, cue) for cue in normalized],
+            )
+
+    @_locked
+    def remove_cues_many(self, pairs: Iterable[tuple[str, Iterable[str]]]) -> None:
+        """Remove cues from many memories in one atomic transaction."""
+        rows = [
+            (memory_id, cue)
+            for memory_id, cues in pairs
+            for cue in normalize_cues(list(cues))
+        ]
+        if not rows:
+            return
+        with self._conn:
+            self._conn.executemany(
+                "DELETE FROM cues WHERE memory_id = ? AND cue = ?",
+                rows,
             )
 
     @_locked

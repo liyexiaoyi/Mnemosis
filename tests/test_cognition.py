@@ -7,7 +7,15 @@ import unittest
 from datetime import timedelta
 
 from mnemosis import MemoryEngine
-from mnemosis.types import MemoryKind, SourceRecord, SourceType, utcnow
+from mnemosis.consolidation import _MAX_PAIRS_PER_CUE, _bounded_pairs
+from mnemosis.types import (
+    MemoryItem,
+    MemoryKind,
+    MemoryStatus,
+    SourceRecord,
+    SourceType,
+    utcnow,
+)
 
 
 class CognitionTest(unittest.TestCase):
@@ -888,6 +896,44 @@ class MemoryMapTest(unittest.TestCase):
         self.assertEqual(topics["阿丽"], 3)
         self.assertEqual(topics["项目"], 1)
         self.assertEqual(sum(report["strength"].values()), 4)
+
+
+class ConsolidationScaleTest(unittest.TestCase):
+    def test_bounded_pairs_caps_huge_groups(self) -> None:
+        source = SourceRecord(origin=SourceType.USER)
+        items = [
+            MemoryItem(
+                content=f"fact {index}",
+                kind=MemoryKind.SEMANTIC,
+                source=source,
+                cues=[f"cue{index}"],
+                confidence=0.9,
+                importance=0.8,
+                status=MemoryStatus.ACTIVE,
+            )
+            for index in range(300)
+        ]
+        pairs = list(_bounded_pairs(items))
+        self.assertLessEqual(len(pairs), _MAX_PAIRS_PER_CUE)
+        # only the strongest tail is truncated, never the top items
+        top_id = max(items, key=lambda item: item.seq).id
+        self.assertTrue(any(a.id == top_id or b.id == top_id for a, b in pairs))
+
+    def test_conflict_scan_stays_bounded_on_large_stores(self) -> None:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        for index in range(200):
+            engine.remember(
+                f"主题A 事实{index} 是确定的。",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["主题A"],
+                confidence=0.9,
+                auto_cues=False,
+            )
+        conflicts = engine.consolidator.detect_conflicts()
+        self.assertIsInstance(conflicts, list)
+        self.assertLessEqual(len(conflicts), _MAX_PAIRS_PER_CUE)
 
 
 if __name__ == "__main__":

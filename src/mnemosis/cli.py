@@ -6,8 +6,40 @@ import argparse
 from typing import Sequence
 
 from .engine import MemoryEngine
-from .embedding import NGramEmbedder
+from .embedding import Embedder, NGramEmbedder, make_embedder
 from .types import MemoryKind, SourceRecord, SourceType
+
+
+_EMBEDDER_CHOICES = ["ngram", "ollama", "openai", "none"]
+
+
+def _add_embedder_args(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--embedder",
+        choices=_EMBEDDER_CHOICES,
+        default=None,
+        help=(
+            "dense recall provider: ngram (built-in), ollama, openai "
+            "(OpenAI-compatible), none (lexical only)"
+        ),
+    )
+    parser.add_argument("--embedding-model", default=None)
+    parser.add_argument("--embedding-base-url", default=None)
+    parser.add_argument("--embedding-api-key", default=None)
+
+
+def _cli_embedder(args) -> Embedder | None:
+    provider = getattr(args, "embedder", None)
+    if not provider or provider == "none":
+        return None
+    if provider == "ngram":
+        return NGramEmbedder()
+    return make_embedder(
+        provider,
+        model=args.embedding_model,
+        base_url=args.embedding_base_url,
+        api_key=args.embedding_api_key,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -46,7 +78,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--top-k", type=int, default=5)
     p.add_argument("--kind", choices=["episodic", "semantic"])
     p.add_argument("--context")
-    p.add_argument("--embedder", choices=["ngram"], default=None)
+    _add_embedder_args(p)
 
     sub.add_parser("sleep", help="run sleep consolidation")
     sub.add_parser("stats", help="show statistics")
@@ -54,7 +86,7 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("check", help="metacognitive check for a query")
     p.add_argument("query")
     p.add_argument("--top-k", type=int, default=3)
-    p.add_argument("--embedder", choices=["ngram"], default=None)
+    _add_embedder_args(p)
 
     p = sub.add_parser("update", help="revise a memory")
     p.add_argument("memory_id")
@@ -116,7 +148,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             print(f"saved {item.id} [{item.kind.value}] {item.content}")
         elif args.command == "recall":
-            embedder = NGramEmbedder() if getattr(args, "embedder", None) == "ngram" else None
+            embedder = _cli_embedder(args)
             for r in engine.recall(
                 args.query,
                 kind=MemoryKind(args.kind) if args.kind else None,
@@ -131,7 +163,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             for key, value in engine.stats().items():
                 print(f"{key}: {value}")
         elif args.command == "check":
-            embedder = NGramEmbedder() if getattr(args, "embedder", None) == "ngram" else None
+            embedder = _cli_embedder(args)
             check = engine.check(args.query, top_k=args.top_k, embedder=embedder)
             print(f"gaps: {check.gaps or 'none'}")
             print(f"contradictions: {len(check.contradictions)}")

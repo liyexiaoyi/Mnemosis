@@ -14,6 +14,7 @@ from mnemosis.mcp_server import (
     build_http_server,
     _read_message,
 )
+from mnemosis.types import SourceRecord, SourceType
 
 
 class MCPTest(unittest.TestCase):
@@ -154,6 +155,21 @@ class MCPTest(unittest.TestCase):
         )
         item = self.server.engine.backend.get(result["id"])
         self.assertEqual(item.confidence, 0.0)
+
+    def test_top_k_and_limit_are_clamped(self):
+        """Negative or absurd MCP args must not crash or invert slicing."""
+        engine = self.server.engine
+        source = SourceRecord(origin=SourceType.USER)
+        for index in range(3):
+            engine.remember(
+                f"alpha memory {index}", source=source, cues=["alpha"]
+            )
+        result = self.call("recall", {"query": "alpha", "top_k": -1})
+        self.assertIsInstance(result, list)
+        self.assertEqual(len(result), 1)  # clamped to top_k=1, not len-1
+        result2 = self.call("working_set", {"limit": -999999})
+        self.assertIsInstance(result2, list)
+        self.assertLessEqual(len(result2), 5000)
 
     def test_short_body_read_is_eof_not_crash(self):
         fake = type(

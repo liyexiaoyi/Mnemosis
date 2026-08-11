@@ -34,6 +34,16 @@ def _engine_with_chain() -> MemoryEngine:
 
 
 class TemporalMarkerTests(unittest.TestCase):
+    def test_latest_date_parses_chinese_numerals(self) -> None:
+        self.assertEqual(
+            MemoryEngine._latest_date("阿丽在2026年五月二日买了花。"),
+            (2026, 5, 2),
+        )
+        self.assertEqual(
+            MemoryEngine._latest_date("项目在十一月二十三日启动。"),
+            (0, 0, 0),  # no year -> month/day only is not a full date
+        )
+
     def test_english_after(self) -> None:
         self.assertEqual(
             temporal_question_kind(
