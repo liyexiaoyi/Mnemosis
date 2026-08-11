@@ -763,6 +763,10 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
     def close(self) -> None:
         if hasattr(self.backend, "close"):
             self.backend.close()
+        if self.vector_index is not None and hasattr(
+            self.vector_index, "close"
+        ):
+            self.vector_index.close()
 
     def __enter__(self) -> MemoryEngine:
         return self

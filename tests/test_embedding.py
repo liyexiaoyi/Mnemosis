@@ -1,9 +1,12 @@
 import unittest
+import urllib.error
+from unittest import mock
 
 from mnemosis import MemoryEngine
 from mnemosis.embedding import (
     CallableEmbedder,
     Embedder,
+    EmbeddingAPIError,
     NGramEmbedder,
     make_embedder,
 )
@@ -156,6 +159,21 @@ class EmbedderFactoryTest(unittest.TestCase):
         )
         engine.vector_index.close()
         engine.close()
+
+    def test_http_error_becomes_embedding_api_error(self):
+        import io
+
+        def fake_urlopen(req, timeout=None):
+            raise urllib.error.HTTPError(
+                req.full_url, 401, "Unauthorized", {},
+                io.BytesIO(b'{"error":"bad api key"}'),
+            )
+
+        embedder = make_embedder("openai", api_key="test")
+        with mock.patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            with self.assertRaises(EmbeddingAPIError) as ctx:
+                embedder.embed("hello")
+        self.assertIn("401", str(ctx.exception))
 
 
 if __name__ == "__main__":

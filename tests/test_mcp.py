@@ -141,6 +141,32 @@ class MCPTest(unittest.TestCase):
         result = self.server._call_tool("memory_map", {})
         self.assertIn("topics", result)
 
+    def test_zero_values_are_not_swallowed(self):
+        result = self.server._call_tool(
+            "remember",
+            {
+                "content": "不可信消息",
+                "confidence": 0,
+            },
+        )
+        item = self.server.engine.backend.get(result["id"])
+        self.assertEqual(item.confidence, 0.0)
+
+    def test_short_body_read_is_eof_not_crash(self):
+        fake = type(
+            "FakeStdin",
+            (),
+            {"buffer": io.BytesIO(b"Content-Length: 10\r\n\r\nabc")},
+        )()
+        old_stdin = sys.stdin
+        try:
+            sys.stdin = fake
+            message, framed = _read_message()
+        finally:
+            sys.stdin = old_stdin
+        self.assertEqual(message, "")
+        self.assertTrue(framed)
+
     def test_remember_recall_roundtrip(self):
         saved = self.call(
             "remember",
@@ -196,7 +222,8 @@ class MCPTest(unittest.TestCase):
                 },
             }
         )
-        self.assertTrue(response["result"]["isError"])
+        self.assertEqual(response["error"]["code"], -32602)
+        self.assertIn("Invalid params", response["error"]["message"])
 
     def test_review_tools(self):
         remembered = self.call(

@@ -17,9 +17,14 @@ import math
 import operator
 import os
 import re
+import urllib.error
 import urllib.request
 from collections import Counter
 from collections.abc import Callable
+
+
+class EmbeddingAPIError(RuntimeError):
+    """External embedding API call failed (auth, quota, network, ...)."""
 
 
 class Embedder:
@@ -110,6 +115,29 @@ class CallableEmbedder(Embedder):
         return self.fn(text)
 
 
+def _post_json(
+    url: str,
+    payload: dict,
+    headers: dict[str, str],
+    timeout: float,
+) -> dict:
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        headers=headers,
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", "ignore")[:300]
+        raise EmbeddingAPIError(
+            f"embedding API HTTP {exc.code}: {body or exc.reason}"
+        ) from exc
+    except (urllib.error.URLError, TimeoutError) as exc:
+        raise EmbeddingAPIError(f"embedding API unreachable: {exc}") from exc
+
+
 def ollama_embedder(
     model: str = "nomic-embed-text",
     base_url: str = "http://127.0.0.1:11434",
@@ -120,13 +148,9 @@ def ollama_embedder(
 
     def _embed(text: str) -> list[float]:
         payload = {"model": model, "input": [text]}
-        req = urllib.request.Request(
-            url,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
+        data = _post_json(
+            url, payload, {"Content-Type": "application/json"}, timeout
         )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
         return [float(x) for x in data["embeddings"][0]]
 
     return CallableEmbedder(_embed)
@@ -158,16 +182,15 @@ def openai_embedder(
 
     def _embed(text: str) -> list[float]:
         payload = {"model": model, "input": text}
-        req = urllib.request.Request(
+        data = _post_json(
             url,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={
+            payload,
+            {
                 "Content-Type": "application/json",
                 "Authorization": "Bearer " + api_key,
             },
+            timeout,
         )
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
         return [float(x) for x in data["data"][0]["embedding"]]
 
     return CallableEmbedder(_embed)
@@ -207,6 +230,7 @@ def make_embedder(
 __all__ = [
     "CallableEmbedder",
     "Embedder",
+    "EmbeddingAPIError",
     "NGramEmbedder",
     "make_embedder",
     "ollama_embedder",

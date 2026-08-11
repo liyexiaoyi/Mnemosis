@@ -2204,6 +2204,12 @@ class MCPServer:
                     -32602,
                     f"Invalid params: missing required field {exc.args[0]}",
                 )
+            except (ValueError, TypeError) as exc:
+                return self._error(
+                    message_id,
+                    -32602,
+                    f"Invalid params: {exc}",
+                )
             except Exception as exc:  # noqa: BLE001 - surface tool errors
                 _LOG.exception("tool %s failed", name)
                 return self._result(
@@ -2234,8 +2240,16 @@ class MCPServer:
             context=args.get("context"),
             affect=args.get("affect"),
             importance=args.get("importance"),
-            confidence=float(args.get("confidence") or 1.0),
-            evidence_count=int(args.get("evidence_count") or 1),
+            confidence=(
+                float(args["confidence"])
+                if args.get("confidence") is not None
+                else 1.0
+            ),
+            evidence_count=(
+                int(args["evidence_count"])
+                if args.get("evidence_count") is not None
+                else 1
+            ),
         )
         return {
             "id": item.id,
@@ -3241,7 +3255,15 @@ def _read_message() -> tuple[str | None, bool]:
                 break
             remaining -= len(chunk)
         return "", True
-    return sys.stdin.buffer.read(length).decode("utf-8"), True
+    data = b""
+    while len(data) < length:
+        chunk = sys.stdin.buffer.read(length - len(data))
+        if not chunk:
+            break
+        data += chunk
+    if len(data) != length:
+        return "", True
+    return data.decode("utf-8"), True
 
 
 def _write_message(text: str, framed: bool) -> None:
@@ -3284,13 +3306,16 @@ def run_stdio(
         else None,
     )
     server = MCPServer(engine, expose=expose)
-    while True:
-        message, framed = _read_message()
-        if message is None:
-            break
-        response = server.handle_line(message)
-        if response is not None:
-            _write_message(response, framed)
+    try:
+        while True:
+            message, framed = _read_message()
+            if message is None:
+                break
+            response = server.handle_line(message)
+            if response is not None:
+                _write_message(response, framed)
+    finally:
+        engine.close()
 
 
 def main(argv: Sequence[str] | None = None) -> int:
