@@ -198,6 +198,12 @@ mnemosis-mcp --db memory.db --embedder openai --embedding-model text-embedding-v
 Vectors are cached next to the DB (`memory.db.cache`) and indexed in
 `memory.db.vec`, so repeated recalls skip embedding calls.
 
+For the strongest retrieval quality, enable a dense embedder (Ollama or any
+OpenAI-compatible endpoint): on the independent LongMemEval benchmark this
+mode reaches parity with mem0 on turn recall while keeping ingestion ~13x
+faster. Lexical-only mode stays available and is several times faster per
+query (dense re-ranking only embeds the top-64 lexical candidates).
+
 After enough usage, call the `calibrate_decay` MCP tool to fit the
 forgetting curve to your real retrieval history (median survival span ->
 per-user decay rate). The fitted rate is persisted in the SQLite database

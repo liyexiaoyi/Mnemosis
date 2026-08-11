@@ -34,6 +34,15 @@ from .zh_nlp import expand_synonyms
 _FALLBACK_SCAN_LIMIT = 1000
 """Max memories loaded for a zero-hit query (recency fallback)."""
 
+_DENSE_RERANK_CANDIDATES = 64
+"""Max candidates embedded per query.
+
+The dense term of the score used to embed every candidate (up to the 1000
+memory fallback) on every query. Candidates are now lexically pre-ranked
+and only this many are embedded for the semantic re-rank; with 10k memories
+this takes ngram recall from ~200ms to tens of ms.
+"""
+
 _EN_SYNONYMS: dict[str, tuple[str, ...]] = {
     "spent": ("cost", "paid", "bought", "spending"),
     "money": ("cost", "amount", "price", "payment"),
@@ -519,37 +528,26 @@ class DualTrackStore:
                 # first.
                 corroboration_bonus = corroboration_weight
                 reasons.append("多来源印证")
-            if query_vector is not None:
-                item_vector = self._embedding(item, embedder)
-                semantic = embedder.cosine(query_vector, item_vector)
-                score = (
-                    0.30 * weighted_overlap
-                    + 0.20 * retrievability
-                    + 0.15 * item.importance
-                    + 0.15 * context_overlap
-                    + 0.20 * semantic
-                    + self_bonus
-                    + trust_bonus
-                    + mood_bonus
-                    + confidence_bonus
-                    + gist_bonus
-                    + salience_bonus
-                    + corroboration_bonus
-                )
-            else:
-                score = (
-                    0.40 * weighted_overlap
-                    + 0.25 * retrievability
-                    + 0.20 * item.importance
-                    + 0.15 * context_overlap
-                    + self_bonus
-                    + trust_bonus
-                    + mood_bonus
-                    + confidence_bonus
-                    + gist_bonus
-                    + salience_bonus
-                    + corroboration_bonus
-                )
+            # Semantic similarity is added in a second pass over only the
+            # lexically top candidates (see rerank below); until then it is
+            # zero so the provisional score stays cheap.
+            semantic = 0.0
+            score = (
+                (0.30 if query_vector is not None else 0.40)
+                * weighted_overlap
+                + (0.20 if query_vector is not None else 0.25)
+                * retrievability
+                + (0.15 if query_vector is not None else 0.20)
+                * item.importance
+                + 0.15 * context_overlap
+                + self_bonus
+                + trust_bonus
+                + mood_bonus
+                + confidence_bonus
+                + gist_bonus
+                + salience_bonus
+                + corroboration_bonus
+            )
             if overlap > 0:
                 reasons.append(f"cue/keyword overlap {overlap:.2f}")
             if source_trust_boost and item.source.trust >= 0.95:
@@ -589,8 +587,6 @@ class DualTrackStore:
                 ):
                     score += kind_pref
                     reasons.append("\u7cbe\u51c6\u4e8b\u4ef6\u504f\u597d(\u4eba\u7269+\u65e5\u671f)")
-            if semantic > 0.5:
-                reasons.append(f"semantic similarity {semantic:.2f}")
             if retrievability < 0.5:
                 reasons.append("partially forgotten")
             if item.importance >= 0.7:
@@ -599,8 +595,52 @@ class DualTrackStore:
                 reasons.append("context match")
             elif context_overlap > 0.0:
                 reasons.append(f"context overlap {context_overlap:.2f}")
-            matched = overlap > 0.0 or semantic >= 0.2
+            matched = overlap > 0.0
             scored.append((score, overlap, item, reasons, matched))
+        if query_vector is not None and scored:
+            # Dense re-rank: embed only a bounded candidate pool and add the
+            # semantic term to their scores. When the query has lexical hits
+            # only those are embedded (plus a small zero-overlap budget so a
+            # paraphrase can still be rescued); a zero-hit fallback embeds
+            # the top of the recency window. Candidates outside the pool keep
+            # their lexical-only score (matched=False is accepted as the
+            # documented trade-off for bounded queries).
+            scored.sort(key=lambda entry: entry[0], reverse=True)
+            lexical_hits = [entry for entry in scored if entry[1] > 0.0]
+            if lexical_hits:
+                zero_budget = min(
+                    16, len(scored) - len(lexical_hits)
+                )
+                pool = lexical_hits[
+                    : _DENSE_RERANK_CANDIDATES - zero_budget
+                ]
+                if zero_budget > 0:
+                    pool = pool + [
+                        entry
+                        for entry in scored
+                        if entry[1] == 0.0
+                    ][:zero_budget]
+            else:
+                pool = scored[:_DENSE_RERANK_CANDIDATES]
+            rerank_ids = {entry[2].id for entry in pool}
+            for index, (score, overlap, item, reasons, matched) in enumerate(
+                scored
+            ):
+                if item.id not in rerank_ids:
+                    continue
+                item_vector = self._embedding(item, embedder)
+                semantic = embedder.cosine(query_vector, item_vector)
+                score = score + 0.20 * semantic
+                if semantic > 0.5:
+                    reasons.append(f"semantic similarity {semantic:.2f}")
+                scored[index] = (
+                    score,
+                    overlap,
+                    item,
+                    reasons,
+                    matched or semantic >= 0.2,
+                )
+            scored.sort(key=lambda entry: entry[0], reverse=True)
         scored.sort(key=lambda entry: entry[0], reverse=True)
         self._spread_activation(
             scored,

@@ -389,6 +389,30 @@ class MemoryEngineTest(unittest.TestCase):
         )
         self.assertEqual(results[0].item.content, cost_turn.content)
 
+    def test_dense_rerank_does_not_pad_to_budget(self):
+        """Few lexical hits must not trigger 64 irrelevant embeddings."""
+        counting = _BatchCountingEmbedder()
+        engine = MemoryEngine(embedder=counting)
+        try:
+            source = SourceRecord(origin=SourceType.USER)
+            for index in range(5):
+                engine.remember(
+                    f"alpha item {index}",
+                    kind=MemoryKind.EPISODIC,
+                    source=source,
+                )
+            for index in range(100):
+                engine.remember(
+                    f"other item {index}",
+                    kind=MemoryKind.EPISODIC,
+                    source=source,
+                )
+            engine.recall("alpha", top_k=3)
+            # 5 lexical hits + 16 zero-overlap rescue budget, not 64.
+            self.assertLessEqual(counting.calls, 21)
+        finally:
+            engine.close()
+
 
 if __name__ == "__main__":
     unittest.main()
