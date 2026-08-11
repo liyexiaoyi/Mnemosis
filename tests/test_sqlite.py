@@ -3,6 +3,8 @@
 import json
 import os
 import sqlite3
+import subprocess
+import sys
 import tempfile
 import unittest
 import uuid
@@ -50,6 +52,74 @@ class SQLiteBackendTest(unittest.TestCase):
         self.assertEqual(self.engine.recall("deadline", top_k=5), [])
         self.assertTrue(self.engine.restore(item.id))
         self.assertTrue(self.engine.recall("deadline"))
+
+    def test_seq_assignment_is_unique_and_never_reused(self):
+        """seq must be atomic (MAX+1), including after deletes and batches."""
+        first = self.remember("seq fact 1")
+        second = self.remember("seq fact 2")
+        self.assertEqual(second.seq, first.seq + 1)
+
+        # deleting a row must not cause its seq to be reused
+        self.engine.forget(first.id)
+        third = self.remember("seq fact 3")
+        self.assertGreater(third.seq, second.seq)
+
+        # batch import continues the same counter with unique seqs
+        payload = {
+            "memories": [
+                {
+                    "content": f"imported {index}",
+                    "kind": "semantic",
+                    "source": self.user.to_dict(),
+                }
+                for index in range(3)
+            ]
+        }
+        self.engine.import_memories(payload)
+        seqs = [item.seq for item in self.engine.backend.list()]
+        self.assertEqual(len(seqs), len(set(seqs)))
+        self.assertEqual(max(seqs), third.seq + 3)
+
+    def test_seq_is_atomic_across_processes(self):
+        """Two processes inserting concurrently must never share a seq."""
+        self.engine.close()
+        src = os.path.normpath(
+            os.path.join(os.path.dirname(__file__), "..", "src")
+        )
+        worker = (
+            "import sys;"
+            "from mnemosis.backend import SQLiteBackend;"
+            "from mnemosis.types import MemoryItem, MemoryKind,"
+            " SourceRecord, SourceType;"
+            "b = SQLiteBackend(sys.argv[1]);"
+            "src = SourceRecord(origin=SourceType.USER);"
+            "[b.add(MemoryItem(content='race %s-%d' % (sys.argv[2], i),"
+            " kind=MemoryKind.SEMANTIC, source=src))"
+            " for i in range(25)];"
+            "b.close()"
+        )
+        env = dict(os.environ)
+        env["PYTHONPATH"] = src + os.pathsep + env.get("PYTHONPATH", "")
+        procs = [
+            subprocess.Popen(
+                [sys.executable, "-c", worker, self.path, str(index)],
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            for index in range(2)
+        ]
+        for proc in procs:
+            _, err = proc.communicate(timeout=120)
+            self.assertEqual(proc.returncode, 0, err.decode("utf-8", "ignore"))
+        backend = SQLiteBackend(self.path)
+        try:
+            seqs = [item.seq for item in backend.list()]
+            self.assertEqual(len(seqs), 50)
+            self.assertEqual(len(set(seqs)), 50)
+            self.assertEqual(set(seqs), set(range(1, 51)))
+        finally:
+            backend.close()
 
     def test_persistence_across_reopen(self):
         self.remember("The password hint is 'blue whale'.", cues=["password"])
@@ -131,4 +201,3 @@ class SQLiteBackendTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

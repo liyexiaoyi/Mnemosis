@@ -465,32 +465,28 @@ class SQLiteBackend(Backend):
 
     @_locked
     def add(self, item: MemoryItem) -> None:
-        row = self._conn.execute(
-            "SELECT COALESCE(MAX(seq), 0) + 1 AS next FROM memories"
-        ).fetchone()
-        item.seq = row["next"]
+        # One atomic statement: MAX(seq)+1 is read and written in the same
+        # INSERT, so concurrent writers (even other processes) cannot hand
+        # out the same seq.
         with self._conn:
-            self._conn.execute(
-                """
-                INSERT INTO memories (
-                    id, kind, content, content_hash, source_json, cues_json,
-                    created_at, last_access_at, access_count, importance,
-                    strength, confidence, status, context, affect, evidence_count,
-                    storage_strength, updated_at, revision_count, seq,
-                    last_review_at, review_streak, retrieval_successes,
-                    retrieval_failures
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                          ?, ?, ?, ?)
-                """,
-                _item_row(item),
-            )
+            self._conn.execute(_INSERT_SELECT_SQL, _item_row_params(item))
+            row = self._conn.execute(
+                "SELECT seq FROM memories WHERE id = ?", (item.id,)
+            ).fetchone()
+            item.seq = row["seq"]
+
+    @_locked
+    def _begin_immediate(self) -> None:
+        """Acquire a write lock before the seq read, blocking other writers."""
+        self._conn.execute("BEGIN IMMEDIATE")
 
     @_locked
     def add_many(self, items: list[MemoryItem]) -> None:
         """Insert many memories and their cues in one atomic transaction."""
         if not items:
             return
-        with self._conn:
+        self._begin_immediate()
+        try:
             row = self._conn.execute(
                 "SELECT COALESCE(MAX(seq), 0) AS next FROM memories"
             ).fetchone()
@@ -504,25 +500,16 @@ class SQLiteBackend(Backend):
                 cue_rows.extend(
                     (cue, item.id) for cue in normalize_cues(item.cues)
                 )
-            self._conn.executemany(
-                """
-                INSERT INTO memories (
-                    id, kind, content, content_hash, source_json, cues_json,
-                    created_at, last_access_at, access_count, importance,
-                    strength, confidence, status, context, affect, evidence_count,
-                    storage_strength, updated_at, revision_count, seq,
-                    last_review_at, review_streak, retrieval_successes,
-                    retrieval_failures
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-                          ?, ?, ?, ?)
-                """,
-                rows,
-            )
+            self._conn.executemany(_INSERT_SQL, rows)
             if cue_rows:
                 self._conn.executemany(
                     "INSERT OR IGNORE INTO cues (cue, memory_id) VALUES (?, ?)",
                     cue_rows,
                 )
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+            raise
 
     @_locked
     def upsert(self, item: MemoryItem) -> MemoryItem:
@@ -530,12 +517,18 @@ class SQLiteBackend(Backend):
         if existing is None:
             self.add(item)
             return item
-        row = self._conn.execute(
-            "SELECT COALESCE(MAX(seq), 0) + 1 AS next FROM memories"
-        ).fetchone()
-        item.seq = row["next"]
-        _merge_stats(existing, item)
-        self.update(existing)
+        self._begin_immediate()
+        try:
+            row = self._conn.execute(
+                "SELECT COALESCE(MAX(seq), 0) + 1 AS next FROM memories"
+            ).fetchone()
+            item.seq = row["next"]
+            _merge_stats(existing, item)
+            self._conn.execute(_UPDATE_SQL, _update_row(existing))
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+            raise
         self.add_cues(existing.id, item.cues)
         return existing
 
@@ -577,44 +570,7 @@ class SQLiteBackend(Backend):
     @_locked
     def update(self, item: MemoryItem) -> None:
         with self._conn:
-            self._conn.execute(
-                """
-                UPDATE memories SET
-                    content = ?, content_hash = ?, source_json = ?, cues_json = ?,
-                    created_at = ?, last_access_at = ?, access_count = ?,
-                    importance = ?, strength = ?, confidence = ?, status = ?,
-                    context = ?, affect = ?, evidence_count = ?,
-                    storage_strength = ?, updated_at = ?, revision_count = ?,
-                    seq = ?, last_review_at = ?, review_streak = ?,
-                    retrieval_successes = ?, retrieval_failures = ?
-                WHERE id = ?
-                """,
-                (
-                    item.content,
-                    item.content_hash,
-                    json.dumps(item.source.to_dict()),
-                    json.dumps(item.cues),
-                    item.created_at.isoformat(),
-                    item.last_access_at.isoformat() if item.last_access_at else None,
-                    item.access_count,
-                    item.importance,
-                    item.strength,
-                    item.confidence,
-                    item.status.value,
-                    item.context,
-                    item.affect,
-                    item.evidence_count,
-                    item.storage_strength,
-                    item.updated_at.isoformat() if item.updated_at else None,
-                    item.revision_count,
-                    item.seq,
-                    item.last_review_at.isoformat() if item.last_review_at else None,
-                    item.review_streak,
-                    item.retrieval_successes,
-                    item.retrieval_failures,
-                    item.id,
-                ),
-            )
+            self._conn.execute(_UPDATE_SQL, _update_row(item))
 
     @_locked
     def update_many(self, items: list[MemoryItem]) -> None:
@@ -994,6 +950,79 @@ def _item_row(item: MemoryItem) -> tuple:
         item.retrieval_successes,
         item.retrieval_failures,
     )
+
+
+def _item_row_params(item: MemoryItem) -> tuple:
+    """All ``_item_row`` fields except ``seq`` (assigned atomically by SQL)."""
+    row = _item_row(item)
+    return row[:19] + row[20:]
+
+
+def _update_row(item: MemoryItem) -> tuple:
+    """Parameters for ``_UPDATE_SQL`` (all fields followed by the id)."""
+    return (
+        item.content,
+        item.content_hash,
+        json.dumps(item.source.to_dict()),
+        json.dumps(item.cues),
+        item.created_at.isoformat(),
+        item.last_access_at.isoformat() if item.last_access_at else None,
+        item.access_count,
+        item.importance,
+        item.strength,
+        item.confidence,
+        item.status.value,
+        item.context,
+        item.affect,
+        item.evidence_count,
+        item.storage_strength,
+        item.updated_at.isoformat() if item.updated_at else None,
+        item.revision_count,
+        item.seq,
+        item.last_review_at.isoformat() if item.last_review_at else None,
+        item.review_streak,
+        item.retrieval_successes,
+        item.retrieval_failures,
+        item.id,
+    )
+
+
+_INSERT_SQL = """
+INSERT INTO memories (
+    id, kind, content, content_hash, source_json, cues_json,
+    created_at, last_access_at, access_count, importance,
+    strength, confidence, status, context, affect, evidence_count,
+    storage_strength, updated_at, revision_count, seq,
+    last_review_at, review_streak, retrieval_successes,
+    retrieval_failures
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?)
+"""
+
+_INSERT_SELECT_SQL = """
+INSERT INTO memories (
+    id, kind, content, content_hash, source_json, cues_json,
+    created_at, last_access_at, access_count, importance,
+    strength, confidence, status, context, affect, evidence_count,
+    storage_strength, updated_at, revision_count, seq,
+    last_review_at, review_streak, retrieval_successes,
+    retrieval_failures
+) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+         COALESCE(MAX(seq), 0) + 1, ?, ?, ?, ?
+  FROM memories
+"""
+
+_UPDATE_SQL = """
+UPDATE memories SET
+    content = ?, content_hash = ?, source_json = ?, cues_json = ?,
+    created_at = ?, last_access_at = ?, access_count = ?,
+    importance = ?, strength = ?, confidence = ?, status = ?,
+    context = ?, affect = ?, evidence_count = ?,
+    storage_strength = ?, updated_at = ?, revision_count = ?,
+    seq = ?, last_review_at = ?, review_streak = ?,
+    retrieval_successes = ?, retrieval_failures = ?
+WHERE id = ?
+"""
 
 
 def _row_to_item(row: sqlite3.Row | None) -> MemoryItem | None:
