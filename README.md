@@ -150,6 +150,10 @@ mnemosis-mcp --db memory.db --embedder openai --embedding-model text-embedding-v
 Vectors are cached next to the DB (`memory.db.cache`) and indexed in
 `memory.db.vec`, so repeated recalls skip embedding calls.
 
+After enough usage, call the `calibrate_decay` MCP tool to fit the
+forgetting curve to your real retrieval history (median survival span ->
+per-user decay rate).
+
 ## Threading
 
 `MemoryEngine` is designed for one agent loop per instance: SQLite access and

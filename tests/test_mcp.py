@@ -123,6 +123,10 @@ class MCPTest(unittest.TestCase):
         self.assertTrue(EXPERIMENTAL_TOOLS - advanced_names)
         self.assertTrue(EXPERIMENTAL_TOOLS <= experimental_names)
 
+    def test_calibrate_decay_tool(self):
+        result = self.server._call_tool("calibrate_decay", {})
+        self.assertIn("calibrated", result)
+
     def test_remember_recall_roundtrip(self):
         saved = self.call(
             "remember",

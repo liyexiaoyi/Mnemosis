@@ -670,6 +670,53 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
         stats["review_due"] = len(self.review_due(limit=1000))
         return stats
 
+    def calibrate_decay_rate(
+        self,
+        now: datetime | None = None,
+        min_span_hours: float = 1.0,
+        floor: float = 0.0005,
+        cap: float = 0.02,
+        min_samples: int = 5,
+    ) -> dict:
+        """Calibrate the forgetting rate from real retrieval history.
+
+        A memory that was accessed again after a long gap survived that
+        span, so the median creation-to-last-access span across accessed
+        memories approximates this user's half-life. The new per-hour
+        decay rate is ``ln(2) / median_span``, clamped to ``[floor, cap]``.
+        Returns a report and updates ``self.curve.decay_rate`` in place.
+        """
+        now = now or utcnow()
+        spans: list[float] = []
+        for item in self.store.all_active():
+            if item.access_count <= 0:
+                continue
+            anchor = item.last_access_at or item.created_at
+            span = (anchor - item.created_at).total_seconds() / 3600.0
+            if span >= min_span_hours:
+                spans.append(span)
+        if len(spans) < min_samples:
+            return {
+                "calibrated": False,
+                "decay_rate": self.curve.decay_rate,
+                "samples": len(spans),
+                "reason": (
+                    f"need at least {min_samples} accessed memories with "
+                    f"a >= {min_span_hours}h span"
+                ),
+            }
+        median = sorted(spans)[len(spans) // 2]
+        rate = min(cap, max(floor, math.log(2.0) / median))
+        old = self.curve.decay_rate
+        self.curve.decay_rate = rate
+        return {
+            "calibrated": True,
+            "old_decay_rate": old,
+            "decay_rate": rate,
+            "median_survival_hours": round(median, 1),
+            "samples": len(spans),
+        }
+
     def close(self) -> None:
         if hasattr(self.backend, "close"):
             self.backend.close()

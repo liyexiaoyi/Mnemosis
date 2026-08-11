@@ -207,6 +207,14 @@ class MCPServer:
                 "inputSchema": {"type": "object", "properties": {}},
             },
             {
+                "name": "calibrate_decay",
+                "description": (
+                    "Calibrate the forgetting rate from real retrieval "
+                    "history (median survival span -> decay rate)."
+                ),
+                "inputSchema": {"type": "object", "properties": {}},
+            },
+            {
                 "name": "working_set",
                 "description": "Recently used memories for prompt injection.",
                 "inputSchema": {
@@ -2242,6 +2250,8 @@ class MCPServer:
             return {"ok": self.engine.restore(args["memory_id"])}
         if name == "stats":
             return self.engine.stats()
+        if name == "calibrate_decay":
+            return self.engine.calibrate_decay_rate()
         if name == "working_set":
             return [
                 {

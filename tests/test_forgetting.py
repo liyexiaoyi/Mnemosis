@@ -1,6 +1,7 @@
 import unittest
 from datetime import timedelta
 
+from mnemosis import MemoryEngine
 from mnemosis.forgetting import ForgettingCurve, ReviewScheduler
 from mnemosis.types import MemoryItem, MemoryKind, SourceRecord, SourceType, utcnow
 
@@ -130,6 +131,49 @@ class ReviewSchedulerTest(unittest.TestCase):
         self.assertLessEqual(
             (next_at - now).total_seconds() / 3600.0, 24.0
         )
+
+
+class DecayCalibrationTest(unittest.TestCase):
+    def _engine_with_spans(self, spans_hours: list[float]) -> MemoryEngine:
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        now = utcnow()
+        for hours in spans_hours:
+            item = engine.remember(
+                f"记忆{hours}小时",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                auto_cues=False,
+            )
+            item.created_at = now - timedelta(hours=hours)
+            item.last_access_at = now - timedelta(hours=1)
+            item.access_count = 2
+            engine.backend.update(item)
+        return engine
+
+    def test_long_survival_lowers_rate(self):
+        engine = self._engine_with_spans([200, 300, 400, 500, 600])
+        report = engine.calibrate_decay_rate()
+        self.assertTrue(report["calibrated"])
+        self.assertLess(report["decay_rate"], 0.002)
+        self.assertEqual(engine.curve.decay_rate, report["decay_rate"])
+        self.assertGreaterEqual(report["samples"], 5)
+
+    def test_short_survival_raises_rate_but_capped(self):
+        engine = self._engine_with_spans([2, 3, 4, 5, 6])
+        report = engine.calibrate_decay_rate()
+        self.assertTrue(report["calibrated"])
+        self.assertGreater(report["decay_rate"], 0.002)
+        self.assertLessEqual(report["decay_rate"], 0.02)
+
+    def test_insufficient_history_keeps_rate(self):
+        engine = MemoryEngine()
+        for i in range(2):
+            engine.remember(f"记忆{i}", auto_cues=False)
+        before = engine.curve.decay_rate
+        report = engine.calibrate_decay_rate()
+        self.assertFalse(report["calibrated"])
+        self.assertEqual(engine.curve.decay_rate, before)
 
 
 if __name__ == "__main__":
