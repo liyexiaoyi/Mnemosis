@@ -954,7 +954,7 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
                     engine.intent_report()
                     engine.action_queue()
                     engine.get_recall_log()
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 errors.append(repr(exc))
 
         threads = [
@@ -968,7 +968,9 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
 
     def test_remember_intent_naive_datetime(self) -> None:
         engine = MemoryEngine()
-        record = engine.remember_intent("买牛奶", due_at=datetime.now())
+        record = engine.remember_intent(
+            "买牛奶", due_at=datetime.now()  # noqa: DTZ005 (naive input test)
+        )
         self.assertTrue(record["due_at"].endswith("+00:00"))
         self.assertEqual(engine.intent_report()["active"], 1)
         self.assertIsNotNone(engine.complete_intent(record["id"]))
@@ -992,7 +994,7 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
                         f"并发缓存测试{n % 30}",
                         embedder=NGramEmbedder(),
                     )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 errors.append(repr(exc))
 
         def writer() -> None:
@@ -1004,7 +1006,7 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
                         source=user,
                         auto_cues=False,
                     )
-            except Exception as exc:
+            except Exception as exc:  # noqa: BLE001
                 errors.append(repr(exc))
 
         threads = [
@@ -2630,7 +2632,7 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(report["completion_ratio"], 0.25)
         default = engine.plan_tracker(plan)
         self.assertEqual(
-            set(s["status"] for s in default["steps"]),
+            {s["status"] for s in default["steps"]},
             {"pending"},
         )
         server = MCPServer(engine=engine)
@@ -5733,7 +5735,9 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         )
         cats = [c["cue"].split(" / ")[0] for c in cards]
         self.assertEqual(len(cats), 4)
-        self.assertTrue(all(a != b for a, b in zip(cats, cats[1:])))
+        from itertools import pairwise
+
+        self.assertTrue(all(a != b for a, b in pairwise(cats)))
 
     def test_practice_kind_preference(self) -> None:
         from datetime import timedelta

@@ -293,6 +293,10 @@ judging), the dense mode matches mem0 on every retrieval metric
 (@1 0.5 / @5 0.8 / @10 0.8), scores slightly higher on answer accuracy
 (0.45 vs 0.40) and ingests 1.4x faster (44s vs 62s per question).
 
+A larger retrieval-only run (50 questions) confirms exact parity on every
+metric (@1 0.42 / @5 0.78 / @10 0.86 / gold-answer-token hit@5 0.38) with
+1.37x faster ingestion (44.6s vs 61.2s per question).
+
 ## Independent public benchmark (LongMemEval)
 
 Mnemosis is also validated against an external, non-self-built benchmark:

@@ -49,9 +49,9 @@ class EventChainTest(unittest.TestCase):
             any("tacos" in c for c in contents),
             "temporal successor should surface via the event chain",
         )
-        successor = [
+        successor = next(
             r for r in results if "tacos" in r.item.content
-        ][0]
+        )
         self.assertTrue(
             any("\u65f6\u5e8f\u540e\u7ee7" in reason for reason in successor.reasons)
         )

@@ -825,7 +825,7 @@ class ConflictAdviceTest(unittest.TestCase):
         return engine, first, second
 
     def test_stronger_side_is_recommended(self):
-        engine, weak, strong = self._conflicting_pair(
+        engine, _weak, strong = self._conflicting_pair(
             importance=0.5, evidence_count=1,
         )
         # strong side: more evidence and higher importance

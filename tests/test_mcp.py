@@ -73,6 +73,7 @@ class MCPTest(unittest.TestCase):
             input=b'{"jsonrpc":"2.0","id":1,"method":"tools/list"}\n',
             capture_output=True,
             timeout=120,
+            check=False,
         )
         self.assertEqual(proc.returncode, 0)
         obj = json.loads(proc.stdout.strip().decode("utf-8"))
@@ -92,6 +93,7 @@ class MCPTest(unittest.TestCase):
             input=framed,
             capture_output=True,
             timeout=120,
+            check=False,
         )
         self.assertEqual(proc.returncode, 0)
         header, sep, payload = proc.stdout.partition(b"\r\n\r\n")
