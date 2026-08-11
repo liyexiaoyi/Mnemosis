@@ -7,8 +7,8 @@ accumulation (Smolen et al., 2016).
 
 from __future__ import annotations
 
-import unittest
 import threading
+import unittest
 from datetime import datetime, timedelta, timezone
 
 from mnemosis import MemoryEngine

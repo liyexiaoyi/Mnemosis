@@ -2,7 +2,7 @@ import unittest
 from datetime import timedelta
 
 from mnemosis import MemoryEngine
-from mnemosis.embedding import Embedder
+from mnemosis.embedding import Embedder, EmbeddingAPIError
 from mnemosis.types import MemoryKind, SourceRecord, SourceType, utcnow
 from mnemosis.vector_index import VectorIndex
 
@@ -281,6 +281,34 @@ class MemoryEngineTest(unittest.TestCase):
             self.assertEqual(embedder.calls, 1)
             self.assertEqual(len(embedder.batches[0]), 30)
             self.assertEqual(engine.vector_index.size, 30)
+        finally:
+            engine.close()
+
+    def test_remember_many_embed_failure_leaves_store_untouched(self):
+        class _FailingEmbedder(Embedder):
+            def embed(self, text: str) -> list[float]:
+                return [1.0, 0.0, 0.0]
+
+            def embed_many(self, texts: list[str]) -> list[list[float]]:
+                raise EmbeddingAPIError("batch embedding failed")
+
+        engine = MemoryEngine(
+            vector_index=VectorIndex(dim=3),
+            index_embedder=_FailingEmbedder(),
+        )
+        try:
+            source = SourceRecord(origin=SourceType.USER)
+            records = [
+                {
+                    "content": f"失败安全 {index}",
+                    "kind": MemoryKind.EPISODIC,
+                    "source": source,
+                }
+                for index in range(3)
+            ]
+            with self.assertRaises(EmbeddingAPIError):
+                engine.remember_many(records)
+            self.assertEqual(engine.backend.count(), 0)
         finally:
             engine.close()
 

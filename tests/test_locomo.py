@@ -4,7 +4,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "benchmarks"))
 
-from locomo_bench import (  # noqa: E402
+from locomo_bench import (
     build_engine,
     eval_retrieval,
     generate_dataset,

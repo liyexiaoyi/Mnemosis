@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import unittest
 import os
 import tempfile
+import unittest
 from datetime import timedelta
 
 from mnemosis import MemoryEngine

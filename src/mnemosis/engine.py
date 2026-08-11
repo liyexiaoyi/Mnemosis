@@ -204,19 +204,28 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
                         + extract_cues(content)
                     )
                 records.append(record)
-            stored = self.store.remember_many(records)
-            for item in stored:
-                self.associations.index(item)
-            pairs = self.associations.link_related_batch(stored)
-            if pairs:
-                self.backend.add_links_many(pairs)
+            # Embed BEFORE writing: if the batch API fails halfway, the
+            # store is untouched and a retry cannot create duplicates.
+            vectors = None
             if (
                 self.vector_index is not None
                 and self.index_embedder is not None
             ):
                 vectors = self.index_embedder.embed_many(
-                    [item.content for item in stored]
+                    [record["content"] for record in records]
                 )
+            stored = self.store.remember_many(records)
+            if vectors is not None and len(vectors) != len(stored):
+                raise RuntimeError(
+                    "embedder returned "
+                    f"{len(vectors)} vectors for {len(stored)} memories"
+                )
+            for item in stored:
+                self.associations.index(item)
+            pairs = self.associations.link_related_batch(stored)
+            if pairs:
+                self.backend.add_links_many(pairs)
+            if vectors is not None:
                 self.vector_index.add_many(
                     [
                         (item.id, vector)

@@ -1,6 +1,6 @@
-import json
-import io
 import http.client
+import io
+import json
 import subprocess
 import sys
 import threading
@@ -9,10 +9,10 @@ import unittest
 from mnemosis import MemoryEngine
 from mnemosis.mcp_server import (
     EXPERIMENTAL_TOOLS,
-    MCPServer,
     MAX_MESSAGE_SIZE,
-    build_http_server,
+    MCPServer,
     _read_message,
+    build_http_server,
 )
 from mnemosis.types import SourceRecord, SourceType
 
@@ -70,7 +70,7 @@ class MCPTest(unittest.TestCase):
                 "-c",
                 "from mnemosis.mcp_server import run_stdio; run_stdio()",
             ],
-            input='{"jsonrpc":"2.0","id":1,"method":"tools/list"}\n'.encode("utf-8"),
+            input=b'{"jsonrpc":"2.0","id":1,"method":"tools/list"}\n',
             capture_output=True,
             timeout=120,
         )
@@ -82,7 +82,7 @@ class MCPTest(unittest.TestCase):
         body = '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
         framed = (
             f"Content-Length: {len(body.encode('utf-8'))}\r\n\r\n{body}"
-        ).encode("utf-8")
+        ).encode()
         proc = subprocess.run(
             [
                 sys.executable,

@@ -4,7 +4,7 @@ import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "benchmarks"))
 
-from lifecycle_eval import run_decay_eval, run_update_eval  # noqa: E402
+from lifecycle_eval import run_decay_eval, run_update_eval
 
 
 class LifecycleEvalTest(unittest.TestCase):

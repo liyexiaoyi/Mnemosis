@@ -211,6 +211,24 @@ class LearningTest(unittest.TestCase):
         c1_after = self.engine.backend.get(c1.id)
         self.assertLess(c1_after.confidence, 0.9)
 
+    def test_emotion_phase_links_emotional_episodes_sharing_cue(self):
+        a = self.remember(
+            "第一次见到猫很激动。",
+            kind=MemoryKind.EPISODIC,
+            affect="arousing",
+            cues=["猫"],
+        )
+        b = self.remember(
+            "第二次撸猫很幸福。",
+            kind=MemoryKind.EPISODIC,
+            affect="positive",
+            cues=["猫"],
+        )
+        report = self.engine.sleep()
+        self.assertGreaterEqual(report.emotion_links, 1)
+        self.assertEqual(self.engine.backend.link_weight(a.id, b.id), 1.2)
+        self.assertEqual(self.engine.backend.link_weight(b.id, a.id), 1.2)
+
     def test_working_set_orders_by_recent_access(self):
         a = self.remember("Alpha.")
         b = self.remember("Beta.")

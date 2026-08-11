@@ -283,17 +283,36 @@ class Consolidator:
             boosted += 1
 
         links = 0
-        for i in range(len(emotional)):
-            a = emotional[i]
-            a_cues = set(a.cues)
-            for b in emotional[i + 1 :]:
-                if a.content_hash == b.content_hash:
-                    continue
-                if not (a_cues & set(b.cues)):
-                    continue
-                self.backend.add_link(a.id, b.id, weight=1.2)
-                self.backend.add_link(b.id, a.id, weight=1.2)
-                links += 1
+        if len(emotional) >= 2:
+            # Same cue-inverted pairing as the REM pass: only pairs that
+            # share a cue are examined instead of every O(N^2) pair.
+            cue_map: dict[str, list[MemoryItem]] = {}
+            for item in emotional:
+                for cue in item.cues:
+                    bucket = cue_map.get(cue)
+                    if bucket is None:
+                        bucket = []
+                        cue_map[cue] = bucket
+                    if len(bucket) < _REM_CUE_BUCKET_LIMIT:
+                        bucket.append(item)
+            by_id = {item.id: item for item in emotional}
+            order = {item.id: index for index, item in enumerate(emotional)}
+            for a in emotional:
+                counts: dict[str, int] = {}
+                for cue in a.cues:
+                    for b in cue_map.get(cue, ()):
+                        if b.id == a.id:
+                            continue
+                        counts[b.id] = counts.get(b.id, 0) + 1
+                for b_id in counts:
+                    if order.get(b_id, -1) <= order[a.id]:
+                        continue
+                    b = by_id[b_id]
+                    if a.content_hash == b.content_hash:
+                        continue
+                    self.backend.add_link(a.id, b.id, weight=1.2)
+                    self.backend.add_link(b.id, a.id, weight=1.2)
+                    links += 1
         return boosted, links
 
     def _merge_duplicates(self, now: datetime) -> int:
