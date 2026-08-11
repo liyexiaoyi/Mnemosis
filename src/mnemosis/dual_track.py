@@ -116,6 +116,60 @@ class DualTrackStore:
         self.invalidate_term_index()
         return stored
 
+    def remember_many(self, records: list[dict]) -> list[MemoryItem]:
+        """Bulk remember with the same per-item semantics as ``remember``.
+
+        Episodic inserts share one atomic transaction and all term rows are
+        rebuilt in one bulk statement, so ingesting 10k memories takes
+        seconds instead of a minute. Each record mirrors ``remember``'s
+        arguments: content/kind/source required; cues/importance/confidence/
+        strength/created_at/context/affect/evidence_count/storage_strength
+        optional.
+        """
+        prepared: list[MemoryItem] = []
+        for record in records:
+            content = record["content"]
+            kind = record["kind"]
+            source = record["source"]
+            importance = record.get("importance")
+            if importance is None:
+                importance = self.scorer.score(content, source=source)
+            prepared.append(
+                MemoryItem(
+                    content=content,
+                    kind=kind,
+                    source=source,
+                    cues=normalize_cues(record.get("cues") or []),
+                    created_at=record.get("created_at") or utcnow(),
+                    importance=importance,
+                    confidence=record.get("confidence", 1.0),
+                    strength=record.get("strength", 1.0),
+                    context=record.get("context"),
+                    affect=record.get("affect"),
+                    evidence_count=record.get("evidence_count", 1),
+                    storage_strength=record.get("storage_strength", 1.0),
+                )
+            )
+        episodic = [
+            item
+            for item in prepared
+            if item.kind is not MemoryKind.SEMANTIC
+        ]
+        if episodic:
+            self.backend.add_many(episodic)
+        stored: list[MemoryItem] = []
+        for item in prepared:
+            if item.kind is MemoryKind.SEMANTIC:
+                stored.append(self.backend.upsert(item))
+            else:
+                stored.append(item)
+        self.backend.add_cues_many((item.id, item.cues) for item in stored)
+        self.backend.index_terms_many(
+            (item.id, self._terms(item), item.kind) for item in stored
+        )
+        self.invalidate_term_index()
+        return stored
+
     def reindex_terms(self, item: MemoryItem) -> None:
         """Rebuild the persisted term index for a changed item."""
         self.backend.remove_terms(item.id)

@@ -171,6 +171,60 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
             self.event_chain.invalidate()
         return item
 
+    def remember_many(
+        self,
+        memories: list[dict],
+        *,
+        auto_cues: bool = True,
+        auto_context: bool = True,
+    ) -> list[MemoryItem]:
+        """Batch remember: same semantics as ``remember`` per record.
+
+        Each dict accepts ``remember``'s keyword arguments (content required;
+        kind/source/cues/importance/confidence/strength/created_at/context/
+        affect/evidence_count/storage_strength optional). Storage and term
+        indexing are committed in bulk, so large imports are several times
+        faster than calling ``remember`` in a loop.
+        """
+        with self._lock:
+            records: list[dict] = []
+            for memory in memories:
+                content = memory["content"]
+                record = dict(memory)
+                record.setdefault(
+                    "kind", MemoryKind.EPISODIC
+                )
+                record["source"] = record.get("source") or SourceRecord(
+                    origin=SourceType.USER
+                )
+                if auto_context and record.get("context") is None:
+                    record["context"] = self._extract_context(content)
+                if auto_cues:
+                    record["cues"] = normalize_cues(
+                        list(record.get("cues") or [])
+                        + extract_cues(content)
+                    )
+                records.append(record)
+            stored = self.store.remember_many(records)
+            for item in stored:
+                self.associations.index(item)
+            pairs = self.associations.link_related_batch(stored)
+            if pairs:
+                self.backend.add_links_many(pairs)
+            if (
+                self.vector_index is not None
+                and self.index_embedder is not None
+            ):
+                for item in stored:
+                    self.vector_index.add(
+                        item.id, self.index_embedder.embed(item.content)
+                    )
+            if any(
+                item.kind is MemoryKind.EPISODIC for item in stored
+            ):
+                self.event_chain.invalidate()
+            return stored
+
     def remember_turn(
         self,
         text: str,
@@ -627,9 +681,18 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
                 for data in payload.get("memories", [])
             ]
             self.backend.add_many(items)
+            self.backend.index_terms_many(
+                (item.id, self.store._terms(item), item.kind)
+                for item in items
+            )
+            self.store.invalidate_term_index()
             for item in items:
                 self.associations.index(item)
                 self.associations.link_related(item)
+            if any(
+                item.kind is MemoryKind.EPISODIC for item in items
+            ):
+                self.event_chain.invalidate()
             for record in payload.get("intents", []):
                 record = dict(record)
                 if record.get("id"):

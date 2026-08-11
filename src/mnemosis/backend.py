@@ -12,6 +12,7 @@ import threading
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 from functools import wraps
+from itertools import islice
 
 from .types import (
     MemoryItem,
@@ -138,6 +139,12 @@ class DictBackend(Backend):
     ) -> None:
         for memory_id, cues in pairs:
             self.remove_cues(memory_id, cues)
+
+    def index_terms_many(
+        self, pairs: Iterable[tuple[str, Iterable[str], MemoryKind]]
+    ) -> None:
+        for memory_id, terms, kind in pairs:
+            self.index_terms(memory_id, terms, kind)
 
     def get_setting(self, key: str, default: str | None = None) -> str | None:
         return self._settings.get(key, default)
@@ -275,6 +282,12 @@ class DictBackend(Backend):
         self._links[(src, dst)] = max(self._links.get((src, dst), 0.0), weight)
         self._adj.setdefault(src, set()).add(dst)
         self._adj.setdefault(dst, set()).add(src)
+
+    def add_links_many(
+        self, pairs: Iterable[tuple[str, str, float]]
+    ) -> None:
+        for src, dst, weight in pairs:
+            self.add_link(src, dst, weight)
 
     def link_weight(self, src: str, dst: str) -> float:
         return self._links.get((src, dst), 0.0)
@@ -650,6 +663,40 @@ class SQLiteBackend(Backend):
             self._conn.commit()
             self._term_pending = 0
 
+    def index_terms_many(
+        self, pairs: Iterable[tuple[str, Iterable[str], MemoryKind]]
+    ) -> None:
+        """Rebuild term rows for many memories in one atomic transaction."""
+        entries: list[tuple[str, str, str]] = []
+        ids: list[str] = []
+        for memory_id, terms, kind in pairs:
+            normalized = sorted(set(terms))
+            if not normalized:
+                continue
+            ids.append(memory_id)
+            entries.extend(
+                (term, memory_id, kind.value) for term in normalized
+            )
+        if not entries:
+            return
+        # Chunked commits keep one huge bulk write from ballooning the WAL
+        # or blocking other connections for minutes.
+        with self._conn:
+            for start in range(0, len(ids), 500):
+                chunk = ids[start : start + 500]
+                placeholders = ",".join("?" for _ in chunk)
+                self._conn.execute(
+                    f"DELETE FROM terms WHERE memory_id IN ({placeholders})",
+                    tuple(chunk),
+                )
+        for offset in range(0, len(entries), 50_000):
+            with self._conn:
+                self._conn.executemany(
+                    "INSERT OR REPLACE INTO terms (term, memory_id, kind) "
+                    "VALUES (?, ?, ?)",
+                    entries[offset : offset + 50_000],
+                )
+
     @_locked
     def remove_terms(self, memory_id: str) -> None:
         self._conn.execute(
@@ -799,6 +846,29 @@ class SQLiteBackend(Backend):
                 """,
                 (src, dst, weight),
             )
+
+    @_locked
+    def add_links_many(
+        self, pairs: Iterable[tuple[str, str, float]]
+    ) -> None:
+        """Insert many directed links in chunked transactions."""
+        rows = (
+            (src, dst, weight)
+            for src, dst, weight in pairs
+            if src != dst
+        )
+        while True:
+            chunk = list(islice(rows, 50_000))
+            if not chunk:
+                return
+            with self._conn:
+                self._conn.executemany(
+                    """
+                    INSERT INTO links (src, dst, weight) VALUES (?, ?, ?)
+                    ON CONFLICT(src, dst) DO UPDATE SET weight = MAX(weight, excluded.weight)
+                    """,
+                    chunk,
+                )
 
     @_locked
     def link_weight(self, src: str, dst: str) -> float:

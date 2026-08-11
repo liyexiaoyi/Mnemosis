@@ -163,6 +163,88 @@ class MemoryEngineTest(unittest.TestCase):
         candidates2 = engine._anchor_items({"健身房", "电话"}, None, set())
         self.assertIn(active.id, {candidate.id for candidate in candidates2})
 
+    def test_remember_many_batches_unique_seq_and_searchable_terms(self):
+        engine = MemoryEngine()
+        source = SourceRecord(origin=SourceType.USER)
+        records = [
+            {
+                "content": f"批量记忆 {index} 主题A",
+                "kind": MemoryKind.EPISODIC,
+                "source": source,
+            }
+            for index in range(50)
+        ]
+        stored = engine.remember_many(records)
+        self.assertEqual(len(stored), 50)
+        seqs = [item.seq for item in stored]
+        self.assertEqual(len(set(seqs)), 50)
+        ids = engine.backend.find_by_terms({"批量"}, None)
+        self.assertEqual(len(ids), 50)
+        results = engine.recall("批量记忆 17", top_k=3)
+        self.assertEqual(results[0].item.content, "批量记忆 17 主题A")
+
+    def test_import_memories_builds_term_index(self):
+        """Imported rows must be reachable through the term index."""
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        payload = {
+            "memories": [
+                {
+                    "content": "imported 独特词",
+                    "kind": "episodic",
+                    "source": user.to_dict(),
+                    "cues": ["导入测试"],
+                }
+            ]
+        }
+        engine.import_memories(payload)
+        ids = engine.backend.find_by_terms({"imported"}, None)
+        self.assertTrue(ids)
+        results = engine.recall("imported 独特词", top_k=3)
+        self.assertEqual(results[0].item.content, "imported 独特词")
+
+    def test_import_episodic_updates_event_chain(self):
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        payload = {
+            "memories": [
+                {
+                    "content": "alice bought camera on 2026-03-01.",
+                    "kind": "episodic",
+                    "source": user.to_dict(),
+                    "cues": ["alice", "2026-03-01"],
+                },
+                {
+                    "content": "alice visited kyoto on 2026-03-02.",
+                    "kind": "episodic",
+                    "source": user.to_dict(),
+                    "cues": ["alice", "2026-03-02"],
+                },
+            ]
+        }
+        engine.import_memories(payload)
+        items = engine.backend.list()
+        first = next(item for item in items if "camera" in item.content)
+        second = next(item for item in items if "kyoto" in item.content)
+        self.assertEqual(engine.event_chain.next_event_id(first.id), second.id)
+
+    def test_remember_many_links_are_deduplicated(self):
+        engine = MemoryEngine()
+        source = SourceRecord(origin=SourceType.USER)
+        records = [
+            {
+                "content": f"项目 {index} 讨论会",
+                "kind": MemoryKind.EPISODIC,
+                "source": source,
+                "cues": ["共同线索"],
+            }
+            for index in range(10)
+        ]
+        engine.remember_many(records)
+        links = engine.backend.all_links()
+        self.assertEqual(len(links), 90)  # 10 * 9 directed edges, no dups
+        self.assertEqual(len({(a, b) for a, b, _ in links}), 90)
+
 
 if __name__ == "__main__":
     unittest.main()
