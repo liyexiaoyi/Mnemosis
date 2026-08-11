@@ -302,6 +302,11 @@ again shows identical retrieval (@1 0.433 / @5 0.767 / @10 0.867) and equal
 answer accuracy (0.433 both), with 2.1x faster ingestion (28.0s vs 58.8s
 per question).
 
+A second cloud-judged sample (different seed, 20 questions, dense mode)
+scored 0.6 answer accuracy, so the accuracy range across samples is
+~0.43-0.60 (50 combined questions ≈ 0.5), consistent with mem0-tier
+retrieval and answer quality.
+
 At a 50k-input / 25k-active real-Chinese store, recall is 26-85ms and
 sleep consolidation ~2.3s after the large-store scaling work (batched term
 df, batched REM links, generic-cue skipping).
