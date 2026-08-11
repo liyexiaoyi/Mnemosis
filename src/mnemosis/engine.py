@@ -826,7 +826,10 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
         return self.recycle.restore(memory_id)
 
     def purge(self, before: datetime | None = None, limit: int = 1000) -> int:
-        return self.recycle.purge(before=before, limit=limit)
+        count = self.recycle.purge(before=before, limit=limit)
+        if count:
+            self.store.invalidate_term_index()
+        return count
 
 
 

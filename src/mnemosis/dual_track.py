@@ -120,8 +120,36 @@ class DualTrackStore:
         self._term_cache: dict[tuple, frozenset[str]] = {}
         self._embed_cache: dict[str, list[float]] = {}
         self._inverted: dict[str, dict[str, set[str]]] = {}
+        self._df_cache: dict[tuple[str, MemoryKind | None], int] = {}
         self._lock = threading.RLock()
         self.pattern_completions = 0
+
+    def _cached_term_dfs(
+        self, terms: set[str], kind: MemoryKind | None
+    ) -> dict[str, int]:
+        """Term document frequencies with an invalidated-on-write cache."""
+        with self._lock:
+            missing = [
+                term for term in terms if (term, kind) not in self._df_cache
+            ]
+            cached = {
+                term: self._df_cache.get((term, kind), 0)
+                for term in terms
+            }
+        if missing:
+            # Query outside the store lock so one recall's DB I/O does not
+            # serialize every concurrent recall.
+            found = self.backend.term_dfs(missing, kind)
+            with self._lock:
+                for term, df in found.items():
+                    self._df_cache[(term, kind)] = df
+                for term in missing:
+                    self._df_cache.setdefault((term, kind), 0)
+                cached = {
+                    term: self._df_cache.get((term, kind), 0)
+                    for term in terms
+                }
+        return cached
 
     def remember(
         self,
@@ -320,7 +348,7 @@ class DualTrackStore:
             hit_counts: dict[str, int] = {}
             term_ids: dict[str, set[str]] = {}
             total_active = self.backend.count(kind=kind)
-            term_df = self.backend.term_dfs(query_terms, kind)
+            term_df = self._cached_term_dfs(query_terms, kind)
             for term in query_terms:
                 df = term_df.get(term, 0)
                 if (
@@ -1069,6 +1097,7 @@ class DualTrackStore:
     def invalidate_term_index(self) -> None:
         with self._lock:
             self._inverted = {}
+            self._df_cache = {}
 
     def _follow_event_chain(
         self,
