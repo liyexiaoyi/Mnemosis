@@ -193,7 +193,7 @@ class MemoryItem:
             content=data["content"],
             kind=MemoryKind(data["kind"]),
             source=SourceRecord.from_dict(data["source"]),
-            id=data.get("id", uuid.uuid4().hex),
+            id=data.get("id") or uuid.uuid4().hex,
             cues=data.get("cues", []),
             created_at=_from_iso(data.get("created_at")) or utcnow(),
             last_access_at=_from_iso(data.get("last_access_at")),

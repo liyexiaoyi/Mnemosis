@@ -28,6 +28,9 @@ _MAX_CUE_GROUP = 120
 _MAX_PAIRS_PER_CUE = 1000
 """Pairwise budget per cue so sleep stays O(N) worst-case on huge stores."""
 
+_REM_CUE_BUCKET_LIMIT = 500
+"""Max items kept per cue for REM association (over-generic cues skipped)."""
+
 
 def _bounded_pairs(items: list[MemoryItem]) -> Iterator[tuple[MemoryItem, MemoryItem]]:
     """Yield at most ``_MAX_PAIRS_PER_CUE`` pairs from the strongest items.
@@ -140,7 +143,7 @@ class Consolidator:
         promoted = self._promote_episodic(now)
         recycled = self._prune_noise(now)
         conflicts = self.detect_conflicts()
-        rem_links, rem_resolved = self._rem_phase(now)
+        rem_links, rem_resolved = self._rem_phase(now, conflicts)
         emotion_boosted, emotion_links = self._emotion_phase(now)
         accommodated = self._accommodation_phase(now)
         reflected = self.reflect(summarizer or self.llm_summarizer, now)
@@ -322,7 +325,9 @@ class Consolidator:
                 merged += 1
         return merged
 
-    def _rem_phase(self, now: datetime) -> tuple[int, int]:
+    def _rem_phase(
+        self, now: datetime, conflicts: list[Conflict] | None = None
+    ) -> tuple[int, int]:
         """REM sleep: associative strengthening + conflict resolution.
 
         Walker & Stickgold (2004): REM sleep integrates new experiences into
@@ -337,18 +342,38 @@ class Consolidator:
         """
         episodes = self.store.all_active(MemoryKind.EPISODIC)
         links = 0
-        for i in range(len(episodes)):
-            a = episodes[i]
-            a_cues = set(a.cues)
-            for b in episodes[i + 1 :]:
-                shared = len(a_cues & set(b.cues))
-                if shared < 2:
-                    continue
-                self.backend.add_link(a.id, b.id, weight=0.8 + 0.1 * shared)
-                links += 1
+        if len(episodes) >= 2:
+            # Cue -> items index: only pairs that share at least one cue are
+            # examined, instead of every O(N^2) pair (each of which used to
+            # rebuild a set for b). Cues shared by huge generic groups are
+            # skipped because they carry no associative signal.
+            cue_map: dict[str, list[MemoryItem]] = {}
+            for item in episodes:
+                for cue in item.cues:
+                    bucket = cue_map.get(cue)
+                    if bucket is None:
+                        bucket = []
+                        cue_map[cue] = bucket
+                    if len(bucket) < _REM_CUE_BUCKET_LIMIT:
+                        bucket.append(item)
+            order = {item.id: index for index, item in enumerate(episodes)}
+            for a in episodes:
+                counts: dict[str, int] = {}
+                for cue in a.cues:
+                    for b in cue_map.get(cue, ()):
+                        if b.id == a.id:
+                            continue
+                        counts[b.id] = counts.get(b.id, 0) + 1
+                for b_id, shared in counts.items():
+                    if shared < 2 or order.get(b_id, -1) <= order[a.id]:
+                        continue
+                    self.backend.add_link(a.id, b.id, weight=0.8 + 0.1 * shared)
+                    links += 1
 
         resolved = 0
-        for conflict in self.detect_conflicts():
+        for conflict in (
+            conflicts if conflicts is not None else self.detect_conflicts()
+        ):
             a, b = conflict.a, conflict.b
             if a.confidence > 0.5 and b.confidence > 0.5:
                 a.confidence = max(0.4, a.confidence - 0.1)
@@ -369,11 +394,14 @@ class Consolidator:
         that scales with recency and importance. The window is bounded so the
         pass stays cheap at scale.
         """
-        episodes = self.store.all_active(MemoryKind.EPISODIC)
-        episodes.sort(key=lambda item: item.seq, reverse=True)
+        # backend.list already orders by seq DESC, so only the replay window
+        # is loaded instead of the whole episodic store.
+        episodes = self.backend.list(
+            kind=MemoryKind.EPISODIC, limit=self.replay_window
+        )
         replay_window_seconds = self.replay_recency_days * 86400.0
         replayed = 0
-        for item in episodes[: self.replay_window]:
+        for item in episodes:
             age_seconds = max(0.0, (now - item.created_at).total_seconds())
             if age_seconds > replay_window_seconds:
                 continue
@@ -502,6 +530,12 @@ class Consolidator:
             for item in self.store.all_active(MemoryKind.SEMANTIC)
             if item.confidence >= self.conflict_min_confidence
         ]
+        # Tokenize each content once; pair scans then only do set
+        # intersections instead of re-tokenizing the same text per pair.
+        item_tokens: dict[str, frozenset[str]] = {
+            item.id: frozenset(tokenize(item.content)) for item in semantic
+        }
+        cue_tokens_cache: dict[str, frozenset[str]] = {}
         groups: dict[str, list[MemoryItem]] = {}
         for item in semantic:
             for cue in item.cues:
@@ -517,9 +551,12 @@ class Consolidator:
                 if pair in seen_pairs:
                     continue
                 seen_pairs.add(pair)
-                cue_tokens = set(tokenize(cue))
+                cue_tokens = cue_tokens_cache.get(cue)
+                if cue_tokens is None:
+                    cue_tokens = frozenset(tokenize(cue))
+                    cue_tokens_cache[cue] = cue_tokens
                 common = (
-                    set(tokenize(a.content)) & set(tokenize(b.content))
+                    item_tokens[a.id] & item_tokens[b.id]
                 ) - cue_tokens
                 if not common:
                     continue

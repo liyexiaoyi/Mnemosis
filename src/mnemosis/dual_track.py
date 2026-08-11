@@ -30,6 +30,9 @@ from .types import (
 )
 from .zh_nlp import expand_synonyms
 
+_FALLBACK_SCAN_LIMIT = 1000
+"""Max memories loaded for a zero-hit query (recency fallback)."""
+
 MOOD_WORDS: dict[str, tuple[str, ...]] = {
     "positive": (
         "开心", "高兴", "快乐", "兴奋", "满意", "喜欢", "愉快",
@@ -225,7 +228,14 @@ class DualTrackStore:
                 ids = sorted(ids)
                 candidates = self.backend.get_many(ids)
         if not candidates:
-            candidates = self.backend.list(kind=kind)
+            # Zero-hit queries fall back to recency instead of scanning the
+            # whole store: with 10k+ memories a full load + score costs
+            # hundreds of ms, while the most recent slice is what the
+            # retrievability ranking would surface anyway (Ebbinghaus
+            # recency). Large stores stay fast; small stores are unaffected.
+            candidates = self.backend.list(
+                kind=kind, limit=_FALLBACK_SCAN_LIMIT
+            )
             if exclude_ids:
                 candidates = [
                     item for item in candidates if item.id not in exclude_ids

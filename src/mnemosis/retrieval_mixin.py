@@ -429,7 +429,11 @@ class RetrievalMixin:
         """Score every active memory against one concept chunk."""
 
         rows: list[tuple[float, MemoryItem]] = []
-        for item in self.store.all_active(kind=kind):
+        candidate_ids = self.backend.find_by_terms(terms, kind)
+        if not candidate_ids:
+            return []
+        candidate_ids -= exclude_ids
+        for item in self.backend.get_many(sorted(candidate_ids)):
             if item.id in exclude_ids:
                 continue
             text = item.content + " " + " ".join(item.cues)
