@@ -22,6 +22,17 @@ from .types import (
 )
 
 
+def _locked(method):
+    """Serialize a backend method on the instance lock (reentrant)."""
+
+    @wraps(method)
+    def wrapper(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    return wrapper
+
+
 class Backend(ABC):
     """Minimal storage contract used by the rest of Mnemosis."""
 
@@ -107,6 +118,7 @@ class DictBackend(Backend):
     """In-memory backend for tests and quickstarts."""
 
     def __init__(self) -> None:
+        self._lock = threading.RLock()
         self._items: dict[str, MemoryItem] = {}
         self._cues: dict[str, set[str]] = {}
         self._links: dict[tuple[str, str], float] = {}
@@ -115,43 +127,52 @@ class DictBackend(Backend):
         self._settings: dict[str, str] = {}
         self._seq = 0
 
+    @_locked
     def add(self, item: MemoryItem) -> None:
         self._seq += 1
         item.seq = self._seq
         self._items[item.id] = item
 
+    @_locked
     def add_many(self, items: list[MemoryItem]) -> None:
         for item in items:
             self.add(item)
 
+    @_locked
     def update_many(self, items: list[MemoryItem]) -> None:
         for item in items:
             self.update(item)
 
+    @_locked
     def add_cues_many(
         self, pairs: Iterable[tuple[str, Iterable[str]]]
     ) -> None:
         for memory_id, cues in pairs:
             self.add_cues(memory_id, cues)
 
+    @_locked
     def remove_cues_many(
         self, pairs: Iterable[tuple[str, Iterable[str]]]
     ) -> None:
         for memory_id, cues in pairs:
             self.remove_cues(memory_id, cues)
 
+    @_locked
     def index_terms_many(
         self, pairs: Iterable[tuple[str, Iterable[str], MemoryKind]]
     ) -> None:
         for memory_id, terms, kind in pairs:
             self.index_terms(memory_id, terms, kind)
 
+    @_locked
     def get_setting(self, key: str, default: str | None = None) -> str | None:
         return self._settings.get(key, default)
 
+    @_locked
     def set_setting(self, key: str, value: str) -> None:
         self._settings[key] = value
 
+    @_locked
     def upsert(self, item: MemoryItem) -> MemoryItem:
         existing = self.find_by_hash(item.kind, item.content_hash)
         if existing is None:
@@ -163,6 +184,7 @@ class DictBackend(Backend):
         self.add_cues(existing.id, item.cues)
         return existing
 
+    @_locked
     def find_by_hash(
         self, kind: MemoryKind, content_hash: str
     ) -> MemoryItem | None:
@@ -171,9 +193,11 @@ class DictBackend(Backend):
                 return item
         return None
 
+    @_locked
     def get(self, memory_id: str) -> MemoryItem | None:
         return self._items.get(memory_id)
 
+    @_locked
     def get_many(self, memory_ids: Iterable[str]) -> list[MemoryItem]:
         items = [
             item
@@ -184,9 +208,11 @@ class DictBackend(Backend):
         items.sort(key=lambda item: item.seq, reverse=True)
         return items
 
+    @_locked
     def update(self, item: MemoryItem) -> None:
         self._items[item.id] = item
 
+    @_locked
     def delete(self, memory_id: str) -> None:
         self._items.pop(memory_id, None)
         self._terms_index = {
@@ -202,6 +228,7 @@ class DictBackend(Backend):
         for neighbors in self._adj.values():
             neighbors.discard(memory_id)
 
+    @_locked
     def index_terms(
         self, memory_id: str, terms: Iterable[str], kind: MemoryKind
     ) -> None:
@@ -209,6 +236,7 @@ class DictBackend(Backend):
         for term in set(terms):
             self._terms_index.setdefault(term, set()).add(memory_id)
 
+    @_locked
     def remove_terms(self, memory_id: str) -> None:
         self._terms_index = {
             term: ids
@@ -216,6 +244,7 @@ class DictBackend(Backend):
             if memory_id not in ids
         }
 
+    @_locked
     def find_by_terms(
         self, terms: Iterable[str], kind: MemoryKind | None
     ) -> set[str]:
@@ -231,6 +260,7 @@ class DictBackend(Backend):
             and self._items[memory_id].kind == kind
         }
 
+    @_locked
     def term_df(self, term: str, kind: MemoryKind | None) -> int:
         if kind is None:
             return len(self._terms_index.get(term, ()))
@@ -245,6 +275,7 @@ class DictBackend(Backend):
             )
         )
 
+    @_locked
     def term_dfs(
         self, terms: Iterable[str], kind: MemoryKind | None
     ) -> dict[str, int]:
@@ -253,6 +284,7 @@ class DictBackend(Backend):
             for term in set(terms)
         }
 
+    @_locked
     def all_terms(self, kind: MemoryKind | None) -> dict[str, set[str]]:
         if kind is None:
             return {term: set(ids) for term, ids in self._terms_index.items()}
@@ -266,6 +298,7 @@ class DictBackend(Backend):
             for term, ids in self._terms_index.items()
         }
 
+    @_locked
     def list(
         self,
         *,
@@ -281,6 +314,7 @@ class DictBackend(Backend):
         items.sort(key=lambda i: i.seq, reverse=True)
         return items[:limit] if limit is not None else items
 
+    @_locked
     def count(
         self,
         *,
@@ -294,16 +328,19 @@ class DictBackend(Backend):
             and (kind is None or item.kind == kind)
         )
 
+    @_locked
     def add_cues(self, memory_id: str, cues: Iterable[str]) -> None:
         for cue in normalize_cues(list(cues)):
             self._cues.setdefault(cue, set()).add(memory_id)
 
+    @_locked
     def remove_cues(self, memory_id: str, cues: Iterable[str]) -> None:
         for cue in normalize_cues(list(cues)):
             ids = self._cues.get(cue)
             if ids:
                 ids.discard(memory_id)
 
+    @_locked
     def find_by_cue(self, cue: str) -> list[MemoryItem]:
         cue = cue.strip().lower()
         ids = sorted(self._cues.get(cue, set()))
@@ -311,6 +348,7 @@ class DictBackend(Backend):
         items.sort(key=lambda item: (item.seq, item.content))
         return items
 
+    @_locked
     def add_link(self, src: str, dst: str, weight: float = 1.0) -> None:
         if src == dst:
             return
@@ -318,18 +356,22 @@ class DictBackend(Backend):
         self._adj.setdefault(src, set()).add(dst)
         self._adj.setdefault(dst, set()).add(src)
 
+    @_locked
     def add_links_many(
         self, pairs: Iterable[tuple[str, str, float]]
     ) -> None:
         for src, dst, weight in pairs:
             self.add_link(src, dst, weight)
 
+    @_locked
     def link_weight(self, src: str, dst: str) -> float:
         return self._links.get((src, dst), 0.0)
 
+    @_locked
     def all_links(self) -> list[tuple[str, str, float]]:
         return [(a, b, w) for (a, b), w in self._links.items()]
 
+    @_locked
     def related(
         self, memory_id: str, depth: int = 1, max_nodes: int = 20
     ) -> list[MemoryItem]:
@@ -347,6 +389,7 @@ class DictBackend(Backend):
         result.sort(key=lambda item: (item.seq, item.content))
         return result[:max_nodes]
 
+    @_locked
     def stats(self) -> dict:
         active = [i for i in self._items.values() if i.status == MemoryStatus.ACTIVE]
         return {
@@ -361,15 +404,6 @@ class DictBackend(Backend):
             ),
             "avg_strength": round(sum(i.strength for i in active) / max(1, len(active)), 3),
         }
-
-
-def _locked(method):
-    @wraps(method)
-    def wrapper(self, *args, **kwargs):
-        with self._lock:
-            return method(self, *args, **kwargs)
-
-    return wrapper
 
 
 class SQLiteBackend(Backend):
