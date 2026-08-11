@@ -307,6 +307,7 @@ class RetrievalMixin:
         cue_weight: float = 0.12,
         date_weight: float = 0.28,
         expansion: bool = True,
+        early_stop: bool = False,
     ) -> list[RecallResult]:
         """Fused multi-path recall.
 
@@ -333,6 +334,7 @@ class RetrievalMixin:
             cue_weight=cue_weight,
             date_weight=date_weight,
             expansion=expansion,
+            early_stop=early_stop,
         )
     def _concept_chunks(self, query: str) -> list[str]:
         """Split a Chinese multi-concept query into chunks (working memory

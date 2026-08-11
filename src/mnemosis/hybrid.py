@@ -312,6 +312,7 @@ def fused_recall(
     cue_weight: float = 0.12,
     date_weight: float = 0.28,
     expansion: bool = True,
+    early_stop: bool = False,
 ) -> list:
     """Fuse keyword + n-gram recalls with recency / cue / date signals."""
     from .types import tokenize
@@ -340,6 +341,18 @@ def fused_recall(
         )
         passes.append(([r.item.id for r in kw_results], kw_weight))
         all_results.extend(kw_results)
+        if (
+            early_stop
+            and kw_results
+            and kw_results[0].score >= 0.8
+            and (
+                len(kw_results) < 2
+                or kw_results[0].score - kw_results[1].score >= 0.2
+            )
+        ):
+            # An exact, near-perfect keyword match is already the answer;
+            # skip the n-gram and dense passes entirely.
+            return kw_results[:top_k]
     if ng_weight > 0:
         ng_results = engine.recall(
             rewritten,

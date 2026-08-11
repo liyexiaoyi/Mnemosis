@@ -496,23 +496,44 @@ class Consolidator:
             return []
         now = now or utcnow()
         reflected: list[MemoryItem] = []
-        for fact in (
-            semantic_items
-            if semantic_items is not None
-            else self.store.all_active(MemoryKind.SEMANTIC)
-        ):
-            if fact.status is not MemoryStatus.ACTIVE:
-                continue
-            if fact.evidence_count < 2:
-                continue
+        facts = [
+            fact
+            for fact in (
+                semantic_items
+                if semantic_items is not None
+                else self.store.all_active(MemoryKind.SEMANTIC)
+            )
+            if fact.status is MemoryStatus.ACTIVE
+            and fact.evidence_count >= 2
+        ]
+        if not facts:
+            return []
+        # Batch graph lookup: one all_links + one get_many instead of a
+        # SQL traversal per fact (2 queries x N facts).
+        links = self.backend.all_links()
+        neighbors: dict[str, set[str]] = {}
+        for src, dst, _weight in links:
+            neighbors.setdefault(src, set()).add(dst)
+            neighbors.setdefault(dst, set()).add(src)
+        needed: set[str] = set()
+        for fact in facts:
+            needed.update(neighbors.get(fact.id, ()))
+        by_id = {
+            item.id: item
+            for item in self.backend.get_many(list(needed))
+        }
+        for fact in facts:
             episodes = [
-                item
-                for item in self.backend.related(
-                    fact.id, depth=1, max_nodes=20
-                )
-                if item.kind is MemoryKind.EPISODIC
-                and item.status is MemoryStatus.ACTIVE
+                by_id[nid]
+                for nid in neighbors.get(fact.id, ())
+                if nid != fact.id
+                and nid in by_id
+                and by_id[nid].kind is MemoryKind.EPISODIC
+                and by_id[nid].status is MemoryStatus.ACTIVE
             ]
+            episodes.sort(key=lambda e: (e.seq, e.content))
+            if len(episodes) > 20:
+                episodes = episodes[:20]
             if len(episodes) < 2:
                 continue
             episodes.sort(key=lambda e: (e.created_at, e.content))
