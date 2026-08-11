@@ -68,6 +68,7 @@ echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | mnemosis-mcp --db demo.d
 | `recall` | 联想检索（时间、主题、人物、关键词多路命中） |
 | `check` | 元认知核查（知识缺口、矛盾、没把握先说不知道） |
 | `sleep` | 睡眠整合（去重、提炼事实、查矛盾） |
+| `rebuild_vectors` | 补齐缺失向量（批量嵌入失败后的修复） |
 | `update` | 更新事实（旧版本进修订记录） |
 | `forget` / `restore` | 主动遗忘（先进回收站，可恢复） |
 | `review_due` / `review` | 间隔复习（越复习越牢） |

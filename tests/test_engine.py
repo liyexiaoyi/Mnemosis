@@ -348,6 +348,28 @@ class MemoryEngineTest(unittest.TestCase):
         finally:
             engine.close()
 
+    def test_idf_rare_term_survives_candidate_pruning(self):
+        """A candidate matching one rare term must beat generic crowders."""
+        engine = MemoryEngine()
+        source = SourceRecord(origin=SourceType.USER)
+        for index in range(120):
+            engine.remember(
+                f"common record {index}",
+                kind=MemoryKind.SEMANTIC,
+                source=source,
+                cues=[],
+                auto_cues=False,
+            )
+        rare = engine.remember(
+            "Xyzzzy special event",
+            kind=MemoryKind.SEMANTIC,
+            source=source,
+            cues=[],
+            auto_cues=False,
+        )
+        results = engine.recall("common Xyzzzy", top_k=5)
+        self.assertIn(rare.id, {result.item.id for result in results})
+
 
 if __name__ == "__main__":
     unittest.main()

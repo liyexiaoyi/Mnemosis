@@ -262,21 +262,68 @@ class DualTrackStore:
             for word in ("did ", "bought", "buy ", "visited", "had ",
                          "went", "where did", "when did", "what did")
         )
+        idf_weights: dict[str, float] = {}
+        idf_sum = 0.0
         if query_terms:
             hit_counts: dict[str, int] = {}
+            term_df: dict[str, int] = {}
+            term_ids: dict[str, set[str]] = {}
+            total_active = self.backend.count(kind=kind)
             for term in query_terms:
-                for memory_id in self.backend.find_by_terms([term], kind):
+                ids_for_term = set(self.backend.find_by_terms([term], kind))
+                term_df[term] = len(ids_for_term)
+                if (
+                    ids_for_term
+                    and total_active >= 1000
+                    and len(ids_for_term) > total_active // 2
+                ):
+                    # A term present in most memories carries no
+                    # discriminative signal; skip materialising its ids so a
+                    # generic word cannot balloon the candidate set.
+                    continue
+                term_ids[term] = ids_for_term
+                for memory_id in ids_for_term:
                     hit_counts[memory_id] = hit_counts.get(memory_id, 0) + 1
+            # Term-specificity weighting (idf, Robertson & Zaragoza 2009):
+            # a rare term like "Admon" is a much stronger retrieval cue than
+            # a generic one, so hits on rare terms should dominate the score.
+            # Robertson-Sparck Jones idf: terms present in most memories get
+            # ~0 weight, rare terms dominate; clipped at 4.0 so a typo-like
+            # token cannot crush everything. df is clamped to the active
+            # count because the term table also holds recycled rows.
+            idf_weights = {}
+            for term, df in term_df.items():
+                if df <= 0 or total_active <= 0:
+                    continue
+                safe_df = min(df, total_active)
+                idf_weights[term] = min(
+                    max(
+                        0.0,
+                        math.log(
+                            (total_active - safe_df + 0.5)
+                            / (safe_df + 0.5)
+                        ),
+                    ),
+                    4.0,
+                )
+            idf_sum = sum(idf_weights.values())
             ids = set(hit_counts) - set(exclude_ids or set())
             if ids:
                 if len(ids) > 100:
-                    # Cheap pre-ranking with hit counts (tf-free BM25-style
-                    # signal, Robertson & Zaragoza, 2009): keep the top-300
-                    # candidates before loading full items for scoring.
+                    # Pre-rank by idf-weighted hits so a candidate matching
+                    # one rare term is not cut in favor of generic hits.
+                    def _pre_score(memory_id: str) -> float:
+                        return sum(
+                            idf_weights[term]
+                            for term, ids_for_term in term_ids.items()
+                            if memory_id in ids_for_term
+                        )
+
                     ids = {
                         memory_id
                         for memory_id, _ in sorted(
-                            hit_counts.items(), key=lambda row: -row[1]
+                            ((memory_id, _pre_score(memory_id)) for memory_id in ids),
+                            key=lambda row: -row[1],
                         )[:100]
                     }
                 ids = sorted(ids)
@@ -308,7 +355,29 @@ class DualTrackStore:
         )
         scored: list[tuple[float, float, MemoryItem, list[str], bool]] = []
         for item in candidates:
-            overlap = _overlap(query_terms, self._terms(item))
+            item_terms = self._terms(item)
+            overlap = _overlap(query_terms, item_terms)
+            if idf_sum and query_terms:
+                idf_hits = sum(
+                    idf_weights[term]
+                    for term in query_terms
+                    if term in item_terms
+                )
+                if idf_hits:
+                    # Rare-term boost: keep the original overlap geometry and
+                    # scale it up to 2x when the candidate matches terms that
+                    # are rare across the store. Uniform idf -> scale 1.0,
+                    # so common-topic queries behave exactly as before.
+                    idf_avg = max(idf_sum / len(query_terms), 1e-6)
+                    scale = min(
+                        1.0 + 0.5 * (idf_hits / idf_avg - 1.0),
+                        2.0,
+                    )
+                    weighted_overlap = overlap * scale
+                else:
+                    weighted_overlap = overlap
+            else:
+                weighted_overlap = overlap
             retrievability = min(
                 1.0, self.curve.retrievability(item, now)
             )
@@ -393,7 +462,7 @@ class DualTrackStore:
                 item_vector = self._embedding(item, embedder)
                 semantic = embedder.cosine(query_vector, item_vector)
                 score = (
-                    0.30 * overlap
+                    0.30 * weighted_overlap
                     + 0.20 * retrievability
                     + 0.15 * item.importance
                     + 0.15 * context_overlap
@@ -408,7 +477,7 @@ class DualTrackStore:
                 )
             else:
                 score = (
-                    0.40 * overlap
+                    0.40 * weighted_overlap
                     + 0.25 * retrievability
                     + 0.20 * item.importance
                     + 0.15 * context_overlap

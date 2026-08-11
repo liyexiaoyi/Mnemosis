@@ -250,6 +250,14 @@ a single-`remember` loop. When a vector index + Ollama/OpenAI embedder is
 enabled, embedding is also batched (100 texts per call, chunked by size,
 with automatic retry on 429/5xx).
 
+If a batch embedding still fails halfway (the memories are stored but some
+have no vector), lexical recall keeps working and the gap can be repaired in
+one pass:
+
+```python
+rebuilt = engine.rebuild_missing_vectors()   # or the MCP tool rebuild_vectors
+```
+
 ## Threading
 
 `MemoryEngine` is designed for one agent loop per instance: SQLite access and

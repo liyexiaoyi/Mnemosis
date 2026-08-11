@@ -4648,27 +4648,19 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         contents = [r.item.content for r in results]
         self.assertIn("玩家移动速度为 320 像素/秒。", contents)
         self.assertIn("跳跃力度为 420。", contents)
-        self.assertTrue(
-            any(
-                "概念覆盖" in reason
-                for result in results
-                for reason in result.reasons
-            )
-        )
         # single-concept query is untouched by coverage
         single = engine.recall("玩家移动速度是多少？", top_k=2)
         self.assertEqual(
             single[0].item.content, "玩家移动速度为 320 像素/秒。"
         )
-        # coverage can be disabled explicitly
+        # idf weighting surfaces the rare concept (跳跃力度) directly, so the
+        # coverage pass is a safety net rather than the only path now.
         off = engine.recall(
             "玩家移动速度和跳跃力度分别是多少？",
             top_k=2,
             concept_coverage=False,
         )
-        self.assertNotIn(
-            "跳跃力度为 420。", [r.item.content for r in off]
-        )
+        self.assertIn("跳跃力度为 420。", [r.item.content for r in off])
 
     def test_concept_cover_tool_and_agent_chain(self) -> None:
         engine = MemoryEngine()
