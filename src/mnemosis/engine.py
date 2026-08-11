@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import random
 import re
 import uuid
 from collections import Counter, defaultdict, deque
@@ -5282,7 +5283,9 @@ class MemoryEngine:
             "orbit", "cause", "depend", "contain", "lead",
         }
         items = self.store.all_active()
-        compare_items = items[: min(max(2, int(limit) * 3), 200)]
+        compare_items = random.sample(
+            items, min(max(2, int(limit) * 3), 200, len(items))
+        )
         rows: list[dict] = []
         for a, b in combinations(compare_items, 2):
             topic_a = a.cues[0] if a.cues else a.content[:10]
