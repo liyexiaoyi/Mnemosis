@@ -13,7 +13,14 @@ from typing import Callable
 
 from .backend import Backend
 from .dual_track import DualTrackStore
-from .types import MemoryItem, MemoryKind, MemoryStatus, hash_content, utcnow
+from .types import (
+    MemoryItem,
+    MemoryKind,
+    MemoryStatus,
+    hash_content,
+    tokenize,
+    utcnow,
+)
 
 
 @dataclass(slots=True)
@@ -459,7 +466,12 @@ class Consolidator:
         return recycled
 
     def detect_conflicts(self) -> list[Conflict]:
-        """Heuristic: confident semantic memories sharing a cue but differing."""
+        """Heuristic: confident semantic memories sharing a cue and topic.
+
+        A shared cue alone is not a contradiction (two unrelated facts about
+        the same person/tag coexist fine). The contents must also share at
+        least one non-cue token before the pair is flagged.
+        """
         semantic = [
             item
             for item in self.store.all_active(MemoryKind.SEMANTIC)
@@ -482,11 +494,20 @@ class Consolidator:
                     if pair in seen_pairs:
                         continue
                     seen_pairs.add(pair)
+                    cue_tokens = set(tokenize(cue))
+                    common = (
+                        set(tokenize(a.content)) & set(tokenize(b.content))
+                    ) - cue_tokens
+                    if not common:
+                        continue
                     conflicts.append(
                         Conflict(
                             a=a,
                             b=b,
-                            reason=f"confident facts share cue '{cue}' but differ",
+                            reason=(
+                                f"confident facts share cue '{cue}' and "
+                                "topic but differ"
+                            ),
                         )
                     )
         return conflicts

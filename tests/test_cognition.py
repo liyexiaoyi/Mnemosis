@@ -840,6 +840,27 @@ class ConflictAdviceTest(unittest.TestCase):
         self.assertGreaterEqual(report["conflicts"], 1)
         self.assertEqual(report["advice"][0]["verdict"], "clarify")
 
+    def test_unrelated_same_cue_is_not_conflict(self):
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        engine.remember(
+            "阿丽喜欢猫。",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["阿丽"],
+            confidence=0.9,
+            auto_cues=False,
+        )
+        engine.remember(
+            "阿丽住在上海。",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["阿丽"],
+            confidence=0.9,
+            auto_cues=False,
+        )
+        self.assertEqual(len(engine.consolidator.detect_conflicts()), 0)
+
 
 class MemoryMapTest(unittest.TestCase):
     def test_groups_topics_and_strength(self):
