@@ -312,6 +312,42 @@ class MemoryEngineTest(unittest.TestCase):
         finally:
             engine.close()
 
+    def test_rebuild_missing_vectors_repairs_failed_embed(self):
+        class _FlakyEmbedder(Embedder):
+            def __init__(self) -> None:
+                self.fail = True
+
+            def embed(self, text: str) -> list[float]:
+                if self.fail:
+                    raise EmbeddingAPIError("first attempt failed")
+                return [1.0, 0.0, 0.0]
+
+            def embed_many(self, texts: list[str]) -> list[list[float]]:
+                if self.fail:
+                    raise EmbeddingAPIError("first attempt failed")
+                return [[1.0, 0.0, 0.0] for _ in texts]
+
+        flaky = _FlakyEmbedder()
+        engine = MemoryEngine(
+            vector_index=VectorIndex(dim=3),
+            index_embedder=flaky,
+        )
+        try:
+            with self.assertRaises(EmbeddingAPIError):
+                engine.remember(
+                    "孤儿向量记忆",
+                    kind=MemoryKind.EPISODIC,
+                    source=SourceRecord(origin=SourceType.USER),
+                )
+            self.assertEqual(engine.backend.count(), 1)
+            self.assertEqual(engine.vector_index.size, 0)
+            flaky.fail = False
+            rebuilt = engine.rebuild_missing_vectors()
+            self.assertEqual(rebuilt, 1)
+            self.assertEqual(engine.vector_index.size, 1)
+        finally:
+            engine.close()
+
 
 if __name__ == "__main__":
     unittest.main()

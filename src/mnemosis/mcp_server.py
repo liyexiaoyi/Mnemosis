@@ -260,6 +260,14 @@ class MCPServer:
                 "inputSchema": {"type": "object", "properties": {}},
             },
             {
+                "name": "rebuild_vectors",
+                "description": (
+                    "Re-embed active memories missing from the vector index "
+                    "(repairs a failed batch embedding)."
+                ),
+                "inputSchema": {"type": "object", "properties": {}},
+            },
+            {
                 "name": "working_set",
                 "description": "Recently used memories for prompt injection.",
                 "inputSchema": {
@@ -2371,6 +2379,10 @@ class MCPServer:
     @_tool("calibrate_decay")
     def _tool_calibrate_decay(self, args: dict[str, Any]) -> Any:
         return self.engine.calibrate_decay_rate()
+
+    @_tool("rebuild_vectors")
+    def _tool_rebuild_vectors(self, args: dict[str, Any]) -> Any:
+        return {"rebuilt": self.engine.rebuild_missing_vectors()}
 
     @_tool("working_set")
     def _tool_working_set(self, args: dict[str, Any]) -> Any:

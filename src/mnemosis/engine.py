@@ -238,6 +238,42 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
                 self.event_chain.invalidate()
             return stored
 
+    def rebuild_missing_vectors(
+        self, embedder: Embedder | None = None
+    ) -> int:
+        """Re-embed active memories missing from the vector index.
+
+        If a batch embed fails mid-way, the store is already written but
+        some memories have no vector (lexical recall still works). This
+        repairs that state in one pass and returns the number rebuilt.
+        """
+        embedder = embedder or self.index_embedder
+        if self.vector_index is None or embedder is None:
+            return 0
+        missing = [
+            item
+            for item in self.store.all_active()
+            if not self.vector_index.has(item.id)
+        ]
+        if not missing:
+            return 0
+        # Embed outside the engine lock: a slow external API must not block
+        # concurrent recalls; only the final index write takes the lock.
+        vectors = embedder.embed_many([item.content for item in missing])
+        if len(vectors) != len(missing):
+            raise RuntimeError(
+                f"embedder returned {len(vectors)} vectors for "
+                f"{len(missing)} memories"
+            )
+        with self._lock:
+            self.vector_index.add_many(
+                [
+                    (item.id, vector)
+                    for item, vector in zip(missing, vectors)
+                ]
+            )
+            return len(missing)
+
     def remember_turn(
         self,
         text: str,

@@ -57,6 +57,13 @@ class VectorIndexTests(unittest.TestCase):
         self.assertEqual(count, 3)
         index.close()
 
+    def test_has_reports_vector_presence(self) -> None:
+        index = VectorIndex(dim=3, bits=8, buckets_per_item=2)
+        self.assertFalse(index.has("a"))
+        index.add("a", [1.0, 0.0, 0.0])
+        self.assertTrue(index.has("a"))
+        index.close()
+
     def test_persists_across_reopen(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "index.sqlite")

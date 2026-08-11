@@ -360,5 +360,12 @@ class VectorIndex:
         ).fetchone()
         return int(row[0])
 
+    def has(self, memory_id: str) -> bool:
+        """Whether a vector already exists for this memory id."""
+        row = self._conn.execute(
+            "SELECT 1 FROM vectors WHERE memory_id = ?", (memory_id,)
+        ).fetchone()
+        return row is not None
+
 
 __all__ = ["VectorIndex"]

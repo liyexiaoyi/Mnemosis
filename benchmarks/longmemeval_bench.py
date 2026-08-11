@@ -608,7 +608,9 @@ def main() -> int:
                 systems.append(f"mnemosis_{mode}")
 
     rows: dict[str, list[dict]] = {s: [] for s in systems}
-    completed: set[str] = set()
+    completed_by_system: dict[str, set[str]] = {
+        name: set() for name in systems
+    }
     if os.path.exists(args.out):
         with open(args.out, encoding="utf-8") as handle:
             old = json.load(handle)
@@ -616,17 +618,25 @@ def main() -> int:
             rows = old["rows"]
             for name in systems:
                 rows.setdefault(name, [])
-            completed = {row["qid"] for values in rows.values() for row in values}
-            print(f"resume: {len(completed)} questions already done", flush=True)
+            completed_by_system = {
+                name: {row["qid"] for row in rows.get(name, [])}
+                for name in systems
+            }
+            total_done = sum(len(v) for v in completed_by_system.values())
+            print(f"resume: {total_done} system-question rows already done",
+                  flush=True)
 
     workdir = os.path.join(_WORK, "longmemeval_run")
-    if not completed and os.path.isdir(workdir):
+    if not any(completed_by_system.values()) and os.path.isdir(workdir):
         shutil.rmtree(workdir)
     os.makedirs(workdir, exist_ok=True)
 
     for qi, question in enumerate(questions, 1):
         qid = question["question_id"]
-        if qid in completed:
+        pending = [
+            name for name in systems if qid not in completed_by_system[name]
+        ]
+        if not pending:
             print(f"[{qi}/{len(questions)}] skip {qid} (already done)", flush=True)
             continue
         q = question["question"]
@@ -646,40 +656,36 @@ def main() -> int:
             flush=True,
         )
         per_system: dict[str, dict] = {}
-        if "mem0" in systems:
-            per_system["mem0"] = run_system_mem0(question, qid, args.top_k, workdir)
-            print(f"  mem0 ingest={per_system['mem0']['ingest_seconds']}s "
-                  f"turns={per_system['mem0']['turns']}", flush=True)
-        if "mnemosis_kw" in systems:
-            per_system["mnemosis_kw"] = run_system_mnemosis(
-                question, qid, args.top_k, workdir, "kw"
+        runners: list[tuple[str, object]] = []
+        if "mem0" in pending:
+            runners.append(
+                ("mem0", lambda: run_system_mem0(
+                    question, qid, args.top_k, workdir
+                ))
             )
-            print(f"  mnemosis_kw ingest={per_system['mnemosis_kw']['ingest_seconds']}s",
-                  flush=True)
-        if "mnemosis_ngram" in systems:
-            per_system["mnemosis_ngram"] = run_system_mnemosis(
-                question, qid, args.top_k, workdir, "ngram"
-            )
-            print(f"  mnemosis_ngram ingest={per_system['mnemosis_ngram']['ingest_seconds']}s",
-                  flush=True)
-        if "mnemosis_hybrid" in systems:
-            per_system["mnemosis_hybrid"] = run_system_mnemosis(
-                question, qid, args.top_k, workdir, "hybrid"
-            )
-            print(f"  mnemosis_hybrid ingest={per_system['mnemosis_hybrid']['ingest_seconds']}s",
-                  flush=True)
-        if "mnemosis_dense" in systems:
-            per_system["mnemosis_dense"] = run_system_mnemosis(
-                question, qid, args.top_k, workdir, "dense"
-            )
-            print(f"  mnemosis_dense ingest={per_system['mnemosis_dense']['ingest_seconds']}s",
-                  flush=True)
-        if "mnemosis_seg" in systems:
-            per_system["mnemosis_seg"] = run_system_mnemosis(
-                question, qid, args.top_k, workdir, "seg"
-            )
-            print(f"  mnemosis_seg ingest={per_system['mnemosis_seg']['ingest_seconds']}s "
-                  f"items={per_system['mnemosis_seg']['turns']}", flush=True)
+        for mode in ("kw", "ngram", "hybrid", "dense", "seg"):
+            name = f"mnemosis_{mode}"
+            if name in pending:
+                runners.append(
+                    (name, lambda mode=mode: run_system_mnemosis(
+                        question, qid, args.top_k, workdir, mode
+                    ))
+                )
+        for name, runner in runners:
+            try:
+                run = runner()
+                per_system[name] = run
+                detail = (
+                    f" turns={run['turns']}"
+                    if name in ("mem0", "mnemosis_seg")
+                    else ""
+                )
+                print(
+                    f"  {name} ingest={run['ingest_seconds']}s{detail}",
+                    flush=True,
+                )
+            except Exception as exc:  # noqa: BLE001
+                print(f"  {name} failed: {exc}", flush=True)
 
         expected = _tokens(gold)
         for name, run in per_system.items():
@@ -787,7 +793,8 @@ def main() -> int:
         with open(args.out, "w", encoding="utf-8") as handle:
             json.dump({"summary": summary, "rows": rows, "partial": True},
                       handle, ensure_ascii=False, indent=2)
-        print(f"  saved partial ({len(completed) + 1} done)", flush=True)
+        done_rows = sum(len(v) for v in rows.values())
+        print(f"  saved partial ({done_rows} rows)", flush=True)
 
     summary = {name: summarize(name, rows[name]) for name in systems}
     report = {"summary": summary, "rows": rows}
