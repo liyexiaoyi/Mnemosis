@@ -8,6 +8,7 @@ accumulation (Smolen et al., 2016).
 from __future__ import annotations
 
 import unittest
+import threading
 from datetime import datetime, timedelta, timezone
 
 from mnemosis import MemoryEngine
@@ -931,6 +932,31 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
             },
         )
         self.assertEqual(via_mcp["updated"], 2)
+
+    def test_concurrent_intent_state(self) -> None:
+        engine = MemoryEngine()
+        errors: list[str] = []
+
+        def worker(n: int) -> None:
+            try:
+                for i in range(40):
+                    engine.remember_intent(
+                        f"任务{n}-{i}", due_at=utcnow()
+                    )
+                    engine.intent_report()
+                    engine.action_queue()
+                    engine.get_recall_log()
+            except Exception as exc:
+                errors.append(repr(exc))
+
+        threads = [
+            threading.Thread(target=worker, args=(n,)) for n in range(4)
+        ]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        self.assertEqual(errors, [])
 
     def test_recall_log(self) -> None:
         engine = MemoryEngine()

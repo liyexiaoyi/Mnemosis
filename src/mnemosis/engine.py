@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import random
 import re
+import threading
 import uuid
 from collections import Counter, defaultdict, deque
 from datetime import date, datetime, timedelta
@@ -160,6 +161,7 @@ class MemoryEngine:
         self._recall_log: deque[dict] = deque(maxlen=100)
         self._intents: dict[str, dict] = {}
         self._suppressed_ids: dict[str, str] = {}
+        self._lock = threading.RLock()
 
     # -- wake cycle ---------------------------------------------------------
 
@@ -332,7 +334,8 @@ class MemoryEngine:
         exclude_ids: set[str] | None = None,
     ) -> list[RecallResult]:
         embedder = embedder or self.embedder
-        exclude_ids = set(exclude_ids or ()) | set(self._suppressed_ids)
+        with self._lock:
+            exclude_ids = set(exclude_ids or ()) | set(self._suppressed_ids)
         results = self.store.recall(
             query,
             kind=kind,
@@ -373,17 +376,18 @@ class MemoryEngine:
             kind_preference=kind_preference,
             exclude_ids=exclude_ids,
         )
-        self._recall_log.append(
-            {
-                "query": query,
-                "top_id": results[0].item.id if results else None,
-                "top_preview": (
-                    results[0].item.content[:40] if results else None
-                ),
-                "confident": results[0].confident if results else None,
-                "ts": utcnow().isoformat(),
-            }
-        )
+        with self._lock:
+            self._recall_log.append(
+                {
+                    "query": query,
+                    "top_id": results[0].item.id if results else None,
+                    "top_preview": (
+                        results[0].item.content[:40] if results else None
+                    ),
+                    "confident": results[0].confident if results else None,
+                    "ts": utcnow().isoformat(),
+                }
+            )
         if concept_coverage:
             results = self._apply_concept_coverage(
                 query,
@@ -1792,7 +1796,9 @@ class MemoryEngine:
 
     def get_recall_log(self, limit: int = 50) -> list[dict]:
         """Return the most recent recall entries (bounded audit log)."""
-        return list(self._recall_log)[-max(1, int(limit)):]
+        with self._lock:
+            entries = list(self._recall_log)
+        return entries[-max(1, int(limit)):]
 
     def search_batch(
         self,
@@ -1859,7 +1865,8 @@ class MemoryEngine:
             "status": "active",
             "completed_at": None,
         }
-        self._intents[record["id"]] = record
+        with self._lock:
+            self._intents[record["id"]] = record
         return dict(record)
 
     def intent_due(
@@ -1870,11 +1877,12 @@ class MemoryEngine:
         """Return active intents whose deadline has arrived."""
 
         now = now or utcnow()
-        due = [
-            r for r in self._intents.values()
-            if r["status"] == "active"
-            and datetime.fromisoformat(r["due_at"]) <= now
-        ]
+        with self._lock:
+            due = [
+                r for r in self._intents.values()
+                if r["status"] == "active"
+                and datetime.fromisoformat(r["due_at"]) <= now
+            ]
         due.sort(key=lambda r: r["due_at"])
         return [dict(r) for r in due[: max(1, int(limit))]]
 
@@ -1885,27 +1893,31 @@ class MemoryEngine:
     ) -> dict | None:
         """Mark an intent as completed."""
         now = now or utcnow()
-        record = self._intents.get(intent_id)
-        if record is None or record["status"] != "active":
-            return None
-        record["status"] = "completed"
-        record["completed_at"] = now.isoformat()
+        with self._lock:
+            record = self._intents.get(intent_id)
+            if record is None or record["status"] != "active":
+                return None
+            record["status"] = "completed"
+            record["completed_at"] = now.isoformat()
         return dict(record)
 
     def cancel_intent(self, intent_id: str) -> dict | None:
         """Cancel an intent without completing it."""
-        record = self._intents.get(intent_id)
-        if record is None or record["status"] != "active":
-            return None
-        record["status"] = "cancelled"
+        with self._lock:
+            record = self._intents.get(intent_id)
+            if record is None or record["status"] != "active":
+                return None
+            record["status"] = "cancelled"
         return dict(record)
 
     def intent_report(self, now: datetime | None = None) -> dict:
         """Summarize the intention register (due / upcoming / done)."""
 
         now = now or utcnow()
+        with self._lock:
+            all_intents = list(self._intents.values())
         active = [
-            r for r in self._intents.values() if r["status"] == "active"
+            r for r in all_intents if r["status"] == "active"
         ]
         overdue = [
             r for r in active if datetime.fromisoformat(r["due_at"]) <= now
@@ -1917,11 +1929,11 @@ class MemoryEngine:
         return {
             "active": len(active),
             "completed": sum(
-                1 for r in self._intents.values()
+                1 for r in all_intents
                 if r["status"] == "completed"
             ),
             "cancelled": sum(
-                1 for r in self._intents.values()
+                1 for r in all_intents
                 if r["status"] == "cancelled"
             ),
             "overdue": len(overdue),
@@ -1942,9 +1954,10 @@ class MemoryEngine:
         tool reports both kinds so the agent can reschedule.
         """
 
-        active = [
-            r for r in self._intents.values() if r["status"] == "active"
-        ]
+        with self._lock:
+            active = [
+                r for r in self._intents.values() if r["status"] == "active"
+            ]
         conflicts = []
         for i in range(len(active)):
             a = active[i]
@@ -2360,7 +2373,9 @@ class MemoryEngine:
             c["intent_a"] for c in conflicts
         } | {c["intent_b"] for c in conflicts}
         actions = []
-        for record in self._intents.values():
+        with self._lock:
+            intent_records = list(self._intents.values())
+        for record in intent_records:
             if record["status"] != "active":
                 continue
             due = datetime.fromisoformat(record["due_at"])
@@ -6035,24 +6050,28 @@ class MemoryEngine:
         for memory_id in memory_ids:
             if self.backend.get(memory_id) is None:
                 continue
-            if memory_id not in self._suppressed_ids:
-                self._suppressed_ids[memory_id] = now.isoformat()
-                suppressed += 1
+            with self._lock:
+                if memory_id not in self._suppressed_ids:
+                    self._suppressed_ids[memory_id] = now.isoformat()
+                    suppressed += 1
         return {"suppressed": suppressed}
 
     def unsuppress_memories(self, memory_ids: list[str]) -> dict:
         """Restore suppressed memories to normal retrieval."""
         unsuppressed = 0
         for memory_id in memory_ids:
-            if memory_id in self._suppressed_ids:
-                del self._suppressed_ids[memory_id]
-                unsuppressed += 1
+            with self._lock:
+                if memory_id in self._suppressed_ids:
+                    del self._suppressed_ids[memory_id]
+                    unsuppressed += 1
         return {"unsuppressed": unsuppressed}
 
     def suppressed_report(self) -> dict:
         """List currently suppressed memories with their previews."""
         out = []
-        for memory_id, suppressed_at in self._suppressed_ids.items():
+        with self._lock:
+            suppressed = list(self._suppressed_ids.items())
+        for memory_id, suppressed_at in suppressed:
             item = self.backend.get(memory_id)
             if item is None:
                 continue
@@ -8310,9 +8329,17 @@ class MemoryEngine:
             "version": 1,
             "exported_at": utcnow().isoformat(),
             "memories": [item.to_dict() for item in items],
-            "intents": [dict(r) for r in self._intents.values()],
-            "suppressed_ids": dict(self._suppressed_ids),
+            "intents": [dict(r) for r in self._snapshot_intents()],
+            "suppressed_ids": self._snapshot_suppressed(),
         }
+
+    def _snapshot_intents(self) -> list[dict]:
+        with self._lock:
+            return list(self._intents.values())
+
+    def _snapshot_suppressed(self) -> dict[str, str]:
+        with self._lock:
+            return dict(self._suppressed_ids)
 
     def import_memories(self, payload: dict) -> int:
         """Import memories from an export payload (round 106).
@@ -8330,15 +8357,16 @@ class MemoryEngine:
             self.associations.index(item)
             self.associations.link_related(item)
             imported += 1
-        for record in payload.get("intents", []):
-            record = dict(record)
-            if record.get("id"):
-                self._intents[record["id"]] = record
-        for memory_id, suppressed_at in payload.get(
-            "suppressed_ids", {}
-        ).items():
-            if self.backend.get(memory_id) is not None:
-                self._suppressed_ids[memory_id] = suppressed_at
+        with self._lock:
+            for record in payload.get("intents", []):
+                record = dict(record)
+                if record.get("id"):
+                    self._intents[record["id"]] = record
+            for memory_id, suppressed_at in payload.get(
+                "suppressed_ids", {}
+            ).items():
+                if self.backend.get(memory_id) is not None:
+                    self._suppressed_ids[memory_id] = suppressed_at
         return imported
 
     def practice_session(

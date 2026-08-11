@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 from datetime import datetime
 from typing import Any, Sequence
@@ -40,6 +41,13 @@ def _dt(value: str, field: str) -> datetime:
             f"{field} 需要 ISO 格式时间（如 2026-08-11T18:00:00），"
             f"收到：{value!r}"
         )
+
+
+def _source_type(value: Any) -> SourceType:
+    try:
+        return SourceType(value)
+    except ValueError:
+        return SourceType.USER
 
 
 class MCPServer:
@@ -2111,7 +2119,7 @@ class MCPServer:
                 args["content"],
                 kind=_kind(args.get("kind")) or MemoryKind.EPISODIC,
                 source=SourceRecord(
-                    origin=SourceType(args.get("source", SourceType.USER.value))
+                    origin=_source_type(args.get("source", SourceType.USER.value))
                 ),
                 cues=args.get("cues"),
                 context=args.get("context"),
@@ -2868,6 +2876,8 @@ def _write_message(text: str, framed: bool) -> None:
 
 
 def run_stdio(db_path: str | None = None) -> None:
+    if db_path:
+        db_path = os.path.abspath(os.path.expanduser(db_path))
     for stream in (sys.stdin, sys.stdout, sys.stderr):
         try:
             stream.reconfigure(encoding="utf-8")
@@ -2892,6 +2902,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--db",
         default=None,
         help="SQLite path for persistent memory (default: in-memory)",
+    )
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"mnemosis-mcp {_MNEMOSIS_VERSION}",
     )
     args = parser.parse_args(argv)
     run_stdio(args.db)

@@ -130,6 +130,13 @@ mnemosis --db memory.db check "用户最喜欢的电影是什么？"
 mnemosis mcp --db memory.db   # or: mnemosis-mcp --db memory.db
 ```
 
+## Threading
+
+`MemoryEngine` is designed for one agent loop per instance: SQLite access and
+the shared intent / suppression state are internally locked, so light
+concurrent read/write calls are safe. If you fan one engine out across many
+threads, serialize the high-level calls yourself.
+
 ## Testing
 
 ```bash
