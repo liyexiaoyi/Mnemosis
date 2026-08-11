@@ -10,10 +10,13 @@ Code, Codex, or any MCP client:
 from __future__ import annotations
 
 import argparse
+import http.server
 import json
 import logging
 import os
 import sys
+import threading
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Sequence
 
@@ -3277,20 +3280,14 @@ def _write_message(text: str, framed: bool) -> None:
     sys.stdout.buffer.flush()
 
 
-def run_stdio(
+def _build_engine(
     db_path: str | None = None,
-    expose: str = "advanced",
     embedder: str = "none",
     embedding_model: str | None = None,
     embedding_base_url: str | None = None,
-) -> None:
+) -> MemoryEngine:
     if db_path:
         db_path = os.path.abspath(os.path.expanduser(db_path))
-    for stream in (sys.stdin, sys.stdout, sys.stderr):
-        try:
-            stream.reconfigure(encoding="utf-8")
-        except (AttributeError, ValueError):
-            pass
     dense = make_embedder(
         embedder,
         model=embedding_model,
@@ -3305,6 +3302,24 @@ def run_stdio(
         if dense
         else None,
     )
+    return engine
+
+
+def run_stdio(
+    db_path: str | None = None,
+    expose: str = "advanced",
+    embedder: str = "none",
+    embedding_model: str | None = None,
+    embedding_base_url: str | None = None,
+) -> None:
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError):
+            pass
+    engine = _build_engine(
+        db_path, embedder, embedding_model, embedding_base_url
+    )
     server = MCPServer(engine, expose=expose)
     try:
         while True:
@@ -3315,6 +3330,138 @@ def run_stdio(
             if response is not None:
                 _write_message(response, framed)
     finally:
+        engine.close()
+
+
+def build_http_server(
+    engine: MemoryEngine | None = None,
+    expose: str = "advanced",
+    host: str = "127.0.0.1",
+    port: int = 0,
+) -> http.server.ThreadingHTTPServer:
+    """Build an MCP Streamable-HTTP server (POST-only, stdlib)."""
+    mcp = MCPServer(engine or MemoryEngine(), expose=expose)
+    sessions: set[str] = set()
+
+    class _Handler(http.server.BaseHTTPRequestHandler):
+        server_version = "MnemosisMCP"
+
+        def _headers(self, session: str | None = None) -> None:
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("MCP-Protocol-Version", PROTOCOL_VERSION)
+            if session:
+                self.send_header("Mcp-Session-Id", session)
+
+        def _send_json(
+            self,
+            payload: dict,
+            status: int = 200,
+            session: str | None = None,
+        ) -> None:
+            body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self._headers(session)
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_OPTIONS(self) -> None:
+            self.send_response(204)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header(
+                "Access-Control-Allow-Methods", "POST, GET, OPTIONS"
+            )
+            self.send_header(
+                "Access-Control-Allow-Headers",
+                "Content-Type, Mcp-Session-Id, Authorization",
+            )
+            self.end_headers()
+
+        def do_GET(self) -> None:
+            # POST-only Streamable HTTP: SSE streaming is intentionally
+            # not implemented; clients fall back to POST responses.
+            self.send_response(405)
+            self._headers()
+            self.end_headers()
+
+        def do_POST(self) -> None:
+            session = self.headers.get("Mcp-Session-Id")
+            if session:
+                sessions.add(session)
+            length = int(self.headers.get("Content-Length", 0) or 0)
+            if length <= 0 or length > MAX_MESSAGE_SIZE:
+                self._send_json(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": None,
+                        "error": {
+                            "code": -32700,
+                            "message": "Parse error: bad Content-Length",
+                        },
+                    },
+                    400,
+                    session,
+                )
+                return
+            raw = self.rfile.read(length)
+            try:
+                message = json.loads(raw.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                self._send_json(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": None,
+                        "error": {"code": -32700, "message": "Parse error"},
+                    },
+                    400,
+                    session,
+                )
+                return
+            response_text = mcp.handle_line(
+                json.dumps(message, ensure_ascii=False)
+            )
+            if response_text is None:  # notification
+                self.send_response(202)
+                self._headers(session)
+                self.end_headers()
+                return
+            response = json.loads(response_text)
+            new_session = session
+            if message.get("method") == "initialize":
+                new_session = uuid.uuid4().hex
+                sessions.add(new_session)
+            self._send_json(response, 200, new_session)
+
+        def log_message(self, format: str, *args: Any) -> None:
+            _LOG.debug("http: " + format, *args)
+
+    return http.server.ThreadingHTTPServer((host, port), _Handler)
+
+
+def run_http(
+    db_path: str | None = None,
+    expose: str = "advanced",
+    embedder: str = "none",
+    embedding_model: str | None = None,
+    embedding_base_url: str | None = None,
+    host: str = "127.0.0.1",
+    port: int = 8000,
+) -> None:
+    """Run the MCP server over Streamable HTTP (POST-only)."""
+    engine = _build_engine(
+        db_path, embedder, embedding_model, embedding_base_url
+    )
+    server = build_http_server(engine, expose=expose, host=host, port=port)
+    print(
+        f"mnemosis-mcp listening on http://{host}:{server.server_port} "
+        f"(POST /, MCP Streamable HTTP)",
+        flush=True,
+    )
+    try:
+        server.serve_forever()
+    finally:
+        server.server_close()
         engine.close()
 
 
@@ -3353,14 +3500,26 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--embedding-model", default=None)
     parser.add_argument("--embedding-base-url", default=None)
-    args = parser.parse_args(argv)
-    run_stdio(
-        args.db,
-        expose=args.expose,
-        embedder=args.embedder,
-        embedding_model=args.embedding_model,
-        embedding_base_url=args.embedding_base_url,
+    parser.add_argument(
+        "--transport",
+        choices=("stdio", "http"),
+        default="stdio",
+        help="stdio (local process) or http (Streamable HTTP for remote)",
     )
+    parser.add_argument("--host", default="127.0.0.1")
+    parser.add_argument("--port", type=int, default=8000)
+    args = parser.parse_args(argv)
+    common = {
+        "db_path": args.db,
+        "expose": args.expose,
+        "embedder": args.embedder,
+        "embedding_model": args.embedding_model,
+        "embedding_base_url": args.embedding_base_url,
+    }
+    if args.transport == "http":
+        run_http(**common, host=args.host, port=args.port)
+    else:
+        run_stdio(**common)
     return 0
 
 
@@ -3368,4 +3527,10 @@ if __name__ == "__main__":
     raise SystemExit(main())
 
 
-__all__ = ["MCPServer", "run_stdio", "main"]
+__all__ = [
+    "MCPServer",
+    "build_http_server",
+    "run_http",
+    "run_stdio",
+    "main",
+]

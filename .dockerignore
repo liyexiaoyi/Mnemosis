@@ -1,0 +1,11 @@
+.git
+__pycache__
+*.pyc
+outputs
+benchmarks/results
+work
+tests
+benchmarks
+docs
+examples
+.github

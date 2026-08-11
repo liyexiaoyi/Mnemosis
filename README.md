@@ -146,6 +146,28 @@ add Python's `Scripts` directory to `PATH`, or use an absolute path, e.g.
 
 Full guide (including Cursor and Codex configs): [`docs/mcp-quickstart.md`](docs/mcp-quickstart.md).
 
+### Remote deployment (HTTP)
+
+The MCP server also speaks Streamable HTTP (POST), so it can run on a VPS or
+NAS and be reached from other machines by URL:
+
+```bash
+mnemosis-mcp --transport http --host 0.0.0.0 --port 8000 --db /data/memory.db
+```
+
+Point an MCP client at `http://your-server:8000/` (Claude Desktop, Cursor and
+Cherry Studio accept remote MCP URLs). Put it behind a reverse proxy
+(Caddy/nginx) with TLS and basic auth before exposing it to the internet.
+
+Or run it in Docker:
+
+```bash
+docker build -t mnemosis .
+docker run -d -p 8000:8000 -v mnemosis-data:/data mnemosis
+```
+
+Memory is a single SQLite file in `/data`, so backups are just one file.
+
 ## Command line
 
 ```bash

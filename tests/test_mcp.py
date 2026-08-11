@@ -1,7 +1,9 @@
 import json
 import io
+import http.client
 import subprocess
 import sys
+import threading
 import unittest
 
 from mnemosis import MemoryEngine
@@ -9,6 +11,7 @@ from mnemosis.mcp_server import (
     EXPERIMENTAL_TOOLS,
     MCPServer,
     MAX_MESSAGE_SIZE,
+    build_http_server,
     _read_message,
 )
 
@@ -166,6 +169,53 @@ class MCPTest(unittest.TestCase):
             sys.stdin = old_stdin
         self.assertEqual(message, "")
         self.assertTrue(framed)
+
+    def test_http_transport(self):
+        server = build_http_server(MemoryEngine(), port=0)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            conn = http.client.HTTPConnection(
+                "127.0.0.1", server.server_port, timeout=10
+            )
+            conn.request(
+                "POST",
+                "/",
+                body=json.dumps(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "initialize",
+                        "params": {},
+                    }
+                ),
+                headers={"Content-Type": "application/json"},
+            )
+            response = conn.getresponse()
+            data = json.loads(response.read().decode("utf-8"))
+            self.assertEqual(
+                data["result"]["serverInfo"]["name"], "mnemosis"
+            )
+            self.assertIsNotNone(response.getheader("Mcp-Session-Id"))
+            conn.request(
+                "POST",
+                "/",
+                body=json.dumps(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 2,
+                        "method": "tools/list",
+                        "params": {},
+                    }
+                ),
+                headers={"Content-Type": "application/json"},
+            )
+            tools = json.loads(conn.getresponse().read().decode("utf-8"))
+            self.assertGreater(len(tools["result"]["tools"]), 10)
+            conn.close()
+        finally:
+            server.shutdown()
+            server.server_close()
 
     def test_remember_recall_roundtrip(self):
         saved = self.call(
