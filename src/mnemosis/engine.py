@@ -140,12 +140,16 @@ class MemoryEngine:
         base_interval_hours: float = 24.0,
         importance_scorer: ImportanceScorer | None = None,
         embedder: Embedder | None = None,
+        vector_index=None,
+        index_embedder: Embedder | None = None,
     ) -> None:
         self.backend: Backend = make_backend(memory_file)
         self.curve = ForgettingCurve(decay_rate)
         self.scheduler = ReviewScheduler(self.curve, base_interval_hours)
         self.scorer = importance_scorer or ImportanceScorer()
         self.embedder = embedder
+        self.vector_index = vector_index
+        self.index_embedder = index_embedder
         self.store = DualTrackStore(self.backend, self.curve, self.scorer)
         self.associations = AssociationIndex(self.backend)
         self.event_chain = EventChainIndex(self.backend)
@@ -226,6 +230,10 @@ class MemoryEngine:
         )
         self.associations.index(item)
         self.associations.link_related(item)
+        if self.vector_index is not None and self.index_embedder is not None:
+            self.vector_index.add(
+                item.id, self.index_embedder.embed(content)
+            )
         if item.kind is MemoryKind.EPISODIC:
             self.event_chain.invalidate()
         return item
@@ -461,6 +469,7 @@ class MemoryEngine:
         ng_weight: float = 1.0,
         dense_embedder=None,
         dense_weight: float = 1.6,
+        vector_index=None,
         recency_weight: float = 0.08,
         cue_weight: float = 0.12,
         date_weight: float = 0.28,
@@ -486,6 +495,7 @@ class MemoryEngine:
             ng_weight=ng_weight,
             dense_embedder=dense_embedder,
             dense_weight=dense_weight,
+            vector_index=vector_index,
             recency_weight=recency_weight,
             cue_weight=cue_weight,
             date_weight=date_weight,

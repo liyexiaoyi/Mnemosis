@@ -364,11 +364,27 @@ def run_system_mem0(question: dict, qid: str, top_k: int, workdir: str) -> dict:
 def run_system_mnemosis(
     question: dict, qid: str, top_k: int, workdir: str, mode: str
 ) -> dict:
+    from mnemosis.vector_index import VectorIndex
+
     db_dir = os.path.join(workdir, "mnemo", qid + "_" + mode)
     os.makedirs(db_dir, exist_ok=True)
+    dense_embedder = None
+    vector_index = None
+    if mode in ("dense", "seg"):
+        cache_path = os.path.join(
+            _WORK, "vectors_persist", f"{qid}_{mode}.sqlite"
+        )
+        dense_embedder = make_nomic_embedder(cache_path)
+        index_path = os.path.join(
+            _WORK, "vectors_persist", f"{qid}_{mode}_index.sqlite"
+        )
+        vector_index = VectorIndex(index_path)
+        vector_index.clear()
     engine = MemoryEngine(
         memory_file=os.path.join(db_dir, "memory.db"),
         embedder=None if mode in ("kw", "hybrid", "seg") else NGramEmbedder(),
+        vector_index=vector_index,
+        index_embedder=dense_embedder,
     )
     has_answer_contents: set[str] = set()
     all_contents: set[str] = set()
@@ -376,7 +392,6 @@ def run_system_mnemosis(
     segment_sid: dict[str, str] = {}
     sid_dates: dict[str, str] = {}
     turns = 0
-    prewarm_seconds = 0.0
     t0 = time.perf_counter()
     session_ids = question.get("haystack_session_ids") or []
     session_dates = question.get("haystack_dates") or []
@@ -431,17 +446,6 @@ def run_system_mnemosis(
                     has_answer_contents.add(content)
     ingest = time.perf_counter() - t0
 
-    dense_embedder = None
-    if mode in ("dense", "seg"):
-        cache_path = os.path.join(
-            _WORK, "vectors_persist", f"{qid}_{mode}.sqlite"
-        )
-        dense_embedder = make_nomic_embedder(cache_path)
-        pw0 = time.perf_counter()
-        for item in engine.store.all_active():
-            dense_embedder.embed(item.content)
-        prewarm_seconds = time.perf_counter() - pw0
-
     t0 = time.perf_counter()
     if mode == "hybrid":
         results = engine.recall_fused(
@@ -461,6 +465,7 @@ def run_system_mnemosis(
             ng_weight=0.0,
             dense_embedder=dense_embedder,
             dense_weight=1.0,
+            vector_index=vector_index,
             recency_weight=0.0,
             cue_weight=0.0,
             date_weight=0.0,
@@ -475,6 +480,7 @@ def run_system_mnemosis(
             ng_weight=0.0,
             dense_embedder=dense_embedder,
             dense_weight=1.0,
+            vector_index=vector_index,
             recency_weight=0.0,
             cue_weight=0.0,
             date_weight=0.0,
@@ -484,10 +490,11 @@ def run_system_mnemosis(
     search = time.perf_counter() - t0
     contents = [r.item.content for r in results]
     engine.close()
+    if vector_index is not None:
+        vector_index.close()
     return {
         "turns": turns,
         "ingest_seconds": round(ingest, 2),
-        "prewarm_seconds": round(prewarm_seconds, 2),
         "search_ms": round(search * 1000, 1),
         "contents": contents,
         "evidence_hits": sum(1 for c in contents if c in has_answer_contents or any(c in h for h in has_answer_contents)),

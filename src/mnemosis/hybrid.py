@@ -223,7 +223,14 @@ def _rewritten_query(query: str, expanded: set[str], original: set[str]) -> str:
     return query + " " + " ".join(additions)
 
 
-def _dense_results(engine, query: str, kind, embedder, top_k: int) -> list:
+def _dense_results(
+    engine,
+    query: str,
+    kind,
+    embedder,
+    top_k: int,
+    vector_index=None,
+) -> list:
     """Dense-only candidate pass that bypasses the lexical gate.
 
     The built-in recall path prunes candidates to memories sharing at least
@@ -232,6 +239,17 @@ def _dense_results(engine, query: str, kind, embedder, top_k: int) -> list:
     with the external embedder, reusing the store's per-content cache.
     """
     store = getattr(engine, "store", None)
+    if vector_index is not None:
+        query_vector = embedder.embed(query)
+        hits = vector_index.search(query_vector, top_k=top_k)
+        results = []
+        for memory_id, score in hits:
+            item = store.backend.get(memory_id) if store is not None else None
+            if item is not None:
+                results.append(
+                    RecallResult(item=item, score=score, reasons=["dense:index"])
+                )
+        return results
     items = store.all_active(kind=kind) if store is not None else []
     query_vector = embedder.embed(query)
     vectors = [embedder.embed(item.content) for item in items]
@@ -275,6 +293,7 @@ def fused_recall(
     ng_weight: float = 1.0,
     dense_embedder=None,
     dense_weight: float = 1.6,
+    vector_index=None,
     recency_weight: float = 0.08,
     cue_weight: float = 0.12,
     date_weight: float = 0.28,
@@ -310,7 +329,12 @@ def fused_recall(
     if dense_embedder is not None:
         try:
             dense_results = _dense_results(
-                engine, query, kind, dense_embedder, pass_k
+                engine,
+                query,
+                kind,
+                dense_embedder,
+                pass_k,
+                vector_index=vector_index,
             )
         except Exception as exc:  # noqa: BLE001 - dense is an enhancement
             print(f"    dense pass failed, falling back: {exc}", flush=True)
