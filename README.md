@@ -133,6 +133,23 @@ mnemosis mcp --db memory.db   # or: mnemosis-mcp --db memory.db
 By default the MCP server hides experimental tools from `tools/list`
 (they stay callable). Add `--expose experimental` to show all 100+ tools.
 
+### Semantic embeddings (optional)
+
+Without an embedder, recall uses zero-dependency keyword + n-gram matching.
+For real semantic recall, point the MCP server at an embedding API:
+
+```bash
+# local Ollama (e.g. nomic-embed-text)
+mnemosis-mcp --db memory.db --embedder ollama
+
+# any OpenAI-compatible endpoint (DashScope, OpenAI, ...)
+export MNEMOSIS_EMBEDDING_API_KEY=sk-...
+mnemosis-mcp --db memory.db --embedder openai --embedding-model text-embedding-v3
+```
+
+Vectors are cached next to the DB (`memory.db.cache`) and indexed in
+`memory.db.vec`, so repeated recalls skip embedding calls.
+
 ## Threading
 
 `MemoryEngine` is designed for one agent loop per instance: SQLite access and

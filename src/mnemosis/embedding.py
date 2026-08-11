@@ -12,9 +12,12 @@ Any external embedder (e.g. an OpenAI-compatible API) can be wrapped with
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import operator
+import os
 import re
+import urllib.request
 from collections import Counter
 from collections.abc import Callable
 
@@ -107,4 +110,105 @@ class CallableEmbedder(Embedder):
         return self.fn(text)
 
 
-__all__ = ["CallableEmbedder", "Embedder", "NGramEmbedder"]
+def ollama_embedder(
+    model: str = "nomic-embed-text",
+    base_url: str = "http://127.0.0.1:11434",
+    timeout: float = 60.0,
+) -> Embedder:
+    """Embedder backed by a local Ollama ``/api/embed`` endpoint."""
+    url = base_url.rstrip("/") + "/api/embed"
+
+    def _embed(text: str) -> list[float]:
+        payload = {"model": model, "input": [text]}
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        return [float(x) for x in data["embeddings"][0]]
+
+    return CallableEmbedder(_embed)
+
+
+def openai_embedder(
+    model: str | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
+    timeout: float = 60.0,
+) -> Embedder:
+    """OpenAI-compatible embeddings endpoint (DashScope, OpenAI, etc.)."""
+    model = (
+        model
+        or os.environ.get("MNEMOSIS_EMBEDDING_MODEL")
+        or "text-embedding-v3"
+    )
+    base_url = (
+        base_url
+        or os.environ.get("MNEMOSIS_EMBEDDING_BASE_URL")
+        or "https://dashscope.aliyuncs.com/compatible-mode/v1"
+    )
+    api_key = api_key or os.environ.get("MNEMOSIS_EMBEDDING_API_KEY")
+    if not api_key:
+        raise ValueError(
+            "openai embedder needs MNEMOSIS_EMBEDDING_API_KEY or api_key=..."
+        )
+    url = base_url.rstrip("/") + "/embeddings"
+
+    def _embed(text: str) -> list[float]:
+        payload = {"model": model, "input": text}
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": "Bearer " + api_key,
+            },
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        return [float(x) for x in data["data"][0]["embedding"]]
+
+    return CallableEmbedder(_embed)
+
+
+def make_embedder(
+    provider: str | None,
+    *,
+    model: str | None = None,
+    base_url: str | None = None,
+    api_key: str | None = None,
+    cache_path: str | None = None,
+    timeout: float = 60.0,
+) -> Embedder | None:
+    """Build an embedder by provider; ``None``/``"none"`` disables dense recall."""
+    if not provider or provider == "none":
+        return None
+    if provider == "ollama":
+        embedder = ollama_embedder(
+            model or "nomic-embed-text",
+            base_url or "http://127.0.0.1:11434",
+            timeout,
+        )
+    elif provider == "openai":
+        embedder = openai_embedder(model, base_url, api_key, timeout)
+    else:
+        raise ValueError(
+            f"unknown embedder provider: {provider!r} (none|ollama|openai)"
+        )
+    if cache_path:
+        from .embedding_cache import SqliteEmbeddingCache  # lazy: avoid cycle
+
+        return SqliteEmbeddingCache(embedder, cache_path)
+    return embedder
+
+
+__all__ = [
+    "CallableEmbedder",
+    "Embedder",
+    "NGramEmbedder",
+    "make_embedder",
+    "ollama_embedder",
+    "openai_embedder",
+]

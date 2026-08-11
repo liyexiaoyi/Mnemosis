@@ -18,9 +18,11 @@ from datetime import datetime, timezone
 from typing import Any, Sequence
 
 from . import __version__ as _MNEMOSIS_VERSION
+from .embedding import make_embedder
 from .engine import MemoryEngine
 from .embedding import NGramEmbedder
 from .types import MemoryKind, SourceRecord, SourceType
+from .vector_index import VectorIndex
 
 PROTOCOL_VERSION = "2025-03-26"
 MAX_MESSAGE_SIZE = 10 * 1024 * 1024
@@ -2908,6 +2910,9 @@ def _write_message(text: str, framed: bool) -> None:
 def run_stdio(
     db_path: str | None = None,
     expose: str = "advanced",
+    embedder: str = "none",
+    embedding_model: str | None = None,
+    embedding_base_url: str | None = None,
 ) -> None:
     if db_path:
         db_path = os.path.abspath(os.path.expanduser(db_path))
@@ -2916,7 +2921,21 @@ def run_stdio(
             stream.reconfigure(encoding="utf-8")
         except (AttributeError, ValueError):
             pass
-    server = MCPServer(MemoryEngine(db_path), expose=expose)
+    dense = make_embedder(
+        embedder,
+        model=embedding_model,
+        base_url=embedding_base_url,
+        cache_path=(db_path + ".cache") if db_path else ":memory:",
+    )
+    engine = MemoryEngine(
+        db_path,
+        embedder=dense,
+        index_embedder=dense,
+        vector_index=VectorIndex((db_path + ".vec") if db_path else ":memory:")
+        if dense
+        else None,
+    )
+    server = MCPServer(engine, expose=expose)
     while True:
         message, framed = _read_message()
         if message is None:
@@ -2950,8 +2969,25 @@ def main(argv: Sequence[str] | None = None) -> int:
             "(default); experimental: show all 100+ tools"
         ),
     )
+    parser.add_argument(
+        "--embedder",
+        choices=("none", "ollama", "openai"),
+        default="none",
+        help=(
+            "enable dense semantic recall: ollama (local /api/embed) or "
+            "openai (set MNEMOSIS_EMBEDDING_API_KEY)"
+        ),
+    )
+    parser.add_argument("--embedding-model", default=None)
+    parser.add_argument("--embedding-base-url", default=None)
     args = parser.parse_args(argv)
-    run_stdio(args.db, expose=args.expose)
+    run_stdio(
+        args.db,
+        expose=args.expose,
+        embedder=args.embedder,
+        embedding_model=args.embedding_model,
+        embedding_base_url=args.embedding_base_url,
+    )
     return 0
 
 

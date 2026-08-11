@@ -1,8 +1,14 @@
 import unittest
 
 from mnemosis import MemoryEngine
-from mnemosis.embedding import Embedder, NGramEmbedder
+from mnemosis.embedding import (
+    CallableEmbedder,
+    Embedder,
+    NGramEmbedder,
+    make_embedder,
+)
 from mnemosis.types import MemoryKind, SourceRecord, SourceType
+from mnemosis.vector_index import VectorIndex
 
 
 class NGramEmbedderTest(unittest.TestCase):
@@ -109,6 +115,47 @@ class EmbedderRecallTest(unittest.TestCase):
             "what colour does she like?", top_k=1, embedder=NGramEmbedder()
         )
         self.assertEqual(results[0].item.id, item.id)
+
+
+class EmbedderFactoryTest(unittest.TestCase):
+    def test_none_disables_dense(self):
+        self.assertIsNone(make_embedder(None))
+        self.assertIsNone(make_embedder("none"))
+
+    def test_unknown_provider_raises(self):
+        with self.assertRaises(ValueError):
+            make_embedder("bogus")
+
+    def test_ollama_builds_without_network(self):
+        self.assertIsInstance(make_embedder("ollama"), CallableEmbedder)
+
+    def test_openai_requires_key(self):
+        with self.assertRaises(ValueError):
+            make_embedder("openai", api_key="")
+
+    def test_dense_recall_wiring(self):
+        def fake(text: str) -> list[float]:
+            return [1.0 if "猫" in text else 0.0, 1.0]
+
+        embedder = CallableEmbedder(fake)
+        engine = MemoryEngine(
+            embedder=embedder,
+            index_embedder=embedder,
+            vector_index=VectorIndex(":memory:"),
+        )
+        engine.remember("用户喜欢猫", auto_cues=False)
+        results = engine.recall_fused(
+            "猫",
+            dense_embedder=embedder,
+            vector_index=engine.vector_index,
+            top_k=1,
+        )
+        self.assertTrue(results)
+        self.assertTrue(
+            any("semantic" in reason for reason in results[0].reasons)
+        )
+        engine.vector_index.close()
+        engine.close()
 
 
 if __name__ == "__main__":
