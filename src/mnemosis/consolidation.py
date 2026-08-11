@@ -149,11 +149,17 @@ class Consolidator:
         merged = self._merge_duplicates(now, episodes)
         promoted = self._promote_episodic(now, episodes)
         recycled = self._prune_noise(now, episodes)
-        conflicts = self.detect_conflicts()
+        # Semantic snapshot is loaded after promotion so the newly promoted
+        # facts participate in conflict detection, accommodation and
+        # reflection without three separate full-store loads.
+        semantic_items = self.store.all_active(MemoryKind.SEMANTIC)
+        conflicts = self.detect_conflicts(semantic_items)
         rem_links, rem_resolved = self._rem_phase(now, conflicts, episodes)
         emotion_boosted, emotion_links = self._emotion_phase(now, episodes)
-        accommodated = self._accommodation_phase(now)
-        reflected = self.reflect(summarizer or self.llm_summarizer, now)
+        accommodated = self._accommodation_phase(now, semantic_items)
+        reflected = self.reflect(
+            summarizer or self.llm_summarizer, now, semantic_items
+        )
         total_after = self.backend.count()
         return ConsolidationReport(
             promoted=promoted,
@@ -204,7 +210,9 @@ class Consolidator:
             replayed += 1
         return replayed
 
-    def _accommodation_phase(self, now: datetime) -> int:
+    def _accommodation_phase(
+        self, now: datetime, semantic: list[MemoryItem] | None = None
+    ) -> int:
         """Constructivist accommodation (Piaget via CAM; Li et al., 2025).
 
         New information either *assimilates* into an existing schema or forces
@@ -216,8 +224,13 @@ class Consolidator:
         """
         semantic = [
             item
-            for item in self.store.all_active(MemoryKind.SEMANTIC)
-            if item.confidence >= 0.5
+            for item in (
+                semantic
+                if semantic is not None
+                else self.store.all_active(MemoryKind.SEMANTIC)
+            )
+            if item.status is MemoryStatus.ACTIVE
+            and item.confidence >= 0.5
         ]
         groups: dict[str, list[MemoryItem]] = {}
         for item in semantic:
@@ -472,6 +485,7 @@ class Consolidator:
         self,
         summarizer: Callable[[list[str]], str] | None,
         now: datetime | None = None,
+        semantic_items: list[MemoryItem] | None = None,
     ) -> list[MemoryItem]:
         """Reflection over supporting episodes (Park et al., 2023).
 
@@ -482,13 +496,19 @@ class Consolidator:
             return []
         now = now or utcnow()
         reflected: list[MemoryItem] = []
-        for semantic in self.store.all_active(MemoryKind.SEMANTIC):
-            if semantic.evidence_count < 2:
+        for fact in (
+            semantic_items
+            if semantic_items is not None
+            else self.store.all_active(MemoryKind.SEMANTIC)
+        ):
+            if fact.status is not MemoryStatus.ACTIVE:
+                continue
+            if fact.evidence_count < 2:
                 continue
             episodes = [
                 item
                 for item in self.backend.related(
-                    semantic.id, depth=1, max_nodes=20
+                    fact.id, depth=1, max_nodes=20
                 )
                 if item.kind is MemoryKind.EPISODIC
                 and item.status is MemoryStatus.ACTIVE
@@ -501,13 +521,13 @@ class Consolidator:
             except Exception as exc:  # noqa: BLE001
                 _LOG.debug("sleep summarizer failed: %s", exc)
                 continue
-            if not summary or summary == semantic.content:
+            if not summary or summary == fact.content:
                 continue
-            semantic.content = summary
-            semantic.content_hash = hash_content(summary)
-            semantic.updated_at = now
-            self.backend.update(semantic)
-            reflected.append(semantic)
+            fact.content = summary
+            fact.content_hash = hash_content(summary)
+            fact.updated_at = now
+            self.backend.update(fact)
+            reflected.append(fact)
         return reflected
 
     def _promote_episodic(
@@ -589,7 +609,9 @@ class Consolidator:
                 recycled.append(item.id)
         return recycled
 
-    def detect_conflicts(self) -> list[Conflict]:
+    def detect_conflicts(
+        self, semantic: list[MemoryItem] | None = None
+    ) -> list[Conflict]:
         """Heuristic: confident semantic memories sharing a cue and topic.
 
         A shared cue alone is not a contradiction (two unrelated facts about
@@ -598,8 +620,13 @@ class Consolidator:
         """
         semantic = [
             item
-            for item in self.store.all_active(MemoryKind.SEMANTIC)
-            if item.confidence >= self.conflict_min_confidence
+            for item in (
+                semantic
+                if semantic is not None
+                else self.store.all_active(MemoryKind.SEMANTIC)
+            )
+            if item.status is MemoryStatus.ACTIVE
+            and item.confidence >= self.conflict_min_confidence
         ]
         # Tokenize each content once; pair scans then only do set
         # intersections instead of re-tokenizing the same text per pair.

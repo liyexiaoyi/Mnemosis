@@ -274,11 +274,26 @@ threads, serialize the high-level calls yourself.
 ## Testing
 
 ```bash
-python -m unittest discover -s tests -q   # 372 unit tests
+python -m unittest discover -s tests -q   # 395 unit tests
 python benchmarks/locomo_bench.py --mode keyword   # LoCoMo-style long dialogue
 ```
 
-### Independent public benchmark (LongMemEval)
+## Performance (10,000 memories, local machine)
+
+| Operation | Before | After |
+|---|---|---|
+| Keyword recall (zero-hit) | 149 ms | 34 ms |
+| Fused (keyword + n-gram + RRF) recall | 260 ms | 13 ms |
+| N-gram recall | ~200 ms | 5.5 ms |
+| Sleep consolidation | 6.0 s | 0.41 s |
+| Batch ingestion (`remember_many`, 10k) | ~70 s | 13 s |
+
+On the independent LongMemEval benchmark (20 questions, cloud Qwen
+judging), the dense mode matches mem0 on every retrieval metric
+(@1 0.5 / @5 0.8 / @10 0.8), scores slightly higher on answer accuracy
+(0.45 vs 0.40) and ingests 1.4x faster (44s vs 62s per question).
+
+## Independent public benchmark (LongMemEval)
 
 Mnemosis is also validated against an external, non-self-built benchmark:
 [LongMemEval](https://github.com/xiaowu0162/LongMemEval) (Wu et al., ICLR 2025),

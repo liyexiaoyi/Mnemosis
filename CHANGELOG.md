@@ -1,5 +1,21 @@
 # Changelog
 
+## v0.3.0 - 性能与检索质量专项（12 轮迭代）
+
+- 检索提速：关键词零命中不再全表扫描（10k 规模 149ms → 34ms）；融合检索
+  13ms；ngram 检索 5.5ms（稠密重排限流 64 候选 + 16 零命中救援名额）
+- 检索质量：IDF 词项特异性加权（稀有词命中权重高）、英文同义扩展与连字符
+  拆分、英文停用词扩充；LongMemEval 10 题 dense 模式与 mem0 逐题一致，
+  20 题最终对比检索四项打平、答案正确率 0.45 vs 0.40、写入快 1.4 倍
+- 睡眠整合：情景/语义快照共享（10k 本地、无 LLM：优化前基线 6s → 0.41s，
+  14 倍）；情感与 REM 关联建链改为线索倒排索引，冲突检测分词缓存
+- 写入：`remember_many` 批量 API（10k 从 70s → 13s）、批量词索引/关联图/
+  向量写入、嵌入前置失败不脏库、`rebuild_vectors` 补齐缺失向量
+- 部署与工具：MCP Streamable HTTP transport + Dockerfile（VPS/NAS）、
+  `calibrate_decay` 持久化、MCP 参数上限防御、CLI 支持 Ollama/OpenAI 向量
+- 工程：src 100% ruff 通过、395 单元测试、13 项 CI 回归、
+  LongMemEval 夜间基准工作流、评测断点续传按系统+题目判断
+
 ## v0.2.2 - 兼容性与长文本优化
 
 - MCP stdio 双帧兼容：同时支持换行分隔（当前 MCP 规范 / 官方 SDK 2.0）与

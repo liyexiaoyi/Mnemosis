@@ -4,4 +4,4 @@ from .engine import MemoryEngine
 from .hybrid import fused_recall
 
 __all__ = ["MemoryEngine", "fused_recall"]
-__version__ = "0.2.2"
+__version__ = "0.3.0"
