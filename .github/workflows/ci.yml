@@ -22,6 +22,10 @@ jobs:
           python -m unittest discover -s tests -q
         env:
           PYTHONPATH: src
+      - name: Capability regression gate
+        run: python benchmarks/ci_regression.py
+        env:
+          PYTHONPATH: src
 
   benchmark-smoke:
     runs-on: ubuntu-latest
