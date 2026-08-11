@@ -34,6 +34,9 @@ _MAX_PAIRS_PER_CUE = 1000
 _REM_CUE_BUCKET_LIMIT = 500
 """Max items kept per cue for REM association (over-generic cues skipped)."""
 
+_REM_LINK_BUDGET = 200_000
+"""Max association edges written per sleep (bounded repeat cost)."""
+
 
 def _bounded_pairs(items: list[MemoryItem]) -> Iterator[tuple[MemoryItem, MemoryItem]]:
     """Yield at most ``_MAX_PAIRS_PER_CUE`` pairs from the strongest items.
@@ -141,7 +144,8 @@ class Consolidator:
         now = now or utcnow()
         total_before = self.backend.count()
         replayed = self._replay_recent(now)
-        weak_replayed = self._replay_weak_important(now)
+        initial_semantic = self.store.all_active(MemoryKind.SEMANTIC)
+        weak_replayed = self._replay_weak_important(now, initial_semantic)
         # Load the episodic store once and share it across the phases that
         # scan it; each phase filters ACTIVE status in memory, which matches
         # the fresh-load semantics while avoiding ~5 full SQLite loads.
@@ -178,7 +182,9 @@ class Consolidator:
             total_after=total_after,
         )
 
-    def _replay_weak_important(self, now: datetime) -> int:
+    def _replay_weak_important(
+        self, now: datetime, semantic: list[MemoryItem] | None = None
+    ) -> int:
         """Replay important-but-fading traces during sleep.
 
         Sleep-dependent consolidation prioritises salient content
@@ -190,7 +196,11 @@ class Consolidator:
         """
         candidates = [
             item
-            for item in self.store.all_active()
+            for item in (
+                semantic
+                if semantic is not None
+                else self.store.all_active(MemoryKind.SEMANTIC)
+            )
             if item.kind is MemoryKind.SEMANTIC
             and item.importance >= self.weak_replay_importance
             and self.store.curve.retrievability(item, now)
@@ -310,12 +320,19 @@ class Consolidator:
             boosted += 1
 
         links = 0
+        pending_links: list[tuple[str, str, float]] = []
         if len(emotional) >= 2:
             # Same cue-inverted pairing as the REM pass: only pairs that
             # share a cue are examined instead of every O(N^2) pair.
+            cue_freq: dict[str, int] = {}
+            for item in emotional:
+                for cue in item.cues:
+                    cue_freq[cue] = cue_freq.get(cue, 0) + 1
             cue_map: dict[str, list[MemoryItem]] = {}
             for item in emotional:
                 for cue in item.cues:
+                    if cue_freq.get(cue, 0) > _REM_CUE_BUCKET_LIMIT:
+                        continue
                     bucket = cue_map.get(cue)
                     if bucket is None:
                         bucket = []
@@ -337,9 +354,11 @@ class Consolidator:
                     b = by_id[b_id]
                     if a.content_hash == b.content_hash:
                         continue
-                    self.backend.add_link(a.id, b.id, weight=1.2)
-                    self.backend.add_link(b.id, a.id, weight=1.2)
+                    pending_links.append((a.id, b.id, 1.2))
+                    pending_links.append((b.id, a.id, 1.2))
                     links += 1
+        if pending_links:
+            self.backend.add_links_many(pending_links)
         return boosted, links
 
     def _merge_duplicates(
@@ -407,20 +426,27 @@ class Consolidator:
         )
         episodes = [item for item in episodes if item.status is MemoryStatus.ACTIVE]
         links = 0
+        pending_links: list[tuple[str, str, float]] = []
         if len(episodes) >= 2:
             # Cue -> items index: only pairs that share at least one cue are
             # examined, instead of every O(N^2) pair (each of which used to
             # rebuild a set for b). Cues shared by huge generic groups are
-            # skipped because they carry no associative signal.
+            # skipped entirely (a 10k-frequency cue would make every pair
+            # "related" and cost ~60M iterations at 50k memories).
+            cue_freq: dict[str, int] = {}
+            for item in episodes:
+                for cue in item.cues:
+                    cue_freq[cue] = cue_freq.get(cue, 0) + 1
             cue_map: dict[str, list[MemoryItem]] = {}
             for item in episodes:
                 for cue in item.cues:
+                    if cue_freq.get(cue, 0) > _REM_CUE_BUCKET_LIMIT:
+                        continue
                     bucket = cue_map.get(cue)
                     if bucket is None:
                         bucket = []
                         cue_map[cue] = bucket
-                    if len(bucket) < _REM_CUE_BUCKET_LIMIT:
-                        bucket.append(item)
+                    bucket.append(item)
             order = {item.id: index for index, item in enumerate(episodes)}
             for a in episodes:
                 counts: dict[str, int] = {}
@@ -432,8 +458,19 @@ class Consolidator:
                 for b_id, shared in counts.items():
                     if shared < 2 or order.get(b_id, -1) <= order[a.id]:
                         continue
-                    self.backend.add_link(a.id, b.id, weight=0.8 + 0.1 * shared)
+                    pending_links.append(
+                        (a.id, b.id, 0.8 + 0.1 * shared)
+                    )
                     links += 1
+        if pending_links:
+            # Keep the strongest associations when the budget binds: sort by
+            # weight descending so early traversal order cannot starve
+            # high-weight edges later in the store.
+            pending_links.sort(key=lambda edge: edge[2], reverse=True)
+            self.backend.add_links_many(
+                pending_links[:_REM_LINK_BUDGET]
+            )
+            links = min(links, _REM_LINK_BUDGET)
 
         resolved = 0
         for conflict in (

@@ -245,6 +245,14 @@ class DictBackend(Backend):
             )
         )
 
+    def term_dfs(
+        self, terms: Iterable[str], kind: MemoryKind | None
+    ) -> dict[str, int]:
+        return {
+            term: self.term_df(term, kind)
+            for term in set(terms)
+        }
+
     def all_terms(self, kind: MemoryKind | None) -> dict[str, set[str]]:
         if kind is None:
             return {term: set(ids) for term, ids in self._terms_index.items()}
@@ -774,6 +782,36 @@ class SQLiteBackend(Backend):
             sql += " AND t.kind = ?"
             params.append(kind.value)
         return int(self._conn.execute(sql, params).fetchone()[0])
+
+    @_locked
+    def term_dfs(
+        self, terms: Iterable[str], kind: MemoryKind | None
+    ) -> dict[str, int]:
+        """Document frequencies for many terms in one batched query.
+
+        Counts terms-table rows (including recycled memories) instead of
+        joining the memories table: the tiny overcount is a safe direction
+        for idf/skip decisions and keeps the query on the terms PK index.
+        """
+        normalized = sorted(set(terms))
+        if not normalized:
+            return {}
+        result: dict[str, int] = {}
+        for start in range(0, len(normalized), 500):
+            chunk = normalized[start : start + 500]
+            placeholders = ",".join("?" for _ in chunk)
+            sql = (
+                "SELECT term, COUNT(*) AS n "
+                f"FROM terms WHERE term IN ({placeholders})"
+            )
+            params: list = list(chunk)
+            if kind is not None:
+                sql += " AND kind = ?"
+                params.append(kind.value)
+            sql += " GROUP BY term"
+            for row in self._conn.execute(sql, params).fetchall():
+                result[row["term"]] = int(row["n"])
+        return result
 
     @_locked
     def all_terms(self, kind: MemoryKind | None) -> dict[str, set[str]]:

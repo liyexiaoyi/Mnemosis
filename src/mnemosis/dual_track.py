@@ -318,12 +318,11 @@ class DualTrackStore:
         idf_sum = 0.0
         if query_terms:
             hit_counts: dict[str, int] = {}
-            term_df: dict[str, int] = {}
             term_ids: dict[str, set[str]] = {}
             total_active = self.backend.count(kind=kind)
+            term_df = self.backend.term_dfs(query_terms, kind)
             for term in query_terms:
-                df = self.backend.term_df(term, kind)
-                term_df[term] = df
+                df = term_df.get(term, 0)
                 if (
                     df > 0
                     and total_active >= 1000
