@@ -308,14 +308,25 @@ class RetrievalMixin:
         date_weight: float = 0.28,
         expansion: bool = True,
         early_stop: bool = False,
+        early_stop_min_score: float | None = None,
+        early_stop_min_lead: float | None = None,
     ) -> list[RecallResult]:
         """Fused multi-path recall.
 
         Combines keyword and character n-gram rankings with reciprocal rank
         fusion, then adds light signals from recency direction, stored cues
         and query date hints (LongMemEval-style time-aware retrieval).
+
+        ``early_stop`` (default off) returns the keyword pass immediately
+        when its top result is confident and clearly ahead; the two
+        thresholds default to ``hybrid.EARLY_STOP_MIN_SCORE`` /
+        ``EARLY_STOP_MIN_LEAD`` and can be overridden per call.
         """
-        from .hybrid import fused_recall
+        from .hybrid import (
+            EARLY_STOP_MIN_LEAD,
+            EARLY_STOP_MIN_SCORE,
+            fused_recall,
+        )
 
         return fused_recall(
             self,
@@ -335,6 +346,16 @@ class RetrievalMixin:
             date_weight=date_weight,
             expansion=expansion,
             early_stop=early_stop,
+            early_stop_min_score=(
+                early_stop_min_score
+                if early_stop_min_score is not None
+                else EARLY_STOP_MIN_SCORE
+            ),
+            early_stop_min_lead=(
+                early_stop_min_lead
+                if early_stop_min_lead is not None
+                else EARLY_STOP_MIN_LEAD
+            ),
         )
     def _concept_chunks(self, query: str) -> list[str]:
         """Split a Chinese multi-concept query into chunks (working memory

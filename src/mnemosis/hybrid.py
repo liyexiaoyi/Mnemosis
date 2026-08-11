@@ -35,6 +35,12 @@ Embedding every memory on every query is unbounded work; above this safety
 threshold the dense pass is skipped and retrieval stays on lexical routes.
 """
 
+EARLY_STOP_MIN_SCORE = 0.8
+"""Minimum top-1 keyword score for the optional fused early stop."""
+
+EARLY_STOP_MIN_LEAD = 0.2
+"""Minimum top-1 over top-2 score gap for the optional fused early stop."""
+
 _DATE_RE = re.compile(r"(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})")
 _YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
 _MONTHS = {
@@ -313,6 +319,8 @@ def fused_recall(
     date_weight: float = 0.28,
     expansion: bool = True,
     early_stop: bool = False,
+    early_stop_min_score: float = EARLY_STOP_MIN_SCORE,
+    early_stop_min_lead: float = EARLY_STOP_MIN_LEAD,
 ) -> list:
     """Fuse keyword + n-gram recalls with recency / cue / date signals."""
     from .types import tokenize
@@ -344,10 +352,11 @@ def fused_recall(
         if (
             early_stop
             and kw_results
-            and kw_results[0].score >= 0.8
+            and kw_results[0].score >= early_stop_min_score
             and (
                 len(kw_results) < 2
-                or kw_results[0].score - kw_results[1].score >= 0.2
+                or kw_results[0].score - kw_results[1].score
+                >= early_stop_min_lead
             )
         ):
             # An exact, near-perfect keyword match is already the answer;
