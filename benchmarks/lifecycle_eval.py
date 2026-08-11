@@ -166,26 +166,27 @@ def run_concurrency_check() -> dict:
     import tempfile
 
     path = os.path.join(tempfile.gettempdir(), "mnemosis_concurrency.db")
-    for suffix in ("", "-wal", "-shm"):
-        candidate = path + suffix
-        if os.path.exists(candidate):
-            os.remove(candidate)
     writer = MemoryEngine(path)
     reader = MemoryEngine(path)
-    writer.remember(
-        "Shared memory works across connections.",
-        kind=MemoryKind.SEMANTIC,
-        source=SourceRecord(origin=SourceType.USER),
-        cues=["shared"],
-    )
-    results = reader.recall("shared memory works", top_k=3)
-    ok = bool(results)
-    writer.close()
-    reader.close()
+    try:
+        writer.remember(
+            "Shared memory works across connections.",
+            kind=MemoryKind.SEMANTIC,
+            source=SourceRecord(origin=SourceType.USER),
+            cues=["shared"],
+        )
+        results = reader.recall("shared memory works", top_k=3)
+        ok = bool(results)
+    finally:
+        writer.close()
+        reader.close()
     for suffix in ("", "-wal", "-shm"):
         candidate = path + suffix
-        if os.path.exists(candidate):
-            os.remove(candidate)
+        try:
+            if os.path.exists(candidate):
+                os.remove(candidate)
+        except OSError:
+            pass  # temp-file cleanup must never fail the eval
     return {"reader_sees_writer_data": ok}
 
 
