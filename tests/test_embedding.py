@@ -8,6 +8,7 @@ from mnemosis.embedding import (
     Embedder,
     EmbeddingAPIError,
     NGramEmbedder,
+    _chunk_texts,
     make_embedder,
 )
 from mnemosis.types import MemoryKind, SourceRecord, SourceType
@@ -170,10 +171,72 @@ class EmbedderFactoryTest(unittest.TestCase):
             )
 
         embedder = make_embedder("openai", api_key="test")
-        with mock.patch("urllib.request.urlopen", side_effect=fake_urlopen):
-            with self.assertRaises(EmbeddingAPIError) as ctx:
-                embedder.embed("hello")
+        with (
+            mock.patch("urllib.request.urlopen", side_effect=fake_urlopen),
+            self.assertRaises(EmbeddingAPIError) as ctx,
+        ):
+            embedder.embed("hello")
         self.assertIn("401", str(ctx.exception))
+
+    def test_post_json_retries_429_then_succeeds(self):
+        import io
+        import json
+
+        from mnemosis.embedding import _post_json
+
+        attempts = {"count": 0}
+
+        class _FakeResponse:
+            def __init__(self, payload: bytes) -> None:
+                self._payload = payload
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return self._payload
+
+        def fake_urlopen(req, timeout=None):
+            attempts["count"] += 1
+            if attempts["count"] < 3:
+                raise urllib.error.HTTPError(
+                    req.full_url, 429, "Too Many", {},
+                    io.BytesIO(b'{"error":"slow down"}'),
+                )
+            return _FakeResponse(
+                json.dumps({"ok": True}).encode("utf-8")
+            )
+
+        with mock.patch("urllib.request.urlopen", side_effect=fake_urlopen):
+            result = _post_json(
+                "http://example.test/v1", {}, {"Content-Type": "application/json"},
+                timeout=5,
+            )
+        self.assertEqual(result, {"ok": True})
+        self.assertEqual(attempts["count"], 3)
+
+    def test_chunk_texts_respects_size_limits(self):
+        texts = ["x" * 3000, "y" * 3000, "z" * 3000]
+        chunks = _chunk_texts(texts, max_chars=6000, max_items=2)
+        self.assertEqual([len(chunk) for chunk in chunks], [2, 1])
+
+    def test_ollama_embed_many_checks_result_length(self):
+        import io
+
+        def fake_urlopen(req, timeout=None):
+            return io.BytesIO(b'{"embeddings": [[0.1, 0.2]]}')
+
+        from mnemosis.embedding import ollama_embedder
+
+        embedder = ollama_embedder()
+        with (
+            mock.patch("urllib.request.urlopen", side_effect=fake_urlopen),
+            self.assertRaises(EmbeddingAPIError),
+        ):
+            embedder.embed_many(["a", "b"])
 
 
 if __name__ == "__main__":

@@ -2,7 +2,23 @@ import unittest
 from datetime import timedelta
 
 from mnemosis import MemoryEngine
+from mnemosis.embedding import Embedder
 from mnemosis.types import MemoryKind, SourceRecord, SourceType, utcnow
+from mnemosis.vector_index import VectorIndex
+
+
+class _BatchCountingEmbedder(Embedder):
+    def __init__(self) -> None:
+        self.calls = 0
+        self.batches: list[list[str]] = []
+
+    def embed(self, text: str) -> list[float]:
+        return [1.0, 0.0, 0.0]
+
+    def embed_many(self, texts: list[str]) -> list[list[float]]:
+        self.calls += 1
+        self.batches.append(list(texts))
+        return [[1.0, 0.0, 0.0] for _ in texts]
 
 
 class MemoryEngineTest(unittest.TestCase):
@@ -244,6 +260,29 @@ class MemoryEngineTest(unittest.TestCase):
         links = engine.backend.all_links()
         self.assertEqual(len(links), 90)  # 10 * 9 directed edges, no dups
         self.assertEqual(len({(a, b) for a, b, _ in links}), 90)
+
+    def test_remember_many_embeds_in_one_batch_call(self):
+        embedder = _BatchCountingEmbedder()
+        engine = MemoryEngine(
+            vector_index=VectorIndex(dim=3),
+            index_embedder=embedder,
+        )
+        try:
+            source = SourceRecord(origin=SourceType.USER)
+            records = [
+                {
+                    "content": f"批量向量记忆 {index}",
+                    "kind": MemoryKind.EPISODIC,
+                    "source": source,
+                }
+                for index in range(30)
+            ]
+            engine.remember_many(records)
+            self.assertEqual(embedder.calls, 1)
+            self.assertEqual(len(embedder.batches[0]), 30)
+            self.assertEqual(engine.vector_index.size, 30)
+        finally:
+            engine.close()
 
 
 if __name__ == "__main__":

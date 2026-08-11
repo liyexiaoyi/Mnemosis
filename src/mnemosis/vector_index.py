@@ -132,21 +132,68 @@ class VectorIndex:
         with self._lock:
             projection = self._projection()
             signature = self._signature(vector, projection)
-            self._conn.execute(
-                "INSERT OR REPLACE INTO vectors (memory_id, vec) VALUES (?, ?)",
-                (memory_id, array("d", vector).tobytes()),
-            )
-            self._conn.executemany(
-                "INSERT INTO buckets (bucket, memory_id) VALUES (?, ?)",
-                [
-                    (bucket, memory_id)
-                    for bucket in self._bucket_ids(signature)
-                ],
-            )
+            with self._conn:
+                self._conn.execute(
+                    "DELETE FROM buckets WHERE memory_id = ?", (memory_id,)
+                )
+                self._conn.execute(
+                    "INSERT OR REPLACE INTO vectors (memory_id, vec) "
+                    "VALUES (?, ?)",
+                    (memory_id, array("d", vector).tobytes()),
+                )
+                self._conn.executemany(
+                    "INSERT INTO buckets (bucket, memory_id) VALUES (?, ?)",
+                    [
+                        (bucket, memory_id)
+                        for bucket in self._bucket_ids(signature)
+                    ],
+                )
             self._pending += 1
             if self._pending >= 100:
                 self._conn.commit()
                 self._pending = 0
+
+    def add_many(self, entries: list[tuple[str, list[float]]]) -> None:
+        """Add many vectors in one lock + one commit (batch ingestion)."""
+        if not entries:
+            return
+        with self._lock:
+            self._matrix_cache = None
+            if self._dim is None:
+                self._dim = len(entries[0][1])
+            projection = self._projection()
+            for offset in range(0, len(entries), 5000):
+                chunk = entries[offset : offset + 5000]
+                vector_rows: list[tuple[str, bytes]] = []
+                bucket_rows: list[tuple[int, str]] = []
+                ids: list[str] = []
+                for memory_id, vector in chunk:
+                    ids.append(memory_id)
+                    signature = self._signature(vector, projection)
+                    vector_rows.append(
+                        (memory_id, array("d", vector).tobytes())
+                    )
+                    bucket_rows.extend(
+                        (bucket, memory_id)
+                        for bucket in self._bucket_ids(signature)
+                    )
+                placeholders = ",".join("?" for _ in ids)
+                with self._conn:
+                    self._conn.execute(
+                        f"DELETE FROM buckets WHERE memory_id IN ({placeholders})",
+                        tuple(ids),
+                    )
+                    self._conn.executemany(
+                        "INSERT OR REPLACE INTO vectors (memory_id, vec) "
+                        "VALUES (?, ?)",
+                        vector_rows,
+                    )
+                    self._conn.executemany(
+                        "INSERT INTO buckets (bucket, memory_id) "
+                        "VALUES (?, ?)",
+                        bucket_rows,
+                    )
+                    self._conn.commit()
 
     def clear(self) -> None:
         with self._lock:

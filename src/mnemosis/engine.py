@@ -215,10 +215,15 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
                 self.vector_index is not None
                 and self.index_embedder is not None
             ):
-                for item in stored:
-                    self.vector_index.add(
-                        item.id, self.index_embedder.embed(item.content)
-                    )
+                vectors = self.index_embedder.embed_many(
+                    [item.content for item in stored]
+                )
+                self.vector_index.add_many(
+                    [
+                        (item.id, vector)
+                        for item, vector in zip(stored, vectors)
+                    ]
+                )
             if any(
                 item.kind is MemoryKind.EPISODIC for item in stored
             ):

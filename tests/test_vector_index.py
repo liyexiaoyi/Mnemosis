@@ -30,6 +30,33 @@ class VectorIndexTests(unittest.TestCase):
         self.assertAlmostEqual(results[0][1], 0.999, places=2)
         index.close()
 
+    def test_add_many_batches_vectors(self) -> None:
+        index = VectorIndex(dim=3, bits=8, buckets_per_item=2)
+        entries = [
+            (f"m{position}", [1.0 - position * 0.01, 0.0, 0.0])
+            for position in range(20)
+        ]
+        index.add_many(entries)
+        self.assertEqual(index.size, 20)
+        results = index.search([1.0, 0.0, 0.0], top_k=3)
+        self.assertEqual(results[0][0], "m0")
+        index.close()
+
+    def test_readd_same_id_does_not_duplicate_buckets(self) -> None:
+        index = VectorIndex(dim=3, bits=8, buckets_per_item=3)
+        index.add("a", [1.0, 0.0, 0.0])
+        index.add("a", [0.0, 1.0, 0.0])
+        count = index._conn.execute(
+            "SELECT COUNT(*) FROM buckets WHERE memory_id = 'a'"
+        ).fetchone()[0]
+        self.assertEqual(count, 3)
+        index.add_many([("a", [0.0, 0.0, 1.0])])
+        count = index._conn.execute(
+            "SELECT COUNT(*) FROM buckets WHERE memory_id = 'a'"
+        ).fetchone()[0]
+        self.assertEqual(count, 3)
+        index.close()
+
     def test_persists_across_reopen(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "index.sqlite")

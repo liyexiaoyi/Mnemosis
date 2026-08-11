@@ -17,6 +17,7 @@ import math
 import operator
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 from collections import Counter
@@ -34,6 +35,10 @@ class Embedder:
 
     def embed(self, text: str) -> list[float]:
         raise NotImplementedError
+
+    def embed_many(self, texts: list[str]) -> list[list[float]]:
+        """Embed a batch of texts; external APIs override with one call."""
+        return [self.embed(text) for text in texts]
 
     @staticmethod
     def cosine(a: list[float], b: list[float]) -> float:
@@ -108,11 +113,21 @@ class NGramEmbedder(Embedder):
 class CallableEmbedder(Embedder):
     """Wrap any external embedding function, e.g. an OpenAI-compatible API."""
 
-    def __init__(self, fn: Callable[[str], list[float]]) -> None:
+    def __init__(
+        self,
+        fn: Callable[[str], list[float]],
+        fn_many: Callable[[list[str]], list[list[float]]] | None = None,
+    ) -> None:
         self.fn = fn
+        self.fn_many = fn_many
 
     def embed(self, text: str) -> list[float]:
         return self.fn(text)
+
+    def embed_many(self, texts: list[str]) -> list[list[float]]:
+        if self.fn_many is None:
+            return [self.fn(text) for text in texts]
+        return self.fn_many(texts)
 
 
 def _post_json(
@@ -120,22 +135,59 @@ def _post_json(
     payload: dict,
     headers: dict[str, str],
     timeout: float,
+    retries: int = 3,
 ) -> dict:
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(payload).encode("utf-8"),
-        headers=headers,
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        body = exc.read().decode("utf-8", "ignore")[:300]
-        raise EmbeddingAPIError(
-            f"embedding API HTTP {exc.code}: {body or exc.reason}"
-        ) from exc
-    except (urllib.error.URLError, TimeoutError) as exc:
-        raise EmbeddingAPIError(f"embedding API unreachable: {exc}") from exc
+    """POST JSON with exponential backoff on 429/5xx and network errors."""
+    for attempt in range(retries):
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers=headers,
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return json.loads(resp.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            if (
+                exc.code in (429, 500, 502, 503, 504)
+                and attempt < retries - 1
+            ):
+                time.sleep(1.0 * (2**attempt))
+                continue
+            body = exc.read().decode("utf-8", "ignore")[:300]
+            raise EmbeddingAPIError(
+                f"embedding API HTTP {exc.code}: {body or exc.reason}"
+            ) from exc
+        except (urllib.error.URLError, TimeoutError) as exc:
+            if attempt < retries - 1:
+                time.sleep(1.0 * (2**attempt))
+                continue
+            raise EmbeddingAPIError(
+                f"embedding API unreachable: {exc}"
+            ) from exc
+    raise EmbeddingAPIError("embedding API retries exhausted")
+
+
+def _chunk_texts(
+    texts: list[str], max_chars: int = 6000, max_items: int = 100
+) -> list[list[str]]:
+    """Chunk by estimated size so batch calls stay under model limits."""
+    chunks: list[list[str]] = []
+    current: list[str] = []
+    current_chars = 0
+    for text in texts:
+        if current and (
+            len(current) >= max_items
+            or current_chars + len(text) > max_chars
+        ):
+            chunks.append(current)
+            current = []
+            current_chars = 0
+        current.append(text)
+        current_chars += len(text)
+    if current:
+        chunks.append(current)
+    return chunks
 
 
 def ollama_embedder(
@@ -153,7 +205,23 @@ def ollama_embedder(
         )
         return [float(x) for x in data["embeddings"][0]]
 
-    return CallableEmbedder(_embed)
+    def _embed_many(texts: list[str]) -> list[list[float]]:
+        vectors: list[list[float]] = []
+        for chunk in _chunk_texts(texts):
+            payload = {"model": model, "input": chunk}
+            data = _post_json(
+                url, payload, {"Content-Type": "application/json"}, timeout
+            )
+            rows = data["embeddings"]
+            if len(rows) != len(chunk):
+                raise EmbeddingAPIError(
+                    f"ollama returned {len(rows)} embeddings for "
+                    f"{len(chunk)} inputs"
+                )
+            vectors.extend([float(x) for x in row] for row in rows)
+        return vectors
+
+    return CallableEmbedder(_embed, _embed_many)
 
 
 def openai_embedder(
@@ -193,7 +261,31 @@ def openai_embedder(
         )
         return [float(x) for x in data["data"][0]["embedding"]]
 
-    return CallableEmbedder(_embed)
+    def _embed_many(texts: list[str]) -> list[list[float]]:
+        vectors: list[list[float]] = []
+        for chunk in _chunk_texts(texts):
+            payload = {"model": model, "input": chunk}
+            data = _post_json(
+                url,
+                payload,
+                {
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer " + api_key,
+                },
+                timeout,
+            )
+            ordered = sorted(data["data"], key=lambda row: row["index"])
+            if len(ordered) != len(chunk):
+                raise EmbeddingAPIError(
+                    f"openai returned {len(ordered)} embeddings for "
+                    f"{len(chunk)} inputs"
+                )
+            vectors.extend(
+                [float(x) for x in row["embedding"]] for row in ordered
+            )
+        return vectors
+
+    return CallableEmbedder(_embed, _embed_many)
 
 
 def make_embedder(
