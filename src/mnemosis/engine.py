@@ -163,6 +163,49 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
             self.event_chain.invalidate()
         return item
 
+    def remember_turn(
+        self,
+        text: str,
+        *,
+        kind: MemoryKind | None = None,
+        max_segments: int = 4,
+        now: datetime | None = None,
+    ) -> dict:
+        """Save the sentences of one conversation turn in a single call.
+
+        Splits a user/assistant exchange into sentences and remembers each
+        one with automatic cues and context. Agents can call this once per
+        turn (see README) instead of hand-writing ``remember()`` calls.
+        """
+        parts = [
+            part.strip()
+            for part in re.split(r"[。！？!?；;\n]+", text)
+            if part.strip()
+        ]
+        parts = parts[: max(1, int(max_segments))]
+        memories: list[dict] = []
+        for part in parts:
+            item = self.remember(
+                part,
+                kind=kind
+                or (
+                    MemoryKind.SEMANTIC
+                    if len(part) <= 60
+                    else MemoryKind.EPISODIC
+                ),
+                auto_cues=True,
+                auto_context=True,
+                created_at=now,
+            )
+            memories.append(
+                {
+                    "id": item.id,
+                    "content": item.content[:80],
+                    "kind": item.kind.value,
+                }
+            )
+        return {"saved": len(memories), "memories": memories}
+
     def update(
         self,
         memory_id: str,

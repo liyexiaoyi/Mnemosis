@@ -127,6 +127,12 @@ class MCPTest(unittest.TestCase):
         result = self.server._call_tool("calibrate_decay", {})
         self.assertIn("calibrated", result)
 
+    def test_remember_turn_tool(self):
+        result = self.server._call_tool(
+            "remember_turn", {"text": "用户喜欢咖啡。用户是程序员。"}
+        )
+        self.assertGreaterEqual(result["saved"], 2)
+
     def test_conflict_advice_tool(self):
         result = self.server._call_tool("conflict_advice", {})
         self.assertIn("advice", result)

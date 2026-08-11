@@ -934,6 +934,13 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         )
         self.assertEqual(via_mcp["updated"], 2)
 
+    def test_remember_turn_splits_and_recalls(self) -> None:
+        engine = MemoryEngine()
+        report = engine.remember_turn("阿丽喜欢猫。她住在上海。")
+        self.assertEqual(report["saved"], 2)
+        hits = engine.recall("阿丽喜欢什么动物", top_k=3)
+        self.assertTrue(any("猫" in r.item.content for r in hits))
+
     def test_concurrent_intent_state(self) -> None:
         engine = MemoryEngine()
         errors: list[str] = []

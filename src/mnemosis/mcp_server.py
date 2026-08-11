@@ -111,6 +111,23 @@ class MCPServer:
                 },
             },
             {
+                "name": "remember_turn",
+                "description": (
+                    "Save one conversation turn in a single call: splits "
+                    "the text into sentences and stores each with automatic "
+                    "cues. Call this after every user/assistant exchange to "
+                    "keep memory automatic."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "text": {"type": "string"},
+                        "max_segments": {"type": "integer"},
+                    },
+                    "required": ["text"],
+                },
+            },
+            {
                 "name": "recall",
                 "description": "Recall memories matching a query.",
                 "inputSchema": {
@@ -2187,6 +2204,11 @@ class MCPServer:
                 "cues": item.cues,
                 "importance": item.importance,
             }
+        if name == "remember_turn":
+            return self.engine.remember_turn(
+                args["text"],
+                max_segments=int(args.get("max_segments") or 4),
+            )
         if name == "recall":
             embedder = (
                 NGramEmbedder()

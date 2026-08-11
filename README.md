@@ -154,6 +154,26 @@ After enough usage, call the `calibrate_decay` MCP tool to fit the
 forgetting curve to your real retrieval history (median survival span ->
 per-user decay rate).
 
+### Automatic memory saving
+
+Mnemosis never eavesdrops: whoever owns the agent decides what is worth
+remembering. The easiest automatic pattern is one tool call per turn:
+
+```bash
+mnemosis-mcp --db memory.db
+```
+
+Then tell your agent in its system prompt:
+
+> After every user/assistant exchange, call `remember_turn` with the raw
+> text of the turn. It splits sentences, extracts cues and stores them.
+> Call `recall` (or `check`) before answering when the user references
+> earlier topics.
+
+`remember_turn` is a single call that stores the whole turn as segmented
+memories with automatic cues, so agents do not need to hand-write
+`remember` calls for each fact.
+
 ## Threading
 
 `MemoryEngine` is designed for one agent loop per instance: SQLite access and
