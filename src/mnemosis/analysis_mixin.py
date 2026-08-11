@@ -85,6 +85,67 @@ class AnalysisMixin:
             "suppressed_count": suppressed,
             "penalties": penalties,
         }
+
+    def memory_map(
+        self,
+        now: datetime | None = None,
+        limit: int = 200,
+        topic_min: int = 1,
+    ) -> dict:
+        """Summarize what the memory holds: topics, time and strength.
+
+        Clusters active memories by their leading cue (or content prefix),
+        reports per-topic counts with average retrievability/importance,
+        and buckets the whole sample into weak / ok / strong. This is the
+        data behind the human-readable memory-map chart.
+        """
+        now = now or utcnow()
+        items = self.store.all_active()[: max(1, int(limit))]
+        groups: dict[str, list[MemoryItem]] = {}
+        for item in items:
+            topic = item.cues[0] if item.cues else item.content[:12]
+            groups.setdefault(topic, []).append(item)
+        rows: list[dict] = []
+        for topic, members in groups.items():
+            if len(members) < max(1, int(topic_min)):
+                continue
+            rows.append(
+                {
+                    "topic": topic,
+                    "count": len(members),
+                    "avg_retrievability": round(
+                        sum(
+                            self.curve.retrievability(member, now)
+                            for member in members
+                        )
+                        / len(members),
+                        3,
+                    ),
+                    "avg_importance": round(
+                        sum(member.importance for member in members)
+                        / len(members),
+                        3,
+                    ),
+                    "recent": members[0].content[:60],
+                }
+            )
+        rows.sort(key=lambda row: (-row["count"], -row["avg_importance"]))
+        strength = {"weak": 0, "ok": 0, "strong": 0}
+        for item in items:
+            retrievability = self.curve.retrievability(item, now)
+            if retrievability < 0.3:
+                strength["weak"] += 1
+            elif retrievability < 0.7:
+                strength["ok"] += 1
+            else:
+                strength["strong"] += 1
+        return {
+            "sampled": len(items),
+            "topics": rows[: max(1, int(limit))],
+            "strength": strength,
+            "generated_at": utcnow().isoformat(),
+        }
+
     def kg_export(self) -> dict:
         """Export the memory network as a knowledge-graph edge list.
 

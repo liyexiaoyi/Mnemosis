@@ -848,6 +848,22 @@ class MCPServer:
                 "inputSchema": {"type": "object", "properties": {}},
             },
             {
+                "name": "memory_map",
+                "description": (
+                    "Summarize what the memory holds: topics with counts "
+                    "and average retrievability, plus a weak/ok/strong "
+                    "strength histogram. Powers the human-readable memory "
+                    "map chart."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "limit": {"type": "integer"},
+                        "topic_min": {"type": "integer"},
+                    },
+                },
+            },
+            {
                 "name": "kg_export",
                 "description": (
                     "Export the memory network as a knowledge-graph edge "
@@ -2676,6 +2692,13 @@ class MCPServer:
     @_tool("memory_health")
     def _tool_memory_health(self, args: dict[str, Any]) -> Any:
         return self.engine.memory_health()
+
+    @_tool("memory_map")
+    def _tool_memory_map(self, args: dict[str, Any]) -> Any:
+        return self.engine.memory_map(
+            limit=int(args.get("limit") or 200),
+            topic_min=int(args.get("topic_min") or 1),
+        )
 
     @_tool("kg_export")
     def _tool_kg_export(self, args: dict[str, Any]) -> Any:

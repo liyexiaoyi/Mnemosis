@@ -841,5 +841,33 @@ class ConflictAdviceTest(unittest.TestCase):
         self.assertEqual(report["advice"][0]["verdict"], "clarify")
 
 
+class MemoryMapTest(unittest.TestCase):
+    def test_groups_topics_and_strength(self):
+        engine = MemoryEngine()
+        user = SourceRecord(origin=SourceType.USER)
+        for i in range(3):
+            engine.remember(
+                f"阿丽买了{i}号物品。",
+                kind=MemoryKind.SEMANTIC,
+                source=user,
+                cues=["阿丽"],
+                importance=0.8,
+                auto_cues=False,
+            )
+        engine.remember(
+            "项目预算8万。",
+            kind=MemoryKind.SEMANTIC,
+            source=user,
+            cues=["项目"],
+            auto_cues=False,
+        )
+        report = engine.memory_map()
+        self.assertEqual(report["sampled"], 4)
+        topics = {row["topic"]: row["count"] for row in report["topics"]}
+        self.assertEqual(topics["阿丽"], 3)
+        self.assertEqual(topics["项目"], 1)
+        self.assertEqual(sum(report["strength"].values()), 4)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -99,6 +99,32 @@ python examples/demo.py          # 仓库内
   打开终端执行 `python examples/demo.py` 即可
 - 下载 `examples/Mnemosis_demo.ipynb` 后，用本地 Jupyter 或百度 AI Studio 打开
 
+## How it works
+
+Mnemosis is a **memory layer**, not a recorder: your agent decides what to
+save (via `remember` / `remember_turn`) and what to ask (via `recall` /
+`check`). Inside, memories are stored, decay, consolidate and self-check the
+way human memory does.
+
+```mermaid
+flowchart LR
+    A[Agent / MCP client] -->|remember / remember_turn| M[MCP server]
+    A -->|recall / check| M
+    M --> E[MemoryEngine]
+    E -->|store| DB[(SQLite)]
+    E -->|keyword + n-gram + optional embeddings| R[Retrieval]
+    E -->|forgetting curve| F[Forgetting & spaced review]
+    E -->|sleep consolidation| S[Consolidation: dedupe / link / resolve]
+    E -->|metacognition| C[Check: gaps / contradictions]
+    R --> DB
+    F --> DB
+    S --> DB
+```
+
+**中文原理一句话**：Mnemosis 照着人脑记忆机制给 agent 做长期记忆——`remember`
+写入、`recall` 联想检索、遗忘曲线自动衰减、`sleep` 睡眠式整理（去重/建联/消矛盾）、
+`check` 知道自己不知道。它不是录音机，谁调用、存什么由你和 agent 决定。
+
 ## Use with your AI client (MCP)
 
 One-line MCP integration for Claude Desktop, Cursor, Codex and any MCP client:
@@ -153,6 +179,14 @@ Vectors are cached next to the DB (`memory.db.cache`) and indexed in
 After enough usage, call the `calibrate_decay` MCP tool to fit the
 forgetting curve to your real retrieval history (median survival span ->
 per-user decay rate).
+
+To see what the memory actually holds, call `memory_map` (topics with
+counts/retrievability plus a weak/ok/strong histogram), or render a Chinese
+chart locally:
+
+```bash
+python benchmarks/render_memory_map.py --db memory.db --out memory_map.svg
+```
 
 ### Automatic memory saving
 
