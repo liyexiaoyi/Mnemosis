@@ -137,6 +137,32 @@ class MemoryEngineTest(unittest.TestCase):
         self.assertEqual(self.engine.purge(), 1)
         self.assertIsNone(self.engine.backend.get(item.id))
 
+    def test_recycled_memories_do_not_surface_in_anchor_candidates(self):
+        """Anchor candidate lookup must never return soft-deleted rows."""
+        engine = MemoryEngine()
+        source = SourceRecord(origin=SourceType.USER)
+        recycled = engine.remember(
+            "寄养店电话 400-777-8888。",
+            kind=MemoryKind.SEMANTIC,
+            source=source,
+            cues=["寄养店"],
+            auto_cues=False,
+        )
+        engine.forget(recycled.id)
+        candidates = engine._anchor_items({"寄养店", "电话"}, None, set())
+        self.assertNotIn(
+            recycled.id, {candidate.id for candidate in candidates}
+        )
+        active = engine.remember(
+            "健身房电话 555-0100。",
+            kind=MemoryKind.SEMANTIC,
+            source=source,
+            cues=["健身房"],
+            auto_cues=False,
+        )
+        candidates2 = engine._anchor_items({"健身房", "电话"}, None, set())
+        self.assertIn(active.id, {candidate.id for candidate in candidates2})
+
 
 if __name__ == "__main__":
     unittest.main()

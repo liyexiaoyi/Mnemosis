@@ -58,6 +58,16 @@ _TEMPORAL_STEM_WORDS: dict[str, tuple[str, ...]] = {
     "退": ("退", "退款", "退货", "退换"),
     "换": ("换", "更换", "换新", "换货"),
 }
+
+_ANCHOR_CANDIDATE_LIMIT = 5000
+"""Max candidates loaded by one anchor pass.
+
+An anchor exists to insert one specific record (the fault report, the
+contact card, the dated event). When a term is so generic that thousands of
+memories share it, the pass cannot pick a specific record anyway and the
+scan cost would be unbounded, so the anchor is skipped.
+"""
+
 _TEMPORAL_ACTION_SYNONYMS: tuple[tuple[str, str], ...] = (
     ("复习", "备考"),
     ("复查", "复诊"),
@@ -459,6 +469,53 @@ class RetrievalMixin:
             for term in tokenize(chunk)
             if len(term) >= 2 and term not in generic
         }
+
+    def _anchor_items(
+        self,
+        terms: set[str],
+        kind: MemoryKind | None,
+        exclude_ids: set[str],
+    ) -> list[MemoryItem]:
+        """Term-index pruned candidates for the anchor post-passes.
+
+        The anchor passes used to scan every active memory. The persisted
+        term index already knows which memories contain any of ``terms``,
+        so only those rows are loaded; the passes keep their own pattern
+        filters unchanged.
+        """
+        if not terms:
+            return []
+        ids = self.backend.find_by_terms(terms, kind)
+        if not ids:
+            return []
+        if len(ids) > _ANCHOR_CANDIDATE_LIMIT:
+            return []
+        ids -= exclude_ids
+        return self.backend.get_many(sorted(ids))
+
+    def _temporal_candidate_terms(
+        self,
+        query: str,
+        query_terms: set[str],
+        query_finals: frozenset[str],
+        verb_stems: frozenset[str],
+        action_groups: frozenset[int],
+    ) -> set[str]:
+        """Terms for the temporal/anchor candidate pool.
+
+        The relevance gate can fire on word-final characters, verb stems
+        and action synonyms even when the exact query bigram is absent, so
+        the candidate pool must include those expansions too.
+        """
+        terms = set(query_terms)
+        terms.update(query_finals)
+        for stem in verb_stems:
+            terms.update(_TEMPORAL_STEM_WORDS.get(stem, (stem,)))
+        for index in action_groups:
+            terms.update(_TEMPORAL_ACTION_SYNONYMS[index])
+        if has_cjk(query):
+            terms |= expand_synonyms(query_terms)
+        return terms
     def concept_cover(
         self,
         query: str,
@@ -580,9 +637,12 @@ class RetrievalMixin:
                 or match.group(1) + "号" in query
             ):
                 return results
+        query_terms = self._concept_terms(query)
+        if not query_terms:
+            return results
         candidates: list[tuple[float, MemoryItem]] = []
-        for item in self.store.all_active(kind=kind):
-            if item.id in exclude_ids or item.id in seen:
+        for item in self._anchor_items(query_terms, kind, exclude_ids):
+            if item.id in seen:
                 continue
             match = self._ENTITY_RECORD_RE.search(item.content)
             if match:
@@ -658,9 +718,7 @@ class RetrievalMixin:
         )
         money_marker = bool(_MONEY_Q_RE.search(query))
         candidates: list[tuple[float, int, MemoryItem, bool]] = []
-        for item in self.store.all_active(kind=kind):
-            if item.id in exclude_ids:
-                continue
+        for item in self._anchor_items(query_terms, kind, exclude_ids):
             seen_flag = item.id in seen
             if not money_marker and seen_flag:
                 continue
@@ -864,6 +922,9 @@ class RetrievalMixin:
         ) = self._temporal_probe(query)
         notice_q = self._TEMPORAL_NOTICE_RE.search(query)
         hours_q = bool(_HOURS_Q_RE.search(query))
+        candidate_terms = self._temporal_candidate_terms(
+            query, query_terms, query_finals, verb_stems, action_groups
+        )
 
         if date_marker:
             month, day = (
@@ -876,8 +937,10 @@ class RetrievalMixin:
                 f"{int(year.group(1))}年{date_frag}" if year else date_frag
             )
             candidates: list[tuple[float, MemoryItem]] = []
-            for item in self.store.all_active(kind=kind):
-                if item.id in seen or item.id in exclude_ids:
+            for item in self._anchor_items(
+                candidate_terms, kind, exclude_ids
+            ):
+                if item.id in seen:
                     continue
                 text = item.content + " " + " ".join(item.cues)
                 if target_frag not in "".join(text.split()):
@@ -914,8 +977,8 @@ class RetrievalMixin:
             re.search(r"第一次|首次|头一回", query)
         )
         candidates: list[tuple[float, MemoryItem]] = []
-        for item in self.store.all_active(kind=kind):
-            if item.id in seen or item.id in exclude_ids:
+        for item in self._anchor_items(candidate_terms, kind, exclude_ids):
+            if item.id in seen:
                 continue
             text = item.content + " " + " ".join(item.cues)
             full, dates = _dates(text)
@@ -1188,9 +1251,12 @@ class RetrievalMixin:
         if not query_terms:
             return results
         topic_len, query_finals, _s, _a, _e = self._temporal_probe(query)
+        candidate_terms = self._temporal_candidate_terms(
+            query, query_terms, query_finals, frozenset(), frozenset()
+        )
         candidates: list[tuple[float, MemoryItem]] = []
-        for item in self.store.all_active(kind=kind):
-            if item.id in seen or item.id in exclude_ids:
+        for item in self._anchor_items(candidate_terms, kind, exclude_ids):
+            if item.id in seen:
                 continue
             if not _PROBLEM_WORD_RE.search(item.content):
                 continue
@@ -1238,8 +1304,8 @@ class RetrievalMixin:
         if not query_terms:
             return results
         candidates: list[tuple[int, tuple[int, int, int], MemoryItem]] = []
-        for item in self.store.all_active(kind=kind):
-            if item.id in seen or item.id in exclude_ids:
+        for item in self._anchor_items(query_terms, kind, exclude_ids):
+            if item.id in seen:
                 continue
             if not _CONTACT_PAT_RE.search(item.content):
                 continue
@@ -1289,8 +1355,8 @@ class RetrievalMixin:
         storage_q = bool(_STORAGE_Q_RE.search(query))
         word_re = _STORAGE_WORD_RE if storage_q else _PURCHASE_WORD_RE
         candidates: list[tuple[int, tuple[int, int, int], MemoryItem]] = []
-        for item in self.store.all_active(kind=kind):
-            if item.id in seen or item.id in exclude_ids:
+        for item in self._anchor_items(query_terms, kind, exclude_ids):
+            if item.id in seen:
                 continue
             text = item.content + " " + " ".join(item.cues)
             if not word_re.search(text):
@@ -1344,8 +1410,8 @@ class RetrievalMixin:
         if not query_terms:
             return results
         candidates: list[tuple[int, tuple[int, int, int], MemoryItem]] = []
-        for item in self.store.all_active(kind=kind):
-            if item.id in seen or item.id in exclude_ids:
+        for item in self._anchor_items(query_terms, kind, exclude_ids):
+            if item.id in seen:
                 continue
             text = item.content + " " + " ".join(item.cues)
             if not _SCOPE_WORD_RE.search(text):
