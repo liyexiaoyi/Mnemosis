@@ -11,6 +11,7 @@ import sqlite3
 import threading
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
+from functools import wraps
 
 from .types import (
     MemoryItem,
@@ -288,6 +289,7 @@ class DictBackend(Backend):
 
 
 def _locked(method):
+    @wraps(method)
     def wrapper(self, *args, **kwargs):
         with self._lock:
             return method(self, *args, **kwargs)
@@ -448,6 +450,7 @@ class SQLiteBackend(Backend):
         self.add_cues(existing.id, item.cues)
         return existing
 
+    @_locked
     def find_by_hash(
         self, kind: MemoryKind, content_hash: str
     ) -> MemoryItem | None:
@@ -457,12 +460,14 @@ class SQLiteBackend(Backend):
         ).fetchone()
         return _row_to_item(row) if row else None
 
+    @_locked
     def get(self, memory_id: str) -> MemoryItem | None:
         row = self._conn.execute(
             "SELECT * FROM memories WHERE id = ?", (memory_id,)
         ).fetchone()
         return _row_to_item(row) if row else None
 
+    @_locked
     def get_many(self, memory_ids: Iterable[str]) -> list[MemoryItem]:
         ids = list(memory_ids)
         if not ids:
@@ -560,6 +565,7 @@ class SQLiteBackend(Backend):
             self._conn.commit()
             self._term_pending = 0
 
+    @_locked
     def find_by_terms(
         self, terms: Iterable[str], kind: MemoryKind | None
     ) -> set[str]:
@@ -582,6 +588,7 @@ class SQLiteBackend(Backend):
             found.update(row[0] for row in rows)
         return found
 
+    @_locked
     def all_terms(self, kind: MemoryKind | None) -> dict[str, set[str]]:
         if kind is None:
             rows = self._conn.execute(
@@ -597,6 +604,7 @@ class SQLiteBackend(Backend):
             index.setdefault(row["term"], set()).add(row["memory_id"])
         return index
 
+    @_locked
     def list(
         self,
         *,
@@ -638,6 +646,7 @@ class SQLiteBackend(Backend):
                 [(memory_id, cue) for cue in normalized],
             )
 
+    @_locked
     def find_by_cue(self, cue: str) -> list[MemoryItem]:
         cue = cue.strip().lower()
         rows = self._conn.execute(
@@ -664,6 +673,7 @@ class SQLiteBackend(Backend):
                 (src, dst, weight),
             )
 
+    @_locked
     def link_weight(self, src: str, dst: str) -> float:
         row = self._conn.execute(
             "SELECT weight FROM links WHERE src = ? AND dst = ?",
@@ -671,12 +681,14 @@ class SQLiteBackend(Backend):
         ).fetchone()
         return float(row["weight"]) if row else 0.0
 
+    @_locked
     def all_links(self) -> list[tuple[str, str, float]]:
         rows = self._conn.execute(
             "SELECT src, dst, weight FROM links"
         ).fetchall()
         return [(r["src"], r["dst"], float(r["weight"])) for r in rows]
 
+    @_locked
     def related(
         self, memory_id: str, depth: int = 1, max_nodes: int = 20
     ) -> list[MemoryItem]:
@@ -708,6 +720,7 @@ class SQLiteBackend(Backend):
         ).fetchall()
         return [_row_to_item(r) for r in rows][:max_nodes]
 
+    @_locked
     def stats(self) -> dict:
         active_rows = self._conn.execute(
             "SELECT kind, COUNT(*) AS n FROM memories "

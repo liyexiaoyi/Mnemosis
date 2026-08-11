@@ -11,8 +11,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
-import traceback
 from datetime import datetime
 from typing import Any, Sequence
 
@@ -23,6 +23,7 @@ from .types import MemoryKind, SourceRecord, SourceType
 
 PROTOCOL_VERSION = "2025-03-26"
 MAX_MESSAGE_SIZE = 10 * 1024 * 1024
+_LOG = logging.getLogger(__name__)
 
 
 def _kind(value: Any) -> MemoryKind | None:
@@ -2094,7 +2095,7 @@ class MCPServer:
                     f"Invalid params: missing required field {exc.args[0]}",
                 )
             except Exception as exc:  # noqa: BLE001 - surface tool errors
-                traceback.print_exc()
+                _LOG.exception("tool %s failed", name)
                 return self._result(
                     message_id,
                     {
@@ -2845,7 +2846,13 @@ def _read_message() -> tuple[str | None, bool]:
     if length <= 0:
         return None, True
     if length > MAX_MESSAGE_SIZE:
-        return None, True
+        remaining = length
+        while remaining > 0:
+            chunk = sys.stdin.buffer.read(min(remaining, 65536))
+            if not chunk:
+                break
+            remaining -= len(chunk)
+        return "", True
     return sys.stdin.buffer.read(length).decode("utf-8"), True
 
 

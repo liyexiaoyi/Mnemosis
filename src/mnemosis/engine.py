@@ -2845,7 +2845,7 @@ class MemoryEngine:
         for src, dst, _weight in self.backend.all_links():
             existing.add(frozenset((src, dst)))
         suggestions = []
-        compare_items = items[: max(2, int(limit) * 3)]
+        compare_items = items[: min(max(2, int(limit) * 3), 200)]
         for a, b in combinations(compare_items, 2):
             if len(suggestions) >= max(1, int(limit)):
                 break
@@ -5282,7 +5282,7 @@ class MemoryEngine:
             "orbit", "cause", "depend", "contain", "lead",
         }
         items = self.store.all_active()
-        compare_items = items[: max(2, int(limit) * 3)]
+        compare_items = items[: min(max(2, int(limit) * 3), 200)]
         rows: list[dict] = []
         for a, b in combinations(compare_items, 2):
             topic_a = a.cues[0] if a.cues else a.content[:10]
@@ -8502,7 +8502,8 @@ class MemoryEngine:
                 continue
             cues = set(item.cues)
             if action == "add":
-                added += len(new_tags - cues)
+                added_tags = new_tags - cues
+                added += len(added_tags)
                 cues |= new_tags
             else:
                 removed_tags = cues & new_tags
@@ -8510,9 +8511,10 @@ class MemoryEngine:
                 cues -= new_tags
             item.cues = normalize_cues(list(cues))
             self.backend.update(item)
-            self.backend.add_cues(item.id, item.cues)
             if action == "remove":
                 self.backend.remove_cues(item.id, removed_tags)
+            else:
+                self.backend.add_cues(item.id, added_tags)
             updated += 1
         return {"updated": updated, "added": added, "removed": removed}
 

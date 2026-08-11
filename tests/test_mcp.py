@@ -1,10 +1,11 @@
 import json
+import io
 import subprocess
 import sys
 import unittest
 
 from mnemosis import MemoryEngine
-from mnemosis.mcp_server import MCPServer
+from mnemosis.mcp_server import MCPServer, MAX_MESSAGE_SIZE, _read_message
 
 
 class MCPTest(unittest.TestCase):
@@ -33,6 +34,25 @@ class MCPTest(unittest.TestCase):
         )
         self.assertEqual(response["result"]["serverInfo"]["name"], "mnemosis")
         self.assertIn("tools", response["result"]["capabilities"])
+
+    def test_oversized_message_is_skipped_not_eof(self):
+        size = MAX_MESSAGE_SIZE + 100
+        fake = type(
+            "FakeStdin",
+            (),
+            {"buffer": io.BytesIO(
+                b"Content-Length: " + str(size).encode("ascii")
+                + b"\r\n\r\n" + b"x" * 100
+            )},
+        )()
+        old_stdin = sys.stdin
+        try:
+            sys.stdin = fake
+            message, framed = _read_message()
+        finally:
+            sys.stdin = old_stdin
+        self.assertEqual(message, "")
+        self.assertTrue(framed)
 
     def test_stdio_emits_utf8(self):
         proc = subprocess.run(
