@@ -121,9 +121,9 @@ flowchart LR
     S --> DB
 ```
 
-**中文原理一句话**：Mnemosis 照着人脑记忆机制给 agent 做长期记忆——`remember`
+**原理**：Mnemosis 照着人脑记忆机制给 agent 做长期记忆——`remember`
 写入、`recall` 联想检索、遗忘曲线自动衰减、`sleep` 睡眠式整理（去重/建联/消矛盾）、
-`check` 知道自己不知道。它不是录音机，谁调用、存什么由你和 agent 决定。
+`check` 知道自己不知道（这里的意思是，比如你问了他一个他没有记住的事情，他就会回答不知道，而不是乱编一个答案）。它不是录音机，谁调用、存什么由你和 agent 决定。
 
 ## Use with your AI client (MCP)
 
