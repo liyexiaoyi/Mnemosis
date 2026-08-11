@@ -22,6 +22,11 @@ STOPWORDS = {
     "into", "over", "after", "before", "during", "because", "been", "being",
     "not", "but", "his", "her", "its", "our", "their", "there", "here",
     "then", "than", "also", "very", "just", "only", "some", "such",
+    "a", "an", "of", "on", "in", "at", "to", "by", "as", "or", "if",
+    "else", "while", "until", "since", "so",
+    "which", "who", "whom", "whose", "why", "these", "those",
+    "i", "me", "my", "we", "us", "he", "she", "it", "much", "many",
+    "more", "most", "less", "few", "own", "same", "other", "each",
 }
 
 # High-frequency Chinese function words / particles filtered out of keyword

@@ -19,6 +19,7 @@ from .reasoning import apply_premise_pack
 from .schema import EventChainIndex
 from .temporal_reason import apply_time_cell_reasoning
 from .types import (
+    STOPWORDS,
     MemoryItem,
     MemoryKind,
     MemoryStatus,
@@ -32,6 +33,45 @@ from .zh_nlp import expand_synonyms
 
 _FALLBACK_SCAN_LIMIT = 1000
 """Max memories loaded for a zero-hit query (recency fallback)."""
+
+_EN_SYNONYMS: dict[str, tuple[str, ...]] = {
+    "spent": ("cost", "paid", "bought", "spending"),
+    "money": ("cost", "amount", "price", "payment"),
+    "expenses": ("cost", "costs", "spending", "bills"),
+    "total": ("sum", "overall"),
+    "bought": ("purchased", "got", "ordered"),
+    "purchased": ("bought", "ordered", "got"),
+    "price": ("cost", "amount", "fee"),
+    "cost": ("price", "amount", "paid"),
+    "paid": ("cost", "spent", "charged"),
+    "bike": ("bicycle", "cycling"),
+    "bicycle": ("bike", "cycling"),
+}
+
+
+def _expand_en_synonyms(query_terms: set[str]) -> set[str]:
+    """English synonym expansion for lexical recall.
+
+    Mirrors the Chinese ``expand_synonyms`` path: a query about "money spent
+    on bike expenses" must also match turns written as "cost / paid / bought
+    a bicycle" (semantic memory; Collins & Quillian, 1969).
+    """
+    expanded = set(query_terms)
+    for term in query_terms:
+        for synonym in _EN_SYNONYMS.get(term, ()):
+            expanded.add(synonym)
+        if "-" in term or "_" in term:
+            expanded.update(
+                part
+                for part in re.split(r"[-_]", term)
+                if (
+                    len(part) > 1
+                    and not part.isdigit()
+                    and part not in STOPWORDS
+                )
+            )
+    return expanded
+
 
 MOOD_WORDS: dict[str, tuple[str, ...]] = {
     "positive": (
@@ -236,11 +276,14 @@ class DualTrackStore:
         now = now or utcnow()
         candidates: list[MemoryItem] = []
         query_terms = set(tokenize(query))
+        base_terms = set(query_terms)
         if zh_synonyms and any("\u4e00" <= ch <= "\u9fff" for ch in query):
             # Chinese synonym expansion: questions often use different words
             # than the stored memory ("筹备/旅游" vs "准备/旅行").
 
             query_terms = expand_synonyms(query_terms)
+        elif zh_synonyms:
+            query_terms = _expand_en_synonyms(query_terms)
         # Temporal questions ("after X, what did Y do next?") cue the event
         # *sequence*, so episodic memories get a small preference; ordinary
         # event queries ("what did Y buy on date?") are left untouched so the
@@ -356,7 +399,25 @@ class DualTrackStore:
         scored: list[tuple[float, float, MemoryItem, list[str], bool]] = []
         for item in candidates:
             item_terms = self._terms(item)
-            overlap = _overlap(query_terms, item_terms)
+            if any("\u4e00" <= ch <= "\u9fff" for ch in query):
+                # Chinese keeps the long-standing expanded denominator.
+                hits = len(query_terms & item_terms)
+                denominator_terms = query_terms
+            else:
+                # English: expansion contributes to hits but the denominator
+                # stays on the original words, so adding "cost" for "spent"
+                # never dilutes the query's geometry.
+                hits = len(query_terms & item_terms)
+                denominator_terms = base_terms
+            if hits:
+                capped = min(
+                    len(item_terms), max(len(denominator_terms) * 2, 8)
+                )
+                overlap = hits / max(
+                    1.0, math.sqrt(max(1, len(denominator_terms)) * capped)
+                )
+            else:
+                overlap = 0.0
             if idf_sum and query_terms:
                 idf_hits = sum(
                     idf_weights[term]

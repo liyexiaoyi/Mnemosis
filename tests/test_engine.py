@@ -370,6 +370,25 @@ class MemoryEngineTest(unittest.TestCase):
         results = engine.recall("common Xyzzzy", top_k=5)
         self.assertIn(rare.id, {result.item.id for result in results})
 
+    def test_english_synonym_expansion_retrieves_cost_turns(self):
+        """'money spent on expenses' must match turns written as 'cost'."""
+        engine = MemoryEngine()
+        source = SourceRecord(origin=SourceType.USER)
+        cost_turn = engine.remember(
+            "I remember taking my bike for a tune-up; it cost me $25.",
+            kind=MemoryKind.EPISODIC,
+            source=source,
+        )
+        engine.remember(
+            "I've been tracking my bike mileage since the start of the year.",
+            kind=MemoryKind.EPISODIC,
+            source=source,
+        )
+        results = engine.recall(
+            "How much money have I spent on bike expenses?", top_k=3
+        )
+        self.assertEqual(results[0].item.content, cost_turn.content)
+
 
 if __name__ == "__main__":
     unittest.main()
