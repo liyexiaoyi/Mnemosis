@@ -177,15 +177,22 @@ def make_nomic_embedder(cache_path: str | None = None):
     from mnemosis.embedding_cache import SqliteEmbeddingCache
 
     def _embed(text: str) -> list[float]:
-        payload = {"model": "nomic-embed-text", "input": text}
-        req = urllib.request.Request(
-            OLLAMA_EMBED_URL,
-            data=json.dumps(payload).encode("utf-8"),
-            headers={"Content-Type": "application/json"},
-        )
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-        return data["embeddings"][0]
+        last = None
+        for attempt in range(3):
+            try:
+                payload = {"model": "nomic-embed-text", "input": text}
+                req = urllib.request.Request(
+                    OLLAMA_EMBED_URL,
+                    data=json.dumps(payload).encode("utf-8"),
+                    headers={"Content-Type": "application/json"},
+                )
+                with urllib.request.urlopen(req, timeout=180) as resp:
+                    data = json.loads(resp.read().decode("utf-8"))
+                return data["embeddings"][0]
+            except Exception as exc:  # noqa: BLE001
+                last = exc
+                time.sleep(min(2 ** (attempt + 1), 30) + random.uniform(0, 1))
+        raise RuntimeError(f"embed failed after 3 attempts: {last}")
 
     if cache_path:
         os.makedirs(os.path.dirname(cache_path), exist_ok=True)
