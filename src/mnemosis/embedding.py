@@ -16,7 +16,7 @@ import math
 import operator
 import re
 from collections import Counter
-from typing import Callable
+from collections.abc import Callable
 
 
 class Embedder:

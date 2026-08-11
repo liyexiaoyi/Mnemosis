@@ -11,7 +11,7 @@ _BENCH = os.path.normpath(
 )
 sys.path.insert(0, _BENCH)
 
-from longmemeval_bench import keyword_correct, segment_text  # noqa: E402
+from longmemeval_bench import keyword_correct, segment_text
 
 
 class BenchUtilsTests(unittest.TestCase):

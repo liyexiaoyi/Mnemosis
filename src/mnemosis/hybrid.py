@@ -19,12 +19,11 @@ recency direction, cue overlap and date-range hints.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from datetime import datetime
-from typing import Iterable
 
 from .embedding import NGramEmbedder
 from .types import RecallResult, utcnow
-
 
 _DATE_RE = re.compile(r"(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})")
 _YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
@@ -254,7 +253,7 @@ def _dense_results(
     query_vector = embedder.embed(query)
     vectors = [embedder.embed(item.content) for item in items]
     try:
-        import numpy as np  # noqa: PLC0415
+        import numpy as np
 
         matrix = np.asarray(vectors, dtype=np.float32)
         query_vec = np.asarray(query_vector, dtype=np.float32)

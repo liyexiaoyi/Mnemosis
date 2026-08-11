@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from abc import ABC, abstractmethod
-from typing import Iterable
+from collections.abc import Iterable
 
 from .types import (
     MemoryItem,

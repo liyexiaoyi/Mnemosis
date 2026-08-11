@@ -11,13 +11,12 @@ import re
 from datetime import datetime
 
 from .backend import Backend
+from .embedding import Embedder
 from .forgetting import ForgettingCurve
 from .importance import ImportanceScorer
-from .embedding import Embedder
 from .reasoning import apply_premise_pack
 from .schema import EventChainIndex
 from .temporal_reason import apply_time_cell_reasoning
-from .zh_nlp import expand_synonyms
 from .types import (
     MemoryItem,
     MemoryKind,
@@ -28,7 +27,7 @@ from .types import (
     tokenize,
     utcnow,
 )
-
+from .zh_nlp import expand_synonyms
 
 MOOD_WORDS: dict[str, tuple[str, ...]] = {
     "positive": (

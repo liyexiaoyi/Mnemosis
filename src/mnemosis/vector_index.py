@@ -11,7 +11,6 @@ fallback is pure Python.
 
 from __future__ import annotations
 
-import os
 import random
 import sqlite3
 import struct
@@ -228,7 +227,7 @@ class VectorIndex:
         ids = [row[0] for row in rows]
         dim = len(query_vector)
         try:
-            import numpy as np  # noqa: PLC0415
+            import numpy as np
 
             payload = b"".join(row[1] for row in rows)
             matrix = np.frombuffer(payload, dtype=np.float64).reshape(
@@ -265,7 +264,7 @@ class VectorIndex:
     def _build_matrix(self, rows: list[tuple[str, bytes]]):
         ids = [row[0] for row in rows]
         try:
-            import numpy as np  # noqa: PLC0415
+            import numpy as np
 
             payload = b"".join(row[1] for row in rows)
             dim = payload and len(payload) // len(rows) // 8 or 0
@@ -277,7 +276,7 @@ class VectorIndex:
             return ids, None
 
     def _rerank_matrix(self, ids, matrix, query_vector, top_k):
-        import numpy as np  # noqa: PLC0415
+        import numpy as np
 
         query = np.asarray(query_vector, dtype=np.float32)
         norms = np.linalg.norm(matrix, axis=1)
@@ -301,7 +300,7 @@ class VectorIndex:
         self.flush()
         self._conn.close()
 
-    def __enter__(self) -> "VectorIndex":
+    def __enter__(self) -> VectorIndex:
         return self
 
     def __exit__(self, exc_type, exc, tb) -> None:

@@ -5,9 +5,9 @@ from __future__ import annotations
 import math
 import re
 import uuid
-from itertools import combinations
 from collections import Counter, defaultdict, deque
 from datetime import date, datetime, timedelta
+from itertools import combinations
 
 from .association import AssociationIndex
 from .backend import Backend, make_backend
@@ -17,10 +17,9 @@ from .embedding import Embedder
 from .forgetting import ForgettingCurve, ReviewScheduler
 from .importance import ImportanceScorer
 from .metacognition import ConfidenceLabel, Metacognition, MetacognitiveCheck
+from .reasoning import suggested_pack_size
 from .recycle import RecycleBin
 from .schema import EventChainIndex
-from .reasoning import suggested_pack_size
-from .zh_nlp import expand_synonyms, has_cjk
 from .types import (
     MemoryItem,
     MemoryKind,
@@ -34,6 +33,7 @@ from .types import (
     tokenize,
     utcnow,
 )
+from .zh_nlp import expand_synonyms, has_cjk
 
 _TEMPORAL_STEM_WORDS: dict[str, tuple[str, ...]] = {
     "修": ("修", "维修", "检修", "检测"),
@@ -606,7 +606,7 @@ class MemoryEngine:
 
         generic = {
             "多少", "分别", "是", "什么", "哪些", "怎么", "如何",
-            "一个", "那个", "这个", "还有", "哪些", "多少",
+            "一个", "那个", "这个", "还有",
         }
         return {
             term
@@ -977,13 +977,11 @@ class MemoryEngine:
             else:
                 year = int(match.group(4))
                 cur = (year, int(match.group(5)), int(match.group(6)))
-            if cur > best:
-                best = cur
+            best = max(best, cur)
         if year is not None:
             for match in MemoryEngine._TEMPORAL_MD_RE.finditer(text):
                 cur = (year, int(match.group(1)), int(match.group(2)))
-                if cur > best:
-                    best = cur
+                best = max(best, cur)
         return best
 
     def _apply_temporal_anchor(
@@ -5930,8 +5928,7 @@ class MemoryEngine:
             best_cue = 0
             for cue in item.cues:
                 common = len(expanded & set(tokenize(cue)))
-                if common > best_cue:
-                    best_cue = common
+                best_cue = max(best_cue, common)
             if best_cue and item.cues:
                 cue_counts[item.cues[0]] = max(
                     cue_counts.get(item.cues[0], 0), best_cue

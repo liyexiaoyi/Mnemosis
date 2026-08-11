@@ -35,11 +35,11 @@ _WORK = os.path.normpath(os.path.join(_BENCH, "..", "..", "work"))
 sys.path.insert(0, _BENCH)
 sys.path.insert(0, _SRC)
 
-from cloud_qwen_matrix import cloud_generate  # noqa: E402
-from mnemosis import MemoryEngine  # noqa: E402
-from mnemosis.embedding import NGramEmbedder  # noqa: E402
-from mnemosis.types import MemoryKind, SourceRecord, SourceType  # noqa: E402
+from cloud_qwen_matrix import cloud_generate
 
+from mnemosis import MemoryEngine
+from mnemosis.embedding import NGramEmbedder
+from mnemosis.types import MemoryKind, SourceRecord, SourceType
 
 OLLAMA_URL = "http://127.0.0.1:11434/v1/chat/completions"
 OLLAMA_EMBED_URL = "http://127.0.0.1:11434/api/embed"
