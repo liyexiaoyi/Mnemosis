@@ -131,6 +131,12 @@ class SQLiteBackendTest(unittest.TestCase):
         self.engine.forget(first.id)
         self.assertEqual(self.engine.backend.count(), 1)
 
+    def test_term_df_ignores_recycled_memories(self):
+        item = self.remember("rareword alpha")
+        self.assertEqual(self.engine.backend.term_df("rareword", None), 1)
+        self.engine.forget(item.id)
+        self.assertEqual(self.engine.backend.term_df("rareword", None), 0)
+
     def test_persistence_across_reopen(self):
         self.remember("The password hint is 'blue whale'.", cues=["password"])
         self.engine.close()

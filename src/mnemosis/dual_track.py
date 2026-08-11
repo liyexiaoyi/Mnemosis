@@ -322,17 +322,23 @@ class DualTrackStore:
             term_ids: dict[str, set[str]] = {}
             total_active = self.backend.count(kind=kind)
             for term in query_terms:
-                ids_for_term = set(self.backend.find_by_terms([term], kind))
-                term_df[term] = len(ids_for_term)
+                df = self.backend.term_df(term, kind)
+                term_df[term] = df
                 if (
-                    ids_for_term
+                    df > 0
                     and total_active >= 1000
-                    and len(ids_for_term) > total_active // 2
+                    and df > 5000
                 ):
                     # A term present in most memories carries no
                     # discriminative signal; skip materialising its ids so a
                     # generic word cannot balloon the candidate set.
+                    term_ids[term] = set()
                     continue
+                ids_for_term = (
+                    set(self.backend.find_by_terms([term], kind))
+                    if df > 0
+                    else set()
+                )
                 term_ids[term] = ids_for_term
                 for memory_id in ids_for_term:
                     hit_counts[memory_id] = hit_counts.get(memory_id, 0) + 1

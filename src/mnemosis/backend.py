@@ -231,6 +231,20 @@ class DictBackend(Backend):
             and self._items[memory_id].kind == kind
         }
 
+    def term_df(self, term: str, kind: MemoryKind | None) -> int:
+        if kind is None:
+            return len(self._terms_index.get(term, ()))
+        return sum(
+            1
+            for memory_id in self._terms_index.get(term, ())
+            if self._items.get(memory_id) is not None
+            and self._items[memory_id].status is MemoryStatus.ACTIVE
+            and (
+                kind is None
+                or self._items[memory_id].kind == kind
+            )
+        )
+
     def all_terms(self, kind: MemoryKind | None) -> dict[str, set[str]]:
         if kind is None:
             return {term: set(ids) for term, ids in self._terms_index.items()}
@@ -746,6 +760,20 @@ class SQLiteBackend(Backend):
             rows = self._conn.execute(sql, tuple(params)).fetchall()
             found.update(row[0] for row in rows)
         return found
+
+    @_locked
+    def term_df(self, term: str, kind: MemoryKind | None) -> int:
+        """Document frequency of one term without materialising its ids."""
+        sql = (
+            "SELECT COUNT(*) FROM terms t "
+            "JOIN memories m ON m.id = t.memory_id "
+            "WHERE t.term = ? AND m.status = ?"
+        )
+        params: list = [term, MemoryStatus.ACTIVE.value]
+        if kind is not None:
+            sql += " AND t.kind = ?"
+            params.append(kind.value)
+        return int(self._conn.execute(sql, params).fetchone()[0])
 
     @_locked
     def all_terms(self, kind: MemoryKind | None) -> dict[str, set[str]]:

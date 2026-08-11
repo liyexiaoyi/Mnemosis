@@ -220,9 +220,17 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
                     "embedder returned "
                     f"{len(vectors)} vectors for {len(stored)} memories"
                 )
-            for item in stored:
-                self.associations.index(item)
-            pairs = self.associations.link_related_batch(stored)
+            # Cues were already persisted in bulk by store.remember_many, so
+            # the per-item associations.index loop is not needed here. The
+            # link budget shrinks for very large batches: 64 links/item is
+            # fine at 10k, but at 100k it would write ~13M edges, so the
+            # budget is scaled down (>= 8) to keep ingestion linear.
+            link_budget = min(
+                64, max(8, 1_000_000 // max(1, len(stored)))
+            )
+            pairs = self.associations.link_related_batch(
+                stored, max_links=link_budget
+            )
             if pairs:
                 self.backend.add_links_many(pairs)
             if vectors is not None:
