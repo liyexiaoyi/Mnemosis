@@ -72,6 +72,19 @@ def _source_type(value: Any) -> SourceType:
         return SourceType.USER
 
 
+_TOOL_HANDLERS: dict[str, str] = {}
+
+
+def _tool(name: str):
+    """Register a tool handler method on MCPServer."""
+
+    def decorator(method):
+        _TOOL_HANDLERS[name] = method.__name__
+        return method
+
+    return decorator
+
+
 class MCPServer:
     def __init__(
         self,
@@ -79,6 +92,10 @@ class MCPServer:
         expose: str = "advanced",
     ) -> None:
         self.engine = engine or MemoryEngine()
+        self._tool_handlers = {
+            name: getattr(self, method_name)
+            for name, method_name in _TOOL_HANDLERS.items()
+        }
         self._tools = [
             {
                 "name": "remember",
@@ -2183,720 +2200,980 @@ class MCPServer:
         return self._error(message_id, -32601, f"Method not found: {method}")
 
     def _call_tool(self, name: str, args: dict[str, Any]) -> Any:
-        if name == "remember":
-            item = self.engine.remember(
-                args["content"],
-                kind=_kind(args.get("kind")) or MemoryKind.EPISODIC,
-                source=SourceRecord(
-                    origin=_source_type(args.get("source", SourceType.USER.value))
-                ),
-                cues=args.get("cues"),
-                context=args.get("context"),
-                affect=args.get("affect"),
-                importance=args.get("importance"),
-                confidence=float(args.get("confidence") or 1.0),
-                evidence_count=int(args.get("evidence_count") or 1),
-            )
-            return {
-                "id": item.id,
-                "kind": item.kind.value,
-                "content": item.content,
-                "cues": item.cues,
-                "importance": item.importance,
+        handler = self._tool_handlers.get(name)
+        if handler is None:
+            raise ValueError(f"unknown tool: {name}")
+        return handler(args)
+
+
+    @_tool("remember")
+    def _tool_remember(self, args: dict[str, Any]) -> Any:
+        item = self.engine.remember(
+            args["content"],
+            kind=_kind(args.get("kind")) or MemoryKind.EPISODIC,
+            source=SourceRecord(
+                origin=_source_type(args.get("source", SourceType.USER.value))
+            ),
+            cues=args.get("cues"),
+            context=args.get("context"),
+            affect=args.get("affect"),
+            importance=args.get("importance"),
+            confidence=float(args.get("confidence") or 1.0),
+            evidence_count=int(args.get("evidence_count") or 1),
+        )
+        return {
+            "id": item.id,
+            "kind": item.kind.value,
+            "content": item.content,
+            "cues": item.cues,
+            "importance": item.importance,
+        }
+
+    @_tool("remember_turn")
+    def _tool_remember_turn(self, args: dict[str, Any]) -> Any:
+        return self.engine.remember_turn(
+            args["text"],
+            max_segments=int(args.get("max_segments") or 4),
+        )
+
+    @_tool("recall")
+    def _tool_recall(self, args: dict[str, Any]) -> Any:
+        embedder = (
+            NGramEmbedder()
+            if args.get("embedder") == "ngram"
+            else None
+        )
+        results = self.engine.recall(
+            args["query"],
+            kind=_kind(args.get("kind")),
+            top_k=int(args.get("top_k") or 5),
+            context=args.get("context"),
+            embedder=embedder,
+        )
+        return [
+            {
+                "id": r.item.id,
+                "score": round(r.score, 3),
+                "kind": r.item.kind.value,
+                "content": r.item.content,
+                "confidence": r.item.confidence,
             }
-        if name == "remember_turn":
-            return self.engine.remember_turn(
-                args["text"],
-                max_segments=int(args.get("max_segments") or 4),
-            )
-        if name == "recall":
-            embedder = (
-                NGramEmbedder()
-                if args.get("embedder") == "ngram"
-                else None
-            )
-            results = self.engine.recall(
-                args["query"],
-                kind=_kind(args.get("kind")),
-                top_k=int(args.get("top_k") or 5),
-                context=args.get("context"),
-                embedder=embedder,
-            )
-            return [
+            for r in results
+        ]
+
+    @_tool("search_batch")
+    def _tool_search_batch(self, args: dict[str, Any]) -> Any:
+        return self.engine.search_batch(
+            args["queries"],
+            kind=_kind(args.get("kind")),
+            top_k=int(args.get("top_k") or 3),
+        )
+
+    @_tool("sleep")
+    def _tool_sleep(self, args: dict[str, Any]) -> Any:
+        report = self.engine.sleep()
+        return {
+            "summary": report.summary(),
+            "promoted": len(report.promoted),
+            "pruned": len(report.recycled),
+            "reflected": len(report.reflected),
+            "conflicts": len(report.conflicts),
+        }
+
+    @_tool("check")
+    def _tool_check(self, args: dict[str, Any]) -> Any:
+        check = self.engine.check(args["query"], top_k=int(args.get("top_k") or 3))
+        return {
+            "items": [
                 {
-                    "id": r.item.id,
-                    "score": round(r.score, 3),
-                    "kind": r.item.kind.value,
-                    "content": r.item.content,
-                    "confidence": r.item.confidence,
-                }
-                for r in results
-            ]
-        if name == "search_batch":
-            return self.engine.search_batch(
-                args["queries"],
-                kind=_kind(args.get("kind")),
-                top_k=int(args.get("top_k") or 3),
-            )
-        if name == "sleep":
-            report = self.engine.sleep()
-            return {
-                "summary": report.summary(),
-                "promoted": len(report.promoted),
-                "pruned": len(report.recycled),
-                "reflected": len(report.reflected),
-                "conflicts": len(report.conflicts),
-            }
-        if name == "check":
-            check = self.engine.check(args["query"], top_k=int(args.get("top_k") or 3))
-            return {
-                "items": [
-                    {
-                        "content": item.content,
-                        "label": label.value,
-                        "confidence": value,
-                    }
-                    for item, label, value in check.items
-                ],
-                "contradictions": len(check.contradictions),
-                "gaps": check.gaps,
-                "blocked": [b.content for b in check.blocked],
-            }
-        if name == "update":
-            item = self.engine.update(
-                args["memory_id"],
-                content=args.get("content"),
-                importance=args.get("importance"),
-                confidence=args.get("confidence"),
-                cues=args.get("cues"),
-            )
-            if item is None:
-                raise ValueError(f"no memory with id {args['memory_id']}")
-            return {
-                "id": item.id,
-                "content": item.content,
-                "revision_count": item.revision_count,
-                "confidence": item.confidence,
-            }
-        if name == "forget":
-            return {"ok": self.engine.forget(args["memory_id"])}
-        if name == "restore":
-            return {"ok": self.engine.restore(args["memory_id"])}
-        if name == "stats":
-            return self.engine.stats()
-        if name == "calibrate_decay":
-            return self.engine.calibrate_decay_rate()
-        if name == "working_set":
-            return [
-                {
-                    "id": item.id,
                     "content": item.content,
-                    "last_access_at": (
-                        item.last_access_at.isoformat()
-                        if item.last_access_at
-                        else None
-                    ),
+                    "label": label.value,
+                    "confidence": value,
                 }
-                for item in self.engine.working_set(limit=int(args.get("limit") or 8))
-            ]
-        if name == "review_due":
-            return [
-                {
-                    "id": item.id,
-                    "content": item.content,
-                    "retrievability": round(
-                        self.engine.curve.retrievability(item), 3
-                    ),
-                }
-                for item in self.engine.review_due(
-                    limit=int(args.get("limit") or 10),
-                    desirable_difficulty=bool(
-                        args.get("desirable_difficulty", False)
-                    ),
-                    difficulty_target=float(
-                        args.get("difficulty_target", 0.45)
-                    ),
-                )
-            ]
-        if name == "review":
-            item = self.engine.review(
-                args["memory_id"], success=bool(args.get("success", True))
-            )
-            if item is None:
-                raise ValueError(f"no memory with id {args['memory_id']}")
-            return {
-                "id": item.id,
-                "review_streak": item.review_streak,
-                "retrieval_successes": item.retrieval_successes,
-                "retrieval_failures": item.retrieval_failures,
-            }
-        if name == "plan":
-            results = self.engine.plan_for_goal(
-                args["goal"],
-                top_k=(
-                    int(args.get("top_k") or 8)
-                    if args.get("top_k") is not None
-                    else None
-                ),
-                effort=args.get("effort"),
-            )
-            return [
-                {
-                    "content": r.item.content,
-                    "score": round(r.score, 3),
-                    "reasons": r.reasons,
-                }
-                for r in results
-            ]
-        if name == "reason":
-            results = self.engine.recall_reasoning(
-                args["query"], top_k=int(args.get("top_k") or 8)
-            )
-            return [
-                {
-                    "content": r.item.content,
-                    "score": round(r.score, 3),
-                    "reasons": r.reasons,
-                }
-                for r in results
-            ]
-        if name == "record_outcome":
-            item = self.engine.record_outcome(
-                args["goal"],
-                args["step"],
-                success=bool(args["success"]),
-                note=args.get("note"),
-            )
-            return {
+                for item, label, value in check.items
+            ],
+            "contradictions": len(check.contradictions),
+            "gaps": check.gaps,
+            "blocked": [b.content for b in check.blocked],
+        }
+
+    @_tool("update")
+    def _tool_update(self, args: dict[str, Any]) -> Any:
+        item = self.engine.update(
+            args["memory_id"],
+            content=args.get("content"),
+            importance=args.get("importance"),
+            confidence=args.get("confidence"),
+            cues=args.get("cues"),
+        )
+        if item is None:
+            raise ValueError(f"no memory with id {args['memory_id']}")
+        return {
+            "id": item.id,
+            "content": item.content,
+            "revision_count": item.revision_count,
+            "confidence": item.confidence,
+        }
+
+    @_tool("forget")
+    def _tool_forget(self, args: dict[str, Any]) -> Any:
+        return {"ok": self.engine.forget(args["memory_id"])}
+
+    @_tool("restore")
+    def _tool_restore(self, args: dict[str, Any]) -> Any:
+        return {"ok": self.engine.restore(args["memory_id"])}
+
+    @_tool("stats")
+    def _tool_stats(self, args: dict[str, Any]) -> Any:
+        return self.engine.stats()
+
+    @_tool("calibrate_decay")
+    def _tool_calibrate_decay(self, args: dict[str, Any]) -> Any:
+        return self.engine.calibrate_decay_rate()
+
+    @_tool("working_set")
+    def _tool_working_set(self, args: dict[str, Any]) -> Any:
+        return [
+            {
                 "id": item.id,
                 "content": item.content,
-                "evidence_count": item.evidence_count,
+                "last_access_at": (
+                    item.last_access_at.isoformat()
+                    if item.last_access_at
+                    else None
+                ),
             }
-        if name == "replan":
-            results = self.engine.replan(
-                args["goal"],
-                args["failed_step"],
-                top_k=(
-                    int(args.get("top_k") or 8)
-                    if args.get("top_k") is not None
-                    else None
-                ),
-            )
-            return [
-                {
-                    "content": r.item.content,
-                    "score": round(r.score, 3),
-                    "reasons": r.reasons,
-                }
-                for r in results
-            ]
-        if name == "predict_step":
-            return self.engine.predict_step(args["step"])
-        if name == "sleep_replay":
-            return self.engine.sleep_replay()
-        if name == "search":
-            results = self.engine.recall(
-                args["query"],
-                top_k=int(args.get("top_k") or 5),
-                context=args.get("context") or None,
-            )
-            return [
-                {
-                    "id": result.item.id,
-                    "content": result.item.content,
-                    "score": round(result.score, 4),
-                    "confident": result.confident,
-                    "reasons": result.reasons,
-                }
-                for result in results
-            ]
-        if name == "list_conflicts":
-            conflicts = self.engine.consolidator.detect_conflicts()
-            return [
-                {
-                    "a_id": conflict.a.id,
-                    "a": conflict.a.content,
-                    "b_id": conflict.b.id,
-                    "b": conflict.b.content,
-                    "reason": conflict.reason,
-                }
-                for conflict in conflicts
-            ]
-        if name == "conflict_advice":
-            return self.engine.conflict_advice(
-                limit=int(args.get("limit") or 10)
-            )
-        if name == "memory_status":
-            return self.engine.memory_status()
-        if name == "review_batch":
-            return self.engine.review_batch(args["answers"])
-        if name == "export_memories":
-            return self.engine.export_memories()
-        if name == "import_memories":
-            return self.engine.import_memories(args["payload"])
-        if name == "practice_session":
-            return self.engine.practice_session(
-                args["answers"],
-                limit=int(args.get("limit") or 5),
-            )
-        if name == "sleep_and_plan":
-            return self.engine.sleep_and_plan(
-                days=int(args.get("days") or 7)
-            )
-        if name == "memory_audit":
-            return self.engine.memory_audit()
-        if name == "dedupe_memories":
-            return self.engine.dedupe_memories()
-        if name == "resolve_conflicts":
-            return self.engine.resolve_conflicts()
-        if name == "review_load":
-            return self.engine.review_load(
-                days=int(args.get("days") or 7)
-            )
-        if name == "tag_memories":
-            return self.engine.tag_memories(
-                args["memory_ids"],
-                args["tags"],
-                action=args.get("action", "add"),
-            )
-        if name == "recall_log":
-            return self.engine.get_recall_log(
-                limit=int(args.get("limit") or 50)
-            )
-        if name == "cleanup_preview":
-            return self.engine.cleanup_preview(
-                limit=int(args.get("limit", 100))
-            )
-        if name == "similarity_report":
-            return self.engine.similarity_report(
-                threshold=float(args.get("threshold", 0.6)),
-                limit=int(args.get("limit", 20)),
-            )
-        if name == "association_report":
-            return self.engine.association_report(
-                limit=int(args.get("limit", 10)),
-            )
-        if name == "intent_remember":
+            for item in self.engine.working_set(limit=int(args.get("limit") or 8))
+        ]
 
-            return self.engine.remember_intent(
-                args["content"],
-                _dt(args["due_at"], "due_at"),
-                context_cue=args.get("context_cue"),
-                importance=float(args.get("importance", 0.5)),
-            )
-        if name == "intent_due":
-            return self.engine.intent_due(
-                limit=int(args.get("limit", 10)),
-            )
-        if name == "intent_complete":
-            return self.engine.complete_intent(args["intent_id"])
-        if name == "intent_cancel":
-            return self.engine.cancel_intent(args["intent_id"])
-        if name == "intent_report":
-            return self.engine.intent_report()
-        if name == "retrieval_assist":
-            return self.engine.retrieval_assist(
-                args["query"],
-                limit=int(args.get("limit", 8)),
-            )
-        if name == "schema_report":
-            return self.engine.schema_report(
-                limit=int(args.get("limit", 20)),
-            )
-        if name == "suppress_memories":
-            return self.engine.suppress_memories(args["memory_ids"])
-        if name == "unsuppress_memories":
-            return self.engine.unsuppress_memories(args["memory_ids"])
-        if name == "suppressed_report":
-            return self.engine.suppressed_report()
-        if name == "timeline_report":
-
-            return self.engine.timeline_report(
-                start=(
-                    _dt(args["start"], "start")
-                    if args.get("start")
-                    else None
+    @_tool("review_due")
+    def _tool_review_due(self, args: dict[str, Any]) -> Any:
+        return [
+            {
+                "id": item.id,
+                "content": item.content,
+                "retrievability": round(
+                    self.engine.curve.retrievability(item), 3
                 ),
-                end=(
-                    _dt(args["end"], "end")
-                    if args.get("end")
-                    else None
-                ),
-                limit=int(args.get("limit", 200)),
-            )
-        if name == "recognition_check":
-            return self.engine.recognition_check(
-                args["query"], args["memory_id"]
-            )
-        if name == "interference_report":
-            return self.engine.interference_report(
-                shared_cue_min=int(args.get("shared_cue_min", 3)),
-                limit=int(args.get("limit", 20)),
-            )
-        if name == "life_story":
-            return self.engine.life_story(
-                period_days=int(args.get("period_days", 30)),
-                limit=int(args.get("limit", 20)),
-            )
-        if name == "intent_conflicts":
-            return self.engine.intent_conflicts(
-                time_window_minutes=int(
-                    args.get("time_window_minutes", 60)
-                ),
-            )
-        if name == "memory_health":
-            return self.engine.memory_health()
-        if name == "kg_export":
-            return self.engine.kg_export()
-        if name == "learner_profile":
-            return self.engine.learner_profile()
-        if name == "context_pack":
-            return self.engine.context_pack(
-                args["queries"],
-                top_k=int(args.get("top_k", 3)),
-                max_chars=int(args.get("max_chars", 1200)),
-            )
-        if name == "encoding_quality":
-            return self.engine.encoding_quality(args["memory_id"])
-        if name == "explain_memory":
-            return self.engine.explain_memory(args["memory_id"])
-        if name == "compare_memories":
-            return self.engine.compare_memories(
-                args["id_a"], args["id_b"]
-            )
-        if name == "action_queue":
-            return self.engine.action_queue(
-                limit=int(args.get("limit", 20)),
-            )
-        if name == "summarize_cluster":
-            return self.engine.summarize_cluster(args["memory_ids"])
-        if name == "multi_hop_report":
-            return self.engine.multi_hop_report(
-                args["start_id"],
-                depth=int(args.get("depth", 2)),
-                limit=int(args.get("limit", 20)),
-            )
-        if name == "cramming_plan":
-
-            return self.engine.cramming_plan(
-                _dt(args["target_at"], "target_at"),
-                hours_available=float(args.get("hours_available", 6.0)),
-                session_minutes=int(args.get("session_minutes", 30)),
-                limit=int(args.get("limit", 20)),
-            )
-        if name == "session_summary":
-            return self.engine.session_summary(
-                args["memory_ids"],
-                compare_limit=int(args.get("compare_limit", 20)),
-            )
-        if name == "topic_drift_report":
-            return self.engine.topic_drift_report(
-                period_days=int(args.get("period_days", 30)),
-                limit=int(args.get("limit", 20)),
-            )
-        if name == "forgetting_export":
-            return self.engine.forgetting_export(
-                args["memory_id"],
-                days=int(args.get("days", 30)),
-                step_days=int(args.get("step_days", 1)),
-            )
-        if name == "coverage_report":
-            return self.engine.coverage_report(
-                limit=int(args.get("limit", 20)),
-            )
-        if name == "source_calibration":
-            return self.engine.source_calibration()
-        if name == "forgetting_risk":
-            return self.engine.forgetting_risk(
-                limit=int(args.get("limit", 20)),
-            )
-        if name == "bridge_suggestions":
-            return self.engine.bridge_suggestions(
-                limit=int(args.get("limit", 20)),
-            )
-        if name == "plan_quality":
-            return self.engine.plan_quality(
-                args["plan"],
-                context_memory_ids=args.get("context_memory_ids"),
-            )
-        if name == "project_brief":
-            return self.engine.project_brief(
-                args["title"],
-                memory_ids=args.get("memory_ids"),
-                limit=int(args.get("limit", 8)),
-            )
-        if name == "numeric_reasoning":
-            return self.engine.numeric_reasoning(
-                args["problem"],
-                context_memory_ids=args.get("context_memory_ids"),
-            )
-        if name == "plan_support":
-            return self.engine.plan_support(
-                args["plan"],
-                top_k=int(args.get("top_k", 3)),
-            )
-        if name == "dependency_map":
-            return self.engine.dependency_map(args["plan"])
-        if name == "project_risk":
-            return self.engine.project_risk(
-                memory_ids=args.get("memory_ids"),
-                compare_limit=int(args.get("compare_limit", 20)),
-            )
-        if name == "plan_tracker":
-            return self.engine.plan_tracker(
-                args["plan"],
-                statuses=args.get("statuses"),
-            )
-        if name == "plan_rewrite":
-            return self.engine.plan_rewrite(args["plan"])
-        if name == "lesson_learned":
-            return self.engine.lesson_learned(
-                memory_ids=args.get("memory_ids"),
-                limit=int(args.get("limit", 10)),
-            )
-        if name == "effort_estimate":
-            return self.engine.effort_estimate(
-                args["plan"],
-                base_hours=float(args.get("base_hours", 2.0)),
-            )
-        if name == "decision_review":
-            return self.engine.decision_review(
-                args["plan"],
-                args["results"],
-            )
-        if name == "transfer_report":
-            return self.engine.transfer_report(
-                args["plan"],
-                lessons_memory_ids=args.get("lessons_memory_ids"),
-            )
-        if name == "retrieval_quality":
-            return self.engine.retrieval_quality(
-                queries=args.get("queries"),
-                top_k=int(args.get("top_k", 5)),
-                limit=int(args.get("limit", 10)),
-            )
-        if name == "recall_trace":
-            return self.engine.recall_trace(
-                args["query"],
-                top_k=int(args.get("top_k", 5)),
-            )
-        if name == "community_report":
-            return self.engine.community_report(
-                limit=int(args.get("limit", 10)),
-            )
-        if name == "sleep_advice":
-            return self.engine.sleep_advice()
-        if name == "emotion_advice":
-            return self.engine.emotion_advice(
-                memory_ids=args.get("memory_ids"),
-            )
-        if name == "difficulty_estimator":
-            return self.engine.difficulty_estimator(
-                limit=int(args.get("limit", 10)),
-            )
-        if name == "memory_integration":
-            return self.engine.memory_integration(
-                limit=int(args.get("limit", 10)),
-            )
-        if name == "reasoning_trace":
-            return self.engine.reasoning_trace(
-                problem=str(args.get("problem", "")),
-                topic=args.get("topic"),
-                top_k=int(args.get("top_k", 4)),
-                store_conclusion=bool(
-                    args.get("store_conclusion", True)
-                ),
-            )
-        if name == "goal_replay":
-            return self.engine.goal_replay(
-                goal=str(args.get("goal", "")),
-                top_k=int(args.get("top_k", 5)),
-            )
-        if name == "sleep_inference":
-            return self.engine.sleep_inference(
-                limit=int(args.get("limit", 5)),
-            )
-        if name == "schema_fit":
-            return self.engine.schema_fit(
-                limit=int(args.get("limit", 20)),
-            )
-        if name == "working_set_budget":
-            return self.engine.working_set_budget(
-                limit=int(args.get("limit", 8)),
-                capacity=int(args.get("capacity", 7)),
-                optimal=int(args.get("optimal", 4)),
-            )
-        if name == "test_generator":
-            return self.engine.test_generator(
-                topic=args.get("topic"),
-                memory_ids=args.get("memory_ids"),
-                count=int(args.get("count", 4)),
-            )
-        if name == "spacing_plan":
-            return self.engine.spacing_plan(
-                days=int(args.get("days", 7)),
-                limit=int(args.get("limit", 20)),
-            )
-        if name == "rumination_check":
-            return self.engine.rumination_check(
-                access_threshold=int(args.get("access_threshold", 5)),
-            )
-        if name == "consolidation_forecast":
-            return self.engine.consolidation_forecast(
-                limit=int(args.get("limit", 5)),
-            )
-        if name == "forgetting_balance":
-            return self.engine.forgetting_balance(
-                imbalance_ratio=float(
-                    args.get("imbalance_ratio", 3.0)
-                ),
-                limit=int(args.get("limit", 10)),
-            )
-        if name == "metacog_report":
-            return self.engine.metacog_report(
-                min_attempts=int(args.get("min_attempts", 3)),
-            )
-        if name == "reconsolidation_plan":
-            return self.engine.reconsolidation_plan(
-                memory_id=str(args.get("memory_id", "")),
-            )
-        if name == "mastery_map":
-            return self.engine.mastery_map(
-                threshold=float(args.get("threshold", 0.5)),
-                min_attempts=int(args.get("min_attempts", 3)),
-            )
-        if name == "attention_filter":
-            return self.engine.attention_filter(
-                task=str(args.get("task", "")),
-                top_k=int(args.get("top_k", 5)),
-            )
-        if name == "analogy_bridge":
-            return self.engine.analogy_bridge(
-                min_structure=float(args.get("min_structure", 0.3)),
-                limit=int(args.get("limit", 5)),
-            )
-        if name == "next_interval":
-            return self.engine.next_interval(
-                memory_id=args.get("memory_id"),
-            )
-        if name == "nightly_routine":
-            return self.engine.nightly_routine(
-                review_limit=int(args.get("review_limit", 3)),
-                quiz_count=int(args.get("quiz_count", 3)),
-            )
-        if name == "cue_diversity":
-            return self.engine.cue_diversity(
-                limit=int(args.get("limit", 20)),
-            )
-        if name == "weekly_review":
-            return self.engine.weekly_review()
-        if name == "transfer_prompt":
-            return self.engine.transfer_prompt(
-                count=int(args.get("count", 3)),
-                min_mastery=float(args.get("min_mastery", 0.7)),
-            )
-        if name == "curve_fit":
-            return self.engine.curve_fit(
-                memory_id=args.get("memory_id"),
-                horizon_days=int(args.get("horizon_days", 30)),
-                threshold=float(args.get("threshold", 0.4)),
-            )
-        if name == "affect_decay":
-            return self.engine.affect_decay(
-                limit=int(args.get("limit", 20)),
-            )
-        if name == "goal_progress":
-            return self.engine.goal_progress(
-                goal=str(args.get("goal", "")),
-            )
-        if name == "plan_rehearsal":
-            return self.engine.plan_rehearsal(
-                goal=str(args.get("goal", "")),
-                top_k=args.get("top_k"),
-            )
-        if name == "math_ladder":
-            return self.engine.math_ladder(
-                problem=str(args.get("problem", "")),
-                top_k=int(args.get("top_k", 4)),
-            )
-        if name == "physics_simulate":
-            return self.engine.physics_simulate(
-                scene=str(args.get("scene", "")),
-                top_k=int(args.get("top_k", 4)),
-            )
-        if name == "analogy_prompt":
-            return self.engine.analogy_prompt(
-                topic=args.get("topic"),
-                count=int(args.get("count", 3)),
-                min_mastery=float(args.get("min_mastery", 0.7)),
-            )
-        if name == "review_consistency":
-            return self.engine.review_consistency()
-        if name == "learning_loop":
-            return self.engine.learning_loop(
-                count=int(args.get("count", 1)),
-            )
-        if name == "agent_learning_session":
-            return self.engine.agent_learning_session(
-                answers=args.get("answers"),
-                count=int(args.get("count", 1)),
-            )
-        if name == "concept_cover":
-            return self.engine.concept_cover(
-                query=str(args.get("query", "")),
-                top_k=int(args.get("top_k", 4)),
-            )
-        if name == "temporal_anchor":
-            return self.engine.temporal_anchor(
-                query=str(args.get("query", "")),
-                top_k=int(args.get("top_k", 4)),
-            )
-        if name == "retrieval_snapshot":
-            return self.engine.retrieval_snapshot(
-                previous=args.get("previous"),
-            )
-        if name == "practice_due":
-            kind_value = args.get("kind")
-
-            return self.engine.practice_due(
-                limit=int(args.get("limit", 5)),
+            }
+            for item in self.engine.review_due(
+                limit=int(args.get("limit") or 10),
                 desirable_difficulty=bool(
-                    args.get("desirable_difficulty", True)
+                    args.get("desirable_difficulty", False)
                 ),
-                min_gap_hours=float(args.get("min_gap_hours", 24.0)),
-                adaptive_gap=bool(args.get("adaptive_gap", True)),
-                interleave=bool(args.get("interleave", True)),
-                vary_cues=bool(args.get("vary_cues", True)),
-                arousal_priority=bool(args.get("arousal_priority", True)),
-                fresh_priority=bool(args.get("fresh_priority", False)),
-                kind=(
-                    MemoryKind(kind_value)
-                    if kind_value in ("semantic", "episodic")
-                    else None
+                difficulty_target=float(
+                    args.get("difficulty_target", 0.45)
                 ),
             )
-        if name == "practice_answer":
-            return self.engine.practice_answer(
-                args["memory_id"],
-                args["attempt"],
-                suppress_competitors=bool(
-                    args.get("suppress_competitors", True)
-                ),
-                generation_bonus=bool(
-                    args.get("generation_bonus", True)
-                ),
-            )
-        if name == "practice_report":
-            return self.engine.practice_report(args["answers"])
-        if name == "practice_plan":
-            return self.engine.practice_plan(
-                limit=int(args.get("limit", 5))
-            )
-        if name == "practice_forecast":
-            return self.engine.practice_forecast(
-                days=int(args.get("days", 7))
-            )
-        raise ValueError(f"unknown tool: {name}")
+        ]
+
+    @_tool("review")
+    def _tool_review(self, args: dict[str, Any]) -> Any:
+        item = self.engine.review(
+            args["memory_id"], success=bool(args.get("success", True))
+        )
+        if item is None:
+            raise ValueError(f"no memory with id {args['memory_id']}")
+        return {
+            "id": item.id,
+            "review_streak": item.review_streak,
+            "retrieval_successes": item.retrieval_successes,
+            "retrieval_failures": item.retrieval_failures,
+        }
+
+    @_tool("plan")
+    def _tool_plan(self, args: dict[str, Any]) -> Any:
+        results = self.engine.plan_for_goal(
+            args["goal"],
+            top_k=(
+                int(args.get("top_k") or 8)
+                if args.get("top_k") is not None
+                else None
+            ),
+            effort=args.get("effort"),
+        )
+        return [
+            {
+                "content": r.item.content,
+                "score": round(r.score, 3),
+                "reasons": r.reasons,
+            }
+            for r in results
+        ]
+
+    @_tool("reason")
+    def _tool_reason(self, args: dict[str, Any]) -> Any:
+        results = self.engine.recall_reasoning(
+            args["query"], top_k=int(args.get("top_k") or 8)
+        )
+        return [
+            {
+                "content": r.item.content,
+                "score": round(r.score, 3),
+                "reasons": r.reasons,
+            }
+            for r in results
+        ]
+
+    @_tool("record_outcome")
+    def _tool_record_outcome(self, args: dict[str, Any]) -> Any:
+        item = self.engine.record_outcome(
+            args["goal"],
+            args["step"],
+            success=bool(args["success"]),
+            note=args.get("note"),
+        )
+        return {
+            "id": item.id,
+            "content": item.content,
+            "evidence_count": item.evidence_count,
+        }
+
+    @_tool("replan")
+    def _tool_replan(self, args: dict[str, Any]) -> Any:
+        results = self.engine.replan(
+            args["goal"],
+            args["failed_step"],
+            top_k=(
+                int(args.get("top_k") or 8)
+                if args.get("top_k") is not None
+                else None
+            ),
+        )
+        return [
+            {
+                "content": r.item.content,
+                "score": round(r.score, 3),
+                "reasons": r.reasons,
+            }
+            for r in results
+        ]
+
+    @_tool("predict_step")
+    def _tool_predict_step(self, args: dict[str, Any]) -> Any:
+        return self.engine.predict_step(args["step"])
+
+    @_tool("sleep_replay")
+    def _tool_sleep_replay(self, args: dict[str, Any]) -> Any:
+        return self.engine.sleep_replay()
+
+    @_tool("search")
+    def _tool_search(self, args: dict[str, Any]) -> Any:
+        results = self.engine.recall(
+            args["query"],
+            top_k=int(args.get("top_k") or 5),
+            context=args.get("context") or None,
+        )
+        return [
+            {
+                "id": result.item.id,
+                "content": result.item.content,
+                "score": round(result.score, 4),
+                "confident": result.confident,
+                "reasons": result.reasons,
+            }
+            for result in results
+        ]
+
+    @_tool("list_conflicts")
+    def _tool_list_conflicts(self, args: dict[str, Any]) -> Any:
+        conflicts = self.engine.consolidator.detect_conflicts()
+        return [
+            {
+                "a_id": conflict.a.id,
+                "a": conflict.a.content,
+                "b_id": conflict.b.id,
+                "b": conflict.b.content,
+                "reason": conflict.reason,
+            }
+            for conflict in conflicts
+        ]
+
+    @_tool("conflict_advice")
+    def _tool_conflict_advice(self, args: dict[str, Any]) -> Any:
+        return self.engine.conflict_advice(
+            limit=int(args.get("limit") or 10)
+        )
+
+    @_tool("memory_status")
+    def _tool_memory_status(self, args: dict[str, Any]) -> Any:
+        return self.engine.memory_status()
+
+    @_tool("review_batch")
+    def _tool_review_batch(self, args: dict[str, Any]) -> Any:
+        return self.engine.review_batch(args["answers"])
+
+    @_tool("export_memories")
+    def _tool_export_memories(self, args: dict[str, Any]) -> Any:
+        return self.engine.export_memories()
+
+    @_tool("import_memories")
+    def _tool_import_memories(self, args: dict[str, Any]) -> Any:
+        return self.engine.import_memories(args["payload"])
+
+    @_tool("practice_session")
+    def _tool_practice_session(self, args: dict[str, Any]) -> Any:
+        return self.engine.practice_session(
+            args["answers"],
+            limit=int(args.get("limit") or 5),
+        )
+
+    @_tool("sleep_and_plan")
+    def _tool_sleep_and_plan(self, args: dict[str, Any]) -> Any:
+        return self.engine.sleep_and_plan(
+            days=int(args.get("days") or 7)
+        )
+
+    @_tool("memory_audit")
+    def _tool_memory_audit(self, args: dict[str, Any]) -> Any:
+        return self.engine.memory_audit()
+
+    @_tool("dedupe_memories")
+    def _tool_dedupe_memories(self, args: dict[str, Any]) -> Any:
+        return self.engine.dedupe_memories()
+
+    @_tool("resolve_conflicts")
+    def _tool_resolve_conflicts(self, args: dict[str, Any]) -> Any:
+        return self.engine.resolve_conflicts()
+
+    @_tool("review_load")
+    def _tool_review_load(self, args: dict[str, Any]) -> Any:
+        return self.engine.review_load(
+            days=int(args.get("days") or 7)
+        )
+
+    @_tool("tag_memories")
+    def _tool_tag_memories(self, args: dict[str, Any]) -> Any:
+        return self.engine.tag_memories(
+            args["memory_ids"],
+            args["tags"],
+            action=args.get("action", "add"),
+        )
+
+    @_tool("recall_log")
+    def _tool_recall_log(self, args: dict[str, Any]) -> Any:
+        return self.engine.get_recall_log(
+            limit=int(args.get("limit") or 50)
+        )
+
+    @_tool("cleanup_preview")
+    def _tool_cleanup_preview(self, args: dict[str, Any]) -> Any:
+        return self.engine.cleanup_preview(
+            limit=int(args.get("limit", 100))
+        )
+
+    @_tool("similarity_report")
+    def _tool_similarity_report(self, args: dict[str, Any]) -> Any:
+        return self.engine.similarity_report(
+            threshold=float(args.get("threshold", 0.6)),
+            limit=int(args.get("limit", 20)),
+        )
+
+    @_tool("association_report")
+    def _tool_association_report(self, args: dict[str, Any]) -> Any:
+        return self.engine.association_report(
+            limit=int(args.get("limit", 10)),
+        )
+
+    @_tool("intent_remember")
+    def _tool_intent_remember(self, args: dict[str, Any]) -> Any:
+
+        return self.engine.remember_intent(
+            args["content"],
+            _dt(args["due_at"], "due_at"),
+            context_cue=args.get("context_cue"),
+            importance=float(args.get("importance", 0.5)),
+        )
+
+    @_tool("intent_due")
+    def _tool_intent_due(self, args: dict[str, Any]) -> Any:
+        return self.engine.intent_due(
+            limit=int(args.get("limit", 10)),
+        )
+
+    @_tool("intent_complete")
+    def _tool_intent_complete(self, args: dict[str, Any]) -> Any:
+        return self.engine.complete_intent(args["intent_id"])
+
+    @_tool("intent_cancel")
+    def _tool_intent_cancel(self, args: dict[str, Any]) -> Any:
+        return self.engine.cancel_intent(args["intent_id"])
+
+    @_tool("intent_report")
+    def _tool_intent_report(self, args: dict[str, Any]) -> Any:
+        return self.engine.intent_report()
+
+    @_tool("retrieval_assist")
+    def _tool_retrieval_assist(self, args: dict[str, Any]) -> Any:
+        return self.engine.retrieval_assist(
+            args["query"],
+            limit=int(args.get("limit", 8)),
+        )
+
+    @_tool("schema_report")
+    def _tool_schema_report(self, args: dict[str, Any]) -> Any:
+        return self.engine.schema_report(
+            limit=int(args.get("limit", 20)),
+        )
+
+    @_tool("suppress_memories")
+    def _tool_suppress_memories(self, args: dict[str, Any]) -> Any:
+        return self.engine.suppress_memories(args["memory_ids"])
+
+    @_tool("unsuppress_memories")
+    def _tool_unsuppress_memories(self, args: dict[str, Any]) -> Any:
+        return self.engine.unsuppress_memories(args["memory_ids"])
+
+    @_tool("suppressed_report")
+    def _tool_suppressed_report(self, args: dict[str, Any]) -> Any:
+        return self.engine.suppressed_report()
+
+    @_tool("timeline_report")
+    def _tool_timeline_report(self, args: dict[str, Any]) -> Any:
+
+        return self.engine.timeline_report(
+            start=(
+                _dt(args["start"], "start")
+                if args.get("start")
+                else None
+            ),
+            end=(
+                _dt(args["end"], "end")
+                if args.get("end")
+                else None
+            ),
+            limit=int(args.get("limit", 200)),
+        )
+
+    @_tool("recognition_check")
+    def _tool_recognition_check(self, args: dict[str, Any]) -> Any:
+        return self.engine.recognition_check(
+            args["query"], args["memory_id"]
+        )
+
+    @_tool("interference_report")
+    def _tool_interference_report(self, args: dict[str, Any]) -> Any:
+        return self.engine.interference_report(
+            shared_cue_min=int(args.get("shared_cue_min", 3)),
+            limit=int(args.get("limit", 20)),
+        )
+
+    @_tool("life_story")
+    def _tool_life_story(self, args: dict[str, Any]) -> Any:
+        return self.engine.life_story(
+            period_days=int(args.get("period_days", 30)),
+            limit=int(args.get("limit", 20)),
+        )
+
+    @_tool("intent_conflicts")
+    def _tool_intent_conflicts(self, args: dict[str, Any]) -> Any:
+        return self.engine.intent_conflicts(
+            time_window_minutes=int(
+                args.get("time_window_minutes", 60)
+            ),
+        )
+
+    @_tool("memory_health")
+    def _tool_memory_health(self, args: dict[str, Any]) -> Any:
+        return self.engine.memory_health()
+
+    @_tool("kg_export")
+    def _tool_kg_export(self, args: dict[str, Any]) -> Any:
+        return self.engine.kg_export()
+
+    @_tool("learner_profile")
+    def _tool_learner_profile(self, args: dict[str, Any]) -> Any:
+        return self.engine.learner_profile()
+
+    @_tool("context_pack")
+    def _tool_context_pack(self, args: dict[str, Any]) -> Any:
+        return self.engine.context_pack(
+            args["queries"],
+            top_k=int(args.get("top_k", 3)),
+            max_chars=int(args.get("max_chars", 1200)),
+        )
+
+    @_tool("encoding_quality")
+    def _tool_encoding_quality(self, args: dict[str, Any]) -> Any:
+        return self.engine.encoding_quality(args["memory_id"])
+
+    @_tool("explain_memory")
+    def _tool_explain_memory(self, args: dict[str, Any]) -> Any:
+        return self.engine.explain_memory(args["memory_id"])
+
+    @_tool("compare_memories")
+    def _tool_compare_memories(self, args: dict[str, Any]) -> Any:
+        return self.engine.compare_memories(
+            args["id_a"], args["id_b"]
+        )
+
+    @_tool("action_queue")
+    def _tool_action_queue(self, args: dict[str, Any]) -> Any:
+        return self.engine.action_queue(
+            limit=int(args.get("limit", 20)),
+        )
+
+    @_tool("summarize_cluster")
+    def _tool_summarize_cluster(self, args: dict[str, Any]) -> Any:
+        return self.engine.summarize_cluster(args["memory_ids"])
+
+    @_tool("multi_hop_report")
+    def _tool_multi_hop_report(self, args: dict[str, Any]) -> Any:
+        return self.engine.multi_hop_report(
+            args["start_id"],
+            depth=int(args.get("depth", 2)),
+            limit=int(args.get("limit", 20)),
+        )
+
+    @_tool("cramming_plan")
+    def _tool_cramming_plan(self, args: dict[str, Any]) -> Any:
+
+        return self.engine.cramming_plan(
+            _dt(args["target_at"], "target_at"),
+            hours_available=float(args.get("hours_available", 6.0)),
+            session_minutes=int(args.get("session_minutes", 30)),
+            limit=int(args.get("limit", 20)),
+        )
+
+    @_tool("session_summary")
+    def _tool_session_summary(self, args: dict[str, Any]) -> Any:
+        return self.engine.session_summary(
+            args["memory_ids"],
+            compare_limit=int(args.get("compare_limit", 20)),
+        )
+
+    @_tool("topic_drift_report")
+    def _tool_topic_drift_report(self, args: dict[str, Any]) -> Any:
+        return self.engine.topic_drift_report(
+            period_days=int(args.get("period_days", 30)),
+            limit=int(args.get("limit", 20)),
+        )
+
+    @_tool("forgetting_export")
+    def _tool_forgetting_export(self, args: dict[str, Any]) -> Any:
+        return self.engine.forgetting_export(
+            args["memory_id"],
+            days=int(args.get("days", 30)),
+            step_days=int(args.get("step_days", 1)),
+        )
+
+    @_tool("coverage_report")
+    def _tool_coverage_report(self, args: dict[str, Any]) -> Any:
+        return self.engine.coverage_report(
+            limit=int(args.get("limit", 20)),
+        )
+
+    @_tool("source_calibration")
+    def _tool_source_calibration(self, args: dict[str, Any]) -> Any:
+        return self.engine.source_calibration()
+
+    @_tool("forgetting_risk")
+    def _tool_forgetting_risk(self, args: dict[str, Any]) -> Any:
+        return self.engine.forgetting_risk(
+            limit=int(args.get("limit", 20)),
+        )
+
+    @_tool("bridge_suggestions")
+    def _tool_bridge_suggestions(self, args: dict[str, Any]) -> Any:
+        return self.engine.bridge_suggestions(
+            limit=int(args.get("limit", 20)),
+        )
+
+    @_tool("plan_quality")
+    def _tool_plan_quality(self, args: dict[str, Any]) -> Any:
+        return self.engine.plan_quality(
+            args["plan"],
+            context_memory_ids=args.get("context_memory_ids"),
+        )
+
+    @_tool("project_brief")
+    def _tool_project_brief(self, args: dict[str, Any]) -> Any:
+        return self.engine.project_brief(
+            args["title"],
+            memory_ids=args.get("memory_ids"),
+            limit=int(args.get("limit", 8)),
+        )
+
+    @_tool("numeric_reasoning")
+    def _tool_numeric_reasoning(self, args: dict[str, Any]) -> Any:
+        return self.engine.numeric_reasoning(
+            args["problem"],
+            context_memory_ids=args.get("context_memory_ids"),
+        )
+
+    @_tool("plan_support")
+    def _tool_plan_support(self, args: dict[str, Any]) -> Any:
+        return self.engine.plan_support(
+            args["plan"],
+            top_k=int(args.get("top_k", 3)),
+        )
+
+    @_tool("dependency_map")
+    def _tool_dependency_map(self, args: dict[str, Any]) -> Any:
+        return self.engine.dependency_map(args["plan"])
+
+    @_tool("project_risk")
+    def _tool_project_risk(self, args: dict[str, Any]) -> Any:
+        return self.engine.project_risk(
+            memory_ids=args.get("memory_ids"),
+            compare_limit=int(args.get("compare_limit", 20)),
+        )
+
+    @_tool("plan_tracker")
+    def _tool_plan_tracker(self, args: dict[str, Any]) -> Any:
+        return self.engine.plan_tracker(
+            args["plan"],
+            statuses=args.get("statuses"),
+        )
+
+    @_tool("plan_rewrite")
+    def _tool_plan_rewrite(self, args: dict[str, Any]) -> Any:
+        return self.engine.plan_rewrite(args["plan"])
+
+    @_tool("lesson_learned")
+    def _tool_lesson_learned(self, args: dict[str, Any]) -> Any:
+        return self.engine.lesson_learned(
+            memory_ids=args.get("memory_ids"),
+            limit=int(args.get("limit", 10)),
+        )
+
+    @_tool("effort_estimate")
+    def _tool_effort_estimate(self, args: dict[str, Any]) -> Any:
+        return self.engine.effort_estimate(
+            args["plan"],
+            base_hours=float(args.get("base_hours", 2.0)),
+        )
+
+    @_tool("decision_review")
+    def _tool_decision_review(self, args: dict[str, Any]) -> Any:
+        return self.engine.decision_review(
+            args["plan"],
+            args["results"],
+        )
+
+    @_tool("transfer_report")
+    def _tool_transfer_report(self, args: dict[str, Any]) -> Any:
+        return self.engine.transfer_report(
+            args["plan"],
+            lessons_memory_ids=args.get("lessons_memory_ids"),
+        )
+
+    @_tool("retrieval_quality")
+    def _tool_retrieval_quality(self, args: dict[str, Any]) -> Any:
+        return self.engine.retrieval_quality(
+            queries=args.get("queries"),
+            top_k=int(args.get("top_k", 5)),
+            limit=int(args.get("limit", 10)),
+        )
+
+    @_tool("recall_trace")
+    def _tool_recall_trace(self, args: dict[str, Any]) -> Any:
+        return self.engine.recall_trace(
+            args["query"],
+            top_k=int(args.get("top_k", 5)),
+        )
+
+    @_tool("community_report")
+    def _tool_community_report(self, args: dict[str, Any]) -> Any:
+        return self.engine.community_report(
+            limit=int(args.get("limit", 10)),
+        )
+
+    @_tool("sleep_advice")
+    def _tool_sleep_advice(self, args: dict[str, Any]) -> Any:
+        return self.engine.sleep_advice()
+
+    @_tool("emotion_advice")
+    def _tool_emotion_advice(self, args: dict[str, Any]) -> Any:
+        return self.engine.emotion_advice(
+            memory_ids=args.get("memory_ids"),
+        )
+
+    @_tool("difficulty_estimator")
+    def _tool_difficulty_estimator(self, args: dict[str, Any]) -> Any:
+        return self.engine.difficulty_estimator(
+            limit=int(args.get("limit", 10)),
+        )
+
+    @_tool("memory_integration")
+    def _tool_memory_integration(self, args: dict[str, Any]) -> Any:
+        return self.engine.memory_integration(
+            limit=int(args.get("limit", 10)),
+        )
+
+    @_tool("reasoning_trace")
+    def _tool_reasoning_trace(self, args: dict[str, Any]) -> Any:
+        return self.engine.reasoning_trace(
+            problem=str(args.get("problem", "")),
+            topic=args.get("topic"),
+            top_k=int(args.get("top_k", 4)),
+            store_conclusion=bool(
+                args.get("store_conclusion", True)
+            ),
+        )
+
+    @_tool("goal_replay")
+    def _tool_goal_replay(self, args: dict[str, Any]) -> Any:
+        return self.engine.goal_replay(
+            goal=str(args.get("goal", "")),
+            top_k=int(args.get("top_k", 5)),
+        )
+
+    @_tool("sleep_inference")
+    def _tool_sleep_inference(self, args: dict[str, Any]) -> Any:
+        return self.engine.sleep_inference(
+            limit=int(args.get("limit", 5)),
+        )
+
+    @_tool("schema_fit")
+    def _tool_schema_fit(self, args: dict[str, Any]) -> Any:
+        return self.engine.schema_fit(
+            limit=int(args.get("limit", 20)),
+        )
+
+    @_tool("working_set_budget")
+    def _tool_working_set_budget(self, args: dict[str, Any]) -> Any:
+        return self.engine.working_set_budget(
+            limit=int(args.get("limit", 8)),
+            capacity=int(args.get("capacity", 7)),
+            optimal=int(args.get("optimal", 4)),
+        )
+
+    @_tool("test_generator")
+    def _tool_test_generator(self, args: dict[str, Any]) -> Any:
+        return self.engine.test_generator(
+            topic=args.get("topic"),
+            memory_ids=args.get("memory_ids"),
+            count=int(args.get("count", 4)),
+        )
+
+    @_tool("spacing_plan")
+    def _tool_spacing_plan(self, args: dict[str, Any]) -> Any:
+        return self.engine.spacing_plan(
+            days=int(args.get("days", 7)),
+            limit=int(args.get("limit", 20)),
+        )
+
+    @_tool("rumination_check")
+    def _tool_rumination_check(self, args: dict[str, Any]) -> Any:
+        return self.engine.rumination_check(
+            access_threshold=int(args.get("access_threshold", 5)),
+        )
+
+    @_tool("consolidation_forecast")
+    def _tool_consolidation_forecast(self, args: dict[str, Any]) -> Any:
+        return self.engine.consolidation_forecast(
+            limit=int(args.get("limit", 5)),
+        )
+
+    @_tool("forgetting_balance")
+    def _tool_forgetting_balance(self, args: dict[str, Any]) -> Any:
+        return self.engine.forgetting_balance(
+            imbalance_ratio=float(
+                args.get("imbalance_ratio", 3.0)
+            ),
+            limit=int(args.get("limit", 10)),
+        )
+
+    @_tool("metacog_report")
+    def _tool_metacog_report(self, args: dict[str, Any]) -> Any:
+        return self.engine.metacog_report(
+            min_attempts=int(args.get("min_attempts", 3)),
+        )
+
+    @_tool("reconsolidation_plan")
+    def _tool_reconsolidation_plan(self, args: dict[str, Any]) -> Any:
+        return self.engine.reconsolidation_plan(
+            memory_id=str(args.get("memory_id", "")),
+        )
+
+    @_tool("mastery_map")
+    def _tool_mastery_map(self, args: dict[str, Any]) -> Any:
+        return self.engine.mastery_map(
+            threshold=float(args.get("threshold", 0.5)),
+            min_attempts=int(args.get("min_attempts", 3)),
+        )
+
+    @_tool("attention_filter")
+    def _tool_attention_filter(self, args: dict[str, Any]) -> Any:
+        return self.engine.attention_filter(
+            task=str(args.get("task", "")),
+            top_k=int(args.get("top_k", 5)),
+        )
+
+    @_tool("analogy_bridge")
+    def _tool_analogy_bridge(self, args: dict[str, Any]) -> Any:
+        return self.engine.analogy_bridge(
+            min_structure=float(args.get("min_structure", 0.3)),
+            limit=int(args.get("limit", 5)),
+        )
+
+    @_tool("next_interval")
+    def _tool_next_interval(self, args: dict[str, Any]) -> Any:
+        return self.engine.next_interval(
+            memory_id=args.get("memory_id"),
+        )
+
+    @_tool("nightly_routine")
+    def _tool_nightly_routine(self, args: dict[str, Any]) -> Any:
+        return self.engine.nightly_routine(
+            review_limit=int(args.get("review_limit", 3)),
+            quiz_count=int(args.get("quiz_count", 3)),
+        )
+
+    @_tool("cue_diversity")
+    def _tool_cue_diversity(self, args: dict[str, Any]) -> Any:
+        return self.engine.cue_diversity(
+            limit=int(args.get("limit", 20)),
+        )
+
+    @_tool("weekly_review")
+    def _tool_weekly_review(self, args: dict[str, Any]) -> Any:
+        return self.engine.weekly_review()
+
+    @_tool("transfer_prompt")
+    def _tool_transfer_prompt(self, args: dict[str, Any]) -> Any:
+        return self.engine.transfer_prompt(
+            count=int(args.get("count", 3)),
+            min_mastery=float(args.get("min_mastery", 0.7)),
+        )
+
+    @_tool("curve_fit")
+    def _tool_curve_fit(self, args: dict[str, Any]) -> Any:
+        return self.engine.curve_fit(
+            memory_id=args.get("memory_id"),
+            horizon_days=int(args.get("horizon_days", 30)),
+            threshold=float(args.get("threshold", 0.4)),
+        )
+
+    @_tool("affect_decay")
+    def _tool_affect_decay(self, args: dict[str, Any]) -> Any:
+        return self.engine.affect_decay(
+            limit=int(args.get("limit", 20)),
+        )
+
+    @_tool("goal_progress")
+    def _tool_goal_progress(self, args: dict[str, Any]) -> Any:
+        return self.engine.goal_progress(
+            goal=str(args.get("goal", "")),
+        )
+
+    @_tool("plan_rehearsal")
+    def _tool_plan_rehearsal(self, args: dict[str, Any]) -> Any:
+        return self.engine.plan_rehearsal(
+            goal=str(args.get("goal", "")),
+            top_k=args.get("top_k"),
+        )
+
+    @_tool("math_ladder")
+    def _tool_math_ladder(self, args: dict[str, Any]) -> Any:
+        return self.engine.math_ladder(
+            problem=str(args.get("problem", "")),
+            top_k=int(args.get("top_k", 4)),
+        )
+
+    @_tool("physics_simulate")
+    def _tool_physics_simulate(self, args: dict[str, Any]) -> Any:
+        return self.engine.physics_simulate(
+            scene=str(args.get("scene", "")),
+            top_k=int(args.get("top_k", 4)),
+        )
+
+    @_tool("analogy_prompt")
+    def _tool_analogy_prompt(self, args: dict[str, Any]) -> Any:
+        return self.engine.analogy_prompt(
+            topic=args.get("topic"),
+            count=int(args.get("count", 3)),
+            min_mastery=float(args.get("min_mastery", 0.7)),
+        )
+
+    @_tool("review_consistency")
+    def _tool_review_consistency(self, args: dict[str, Any]) -> Any:
+        return self.engine.review_consistency()
+
+    @_tool("learning_loop")
+    def _tool_learning_loop(self, args: dict[str, Any]) -> Any:
+        return self.engine.learning_loop(
+            count=int(args.get("count", 1)),
+        )
+
+    @_tool("agent_learning_session")
+    def _tool_agent_learning_session(self, args: dict[str, Any]) -> Any:
+        return self.engine.agent_learning_session(
+            answers=args.get("answers"),
+            count=int(args.get("count", 1)),
+        )
+
+    @_tool("concept_cover")
+    def _tool_concept_cover(self, args: dict[str, Any]) -> Any:
+        return self.engine.concept_cover(
+            query=str(args.get("query", "")),
+            top_k=int(args.get("top_k", 4)),
+        )
+
+    @_tool("temporal_anchor")
+    def _tool_temporal_anchor(self, args: dict[str, Any]) -> Any:
+        return self.engine.temporal_anchor(
+            query=str(args.get("query", "")),
+            top_k=int(args.get("top_k", 4)),
+        )
+
+    @_tool("retrieval_snapshot")
+    def _tool_retrieval_snapshot(self, args: dict[str, Any]) -> Any:
+        return self.engine.retrieval_snapshot(
+            previous=args.get("previous"),
+        )
+
+    @_tool("practice_due")
+    def _tool_practice_due(self, args: dict[str, Any]) -> Any:
+        kind_value = args.get("kind")
+
+        return self.engine.practice_due(
+            limit=int(args.get("limit", 5)),
+            desirable_difficulty=bool(
+                args.get("desirable_difficulty", True)
+            ),
+            min_gap_hours=float(args.get("min_gap_hours", 24.0)),
+            adaptive_gap=bool(args.get("adaptive_gap", True)),
+            interleave=bool(args.get("interleave", True)),
+            vary_cues=bool(args.get("vary_cues", True)),
+            arousal_priority=bool(args.get("arousal_priority", True)),
+            fresh_priority=bool(args.get("fresh_priority", False)),
+            kind=(
+                MemoryKind(kind_value)
+                if kind_value in ("semantic", "episodic")
+                else None
+            ),
+        )
+
+    @_tool("practice_answer")
+    def _tool_practice_answer(self, args: dict[str, Any]) -> Any:
+        return self.engine.practice_answer(
+            args["memory_id"],
+            args["attempt"],
+            suppress_competitors=bool(
+                args.get("suppress_competitors", True)
+            ),
+            generation_bonus=bool(
+                args.get("generation_bonus", True)
+            ),
+        )
+
+    @_tool("practice_report")
+    def _tool_practice_report(self, args: dict[str, Any]) -> Any:
+        return self.engine.practice_report(args["answers"])
+
+    @_tool("practice_plan")
+    def _tool_practice_plan(self, args: dict[str, Any]) -> Any:
+        return self.engine.practice_plan(
+            limit=int(args.get("limit", 5))
+        )
+
+    @_tool("practice_forecast")
+    def _tool_practice_forecast(self, args: dict[str, Any]) -> Any:
+        return self.engine.practice_forecast(
+            days=int(args.get("days", 7))
+        )
 
     def _result(self, message_id: Any, result: Any) -> str:
         return json.dumps(
