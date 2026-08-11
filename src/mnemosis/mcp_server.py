@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import traceback
 from datetime import datetime
 from typing import Any, Sequence
 
@@ -21,12 +22,23 @@ from .embedding import NGramEmbedder
 from .types import MemoryKind, SourceRecord, SourceType
 
 PROTOCOL_VERSION = "2025-03-26"
+MAX_MESSAGE_SIZE = 10 * 1024 * 1024
 
 
 def _kind(value: Any) -> MemoryKind | None:
     if value is None:
         return None
     return MemoryKind(value)
+
+
+def _dt(value: str, field: str) -> datetime:
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        raise ValueError(
+            f"{field} 需要 ISO 格式时间（如 2026-08-11T18:00:00），"
+            f"收到：{value!r}"
+        )
 
 
 class MCPServer:
@@ -2082,6 +2094,7 @@ class MCPServer:
                     f"Invalid params: missing required field {exc.args[0]}",
                 )
             except Exception as exc:  # noqa: BLE001 - surface tool errors
+                traceback.print_exc()
                 return self._result(
                     message_id,
                     {
@@ -2378,7 +2391,7 @@ class MCPServer:
 
             return self.engine.remember_intent(
                 args["content"],
-                datetime.fromisoformat(args["due_at"]),
+                _dt(args["due_at"], "due_at"),
                 context_cue=args.get("context_cue"),
                 importance=float(args.get("importance", 0.5)),
             )
@@ -2411,12 +2424,12 @@ class MCPServer:
 
             return self.engine.timeline_report(
                 start=(
-                    datetime.fromisoformat(args["start"])
+                    _dt(args["start"], "start")
                     if args.get("start")
                     else None
                 ),
                 end=(
-                    datetime.fromisoformat(args["end"])
+                    _dt(args["end"], "end")
                     if args.get("end")
                     else None
                 ),
@@ -2477,7 +2490,7 @@ class MCPServer:
         if name == "cramming_plan":
 
             return self.engine.cramming_plan(
-                datetime.fromisoformat(args["target_at"]),
+                _dt(args["target_at"], "target_at"),
                 hours_available=float(args.get("hours_available", 6.0)),
                 session_minutes=int(args.get("session_minutes", 30)),
                 limit=int(args.get("limit", 20)),
@@ -2830,6 +2843,8 @@ def _read_message() -> tuple[str | None, bool]:
         if line.lower().startswith(b"content-length:"):
             length = int(line.split(b":", 1)[1].strip())
     if length <= 0:
+        return None, True
+    if length > MAX_MESSAGE_SIZE:
         return None, True
     return sys.stdin.buffer.read(length).decode("utf-8"), True
 

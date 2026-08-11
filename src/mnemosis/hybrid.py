@@ -18,12 +18,15 @@ recency direction, cue overlap and date-range hints.
 
 from __future__ import annotations
 
+import logging
 import re
 from collections.abc import Iterable
 from datetime import datetime
 
 from .embedding import NGramEmbedder
 from .types import RecallResult, utcnow
+
+_LOG = logging.getLogger(__name__)
 
 _DATE_RE = re.compile(r"(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})")
 _YEAR_RE = re.compile(r"\b(19|20)\d{2}\b")
@@ -350,7 +353,7 @@ def fused_recall(
                 vector_index=vector_index,
             )
         except Exception as exc:  # noqa: BLE001 - dense is an enhancement
-            print(f"    dense pass failed, falling back: {exc}", flush=True)
+            _LOG.warning("dense pass failed, falling back: %s", exc)
             dense_results = []
         passes.append(([r.item.id for r in dense_results], dense_weight))
         all_results.extend(dense_results)

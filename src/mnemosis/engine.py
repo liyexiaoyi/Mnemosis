@@ -4689,7 +4689,7 @@ class MemoryEngine:
         scheduled early; stronger ones wait; topics are interleaved so
         consecutive items in the same session differ.
         """
-        days = max(1, int(days))
+        days = min(max(1, int(days)), 365)
         items = self.store.all_active()
         items.sort(key=lambda item: -item.importance)
         items = items[: max(1, int(limit))]
@@ -5282,8 +5282,9 @@ class MemoryEngine:
             "orbit", "cause", "depend", "contain", "lead",
         }
         items = self.store.all_active()
+        compare_items = items[: max(2, int(limit) * 3)]
         rows: list[dict] = []
-        for a, b in combinations(items, 2):
+        for a, b in combinations(compare_items, 2):
             topic_a = a.cues[0] if a.cues else a.content[:10]
             topic_b = b.cues[0] if b.cues else b.content[:10]
             if topic_a == topic_b:
@@ -5365,7 +5366,7 @@ class MemoryEngine:
         for item in items:
             r = self.curve.retrievability(item, now)
             base = 24.0
-            streak_mult = min(4.0, 1.5 ** item.review_streak)
+            streak_mult = min(4.0, 1.5 ** min(item.review_streak, 12))
             attempts = item.retrieval_successes + item.retrieval_failures
             if attempts >= 3:
                 accuracy = item.retrieval_successes / attempts
@@ -5662,11 +5663,13 @@ class MemoryEngine:
                 history_factor = 1.0
             base_rate = self.curve.effective_decay_rate(item)
             estimated_rate = base_rate / history_factor
-            if r > threshold:
+            if r > threshold and estimated_rate > 0:
                 days_to = round(
                     math.log(r / threshold) / estimated_rate / 24.0,
                     1,
                 )
+            elif r > threshold:
+                days_to = float(horizon_days)
             else:
                 days_to = 0.0
             days_to = min(float(horizon_days), days_to)
@@ -6805,7 +6808,7 @@ class MemoryEngine:
                 continue
             if noun not in item.content and step not in item.content:
                 continue
-            match = __import__("re").search(
+            match = re.search(
                 r"(\d+)\s*/\s*(\d+)", item.content
             )
             if match:
@@ -8196,7 +8199,7 @@ class MemoryEngine:
         """
 
         now = now or utcnow()
-        horizon = now + timedelta(days=max(1, int(days)))
+        horizon = now + timedelta(days=min(max(1, int(days)), 365))
         forecast = []
         for item in self.store.all_active():
             next_review = self.scheduler.next_review_at(item, now)
@@ -8233,12 +8236,10 @@ class MemoryEngine:
         """
         now = now or utcnow()
         stats = self.backend.stats()
-        due = len(
-            self.scheduler.due_items(
-                self.store.all_active(),
-                now=now,
-                limit=10**6,
-            )
+        due = sum(
+            1
+            for item in self.store.all_active()
+            if self.scheduler.is_due(item, now)
         )
         conflicts = len(self.consolidator.detect_conflicts())
         return {
@@ -8402,8 +8403,8 @@ class MemoryEngine:
             "revised": sum(1 for i in items if i.revision_count > 0),
             "emotional": sum(1 for i in items if i.affect),
             "conflicts": len(self.consolidator.detect_conflicts()),
-            "due_now": len(
-                self.scheduler.due_items(items, now=now, limit=10**6)
+            "due_now": sum(
+                1 for item in items if self.scheduler.is_due(item, now)
             ),
             "avg_retrievability": round(
                 sum(retrievabilities) / len(retrievabilities), 3
@@ -8459,7 +8460,7 @@ class MemoryEngine:
         overdue = 0
         due_soon = 0
         weak = 0
-        horizon = now + timedelta(days=max(1, int(days)))
+        horizon = now + timedelta(days=min(max(1, int(days)), 365))
         for item in items:
             retrievability = self.curve.retrievability(item, now)
             if retrievability < 0.3:
@@ -8504,11 +8505,14 @@ class MemoryEngine:
                 added += len(new_tags - cues)
                 cues |= new_tags
             else:
-                removed += len(cues & new_tags)
+                removed_tags = cues & new_tags
+                removed += len(removed_tags)
                 cues -= new_tags
             item.cues = normalize_cues(list(cues))
             self.backend.update(item)
             self.backend.add_cues(item.id, item.cues)
+            if action == "remove":
+                self.backend.remove_cues(item.id, removed_tags)
             updated += 1
         return {"updated": updated, "added": added, "removed": removed}
 
@@ -8824,6 +8828,12 @@ class MemoryEngine:
     def close(self) -> None:
         if hasattr(self.backend, "close"):
             self.backend.close()
+
+    def __enter__(self) -> "MemoryEngine":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
 
 
 __all__ = ["MemoryEngine"]

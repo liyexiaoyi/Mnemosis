@@ -920,6 +920,7 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         )
         self.assertEqual(removed["removed"], 2)
         self.assertNotIn("项目", engine.backend.get(items[0].id).cues)
+        self.assertEqual(engine.backend.find_by_cue("项目"), [])
         server = MCPServer(engine=engine)
         via_mcp = server._call_tool(
             "tag_memories",

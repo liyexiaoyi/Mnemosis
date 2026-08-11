@@ -49,7 +49,6 @@ _SYNONYM_GROUPS: tuple[frozenset[str], ...] = (
     frozenset({"早晨", "早上"}),
     frozenset({"晚上", "夜晚"}),
     frozenset({"贵", "昂贵"}),
-    frozenset({"便宜", "廉价"}),
 )
 
 _EN_ZH_PAIRS: tuple[tuple[str, str], ...] = (

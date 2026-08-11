@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from abc import ABC, abstractmethod
 from collections.abc import Iterable
 
@@ -73,6 +74,9 @@ class Backend(ABC):
 
     @abstractmethod
     def add_cues(self, memory_id: str, cues: Iterable[str]) -> None: ...
+
+    @abstractmethod
+    def remove_cues(self, memory_id: str, cues: Iterable[str]) -> None: ...
 
     @abstractmethod
     def find_by_cue(self, cue: str) -> list[MemoryItem]: ...
@@ -224,6 +228,12 @@ class DictBackend(Backend):
         for cue in normalize_cues(list(cues)):
             self._cues.setdefault(cue, set()).add(memory_id)
 
+    def remove_cues(self, memory_id: str, cues: Iterable[str]) -> None:
+        for cue in normalize_cues(list(cues)):
+            ids = self._cues.get(cue)
+            if ids:
+                ids.discard(memory_id)
+
     def find_by_cue(self, cue: str) -> list[MemoryItem]:
         cue = cue.strip().lower()
         ids = sorted(self._cues.get(cue, set()))
@@ -277,14 +287,24 @@ class DictBackend(Backend):
         }
 
 
+def _locked(method):
+    def wrapper(self, *args, **kwargs):
+        with self._lock:
+            return method(self, *args, **kwargs)
+
+    return wrapper
+
+
 class SQLiteBackend(Backend):
     """Durable SQLite backend (WAL mode). Pass ``":memory:"`` for tests."""
 
     def __init__(self, path: str = "mnemosis.db") -> None:
-        self._conn = sqlite3.connect(path)
+        self._conn = sqlite3.connect(path, check_same_thread=False)
         self._term_pending = 0
+        self._lock = threading.RLock()
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA busy_timeout=5000")
         self._conn.execute("PRAGMA synchronous=NORMAL")
         self._conn.execute("PRAGMA temp_store=MEMORY")
         self._conn.execute("PRAGMA cache_size=-20000")
@@ -391,6 +411,7 @@ class SQLiteBackend(Backend):
                         f"ALTER TABLE memories ADD COLUMN {ddl}"
                     )
 
+    @_locked
     def add(self, item: MemoryItem) -> None:
         row = self._conn.execute(
             "SELECT COALESCE(MAX(seq), 0) + 1 AS next FROM memories"
@@ -412,6 +433,7 @@ class SQLiteBackend(Backend):
                 _item_row(item),
             )
 
+    @_locked
     def upsert(self, item: MemoryItem) -> MemoryItem:
         existing = self.find_by_hash(item.kind, item.content_hash)
         if existing is None:
@@ -458,6 +480,7 @@ class SQLiteBackend(Backend):
         items.sort(key=lambda item: item.seq, reverse=True)
         return items
 
+    @_locked
     def update(self, item: MemoryItem) -> None:
         with self._conn:
             self._conn.execute(
@@ -499,6 +522,7 @@ class SQLiteBackend(Backend):
                 ),
             )
 
+    @_locked
     def delete(self, memory_id: str) -> None:
         with self._conn:
             self._conn.execute("DELETE FROM memories WHERE id = ?", (memory_id,))
@@ -506,6 +530,7 @@ class SQLiteBackend(Backend):
             self._conn.execute("DELETE FROM links WHERE src = ? OR dst = ?", (memory_id, memory_id))
             self._conn.execute("DELETE FROM terms WHERE memory_id = ?", (memory_id,))
 
+    @_locked
     def index_terms(
         self, memory_id: str, terms: Iterable[str], kind: MemoryKind
     ) -> None:
@@ -525,6 +550,7 @@ class SQLiteBackend(Backend):
             self._conn.commit()
             self._term_pending = 0
 
+    @_locked
     def remove_terms(self, memory_id: str) -> None:
         self._conn.execute(
             "DELETE FROM terms WHERE memory_id = ?", (memory_id,)
@@ -590,6 +616,7 @@ class SQLiteBackend(Backend):
         rows = self._conn.execute(sql, params).fetchall()
         return [_row_to_item(r) for r in rows]
 
+    @_locked
     def add_cues(self, memory_id: str, cues: Iterable[str]) -> None:
         normalized = normalize_cues(list(cues))
         if not normalized:
@@ -598,6 +625,17 @@ class SQLiteBackend(Backend):
             self._conn.executemany(
                 "INSERT OR IGNORE INTO cues (cue, memory_id) VALUES (?, ?)",
                 [(cue, memory_id) for cue in normalized],
+            )
+
+    @_locked
+    def remove_cues(self, memory_id: str, cues: Iterable[str]) -> None:
+        normalized = normalize_cues(list(cues))
+        if not normalized:
+            return
+        with self._conn:
+            self._conn.executemany(
+                "DELETE FROM cues WHERE memory_id = ? AND cue = ?",
+                [(memory_id, cue) for cue in normalized],
             )
 
     def find_by_cue(self, cue: str) -> list[MemoryItem]:
@@ -613,6 +651,7 @@ class SQLiteBackend(Backend):
         rows.sort(key=lambda row: (row["seq"], row["content"]))
         return [_row_to_item(r) for r in rows]
 
+    @_locked
     def add_link(self, src: str, dst: str, weight: float = 1.0) -> None:
         if src == dst:
             return
@@ -670,28 +709,53 @@ class SQLiteBackend(Backend):
         return [_row_to_item(r) for r in rows][:max_nodes]
 
     def stats(self) -> dict:
-        active = self.list()
+        active_rows = self._conn.execute(
+            "SELECT kind, COUNT(*) AS n FROM memories "
+            "WHERE status = ? GROUP BY kind",
+            (MemoryStatus.ACTIVE.value,),
+        ).fetchall()
+        active = sum(row["n"] for row in active_rows)
+        episodic = sum(
+            row["n"]
+            for row in active_rows
+            if row["kind"] == MemoryKind.EPISODIC.value
+        )
+        semantic = sum(
+            row["n"]
+            for row in active_rows
+            if row["kind"] == MemoryKind.SEMANTIC.value
+        )
+        avg = self._conn.execute(
+            "SELECT COALESCE(AVG(importance), 0), COALESCE(AVG(strength), 0) "
+            "FROM memories WHERE status = ?",
+            (MemoryStatus.ACTIVE.value,),
+        ).fetchone()
         total = self._conn.execute("SELECT COUNT(*) FROM memories").fetchone()[0]
         links = self._conn.execute("SELECT COUNT(*) FROM links").fetchone()[0]
         cues = self._conn.execute("SELECT COUNT(*) FROM cues").fetchone()[0]
         return {
             "total": total,
-            "active": len(active),
-            "episodic": sum(1 for i in active if i.kind == MemoryKind.EPISODIC),
-            "semantic": sum(1 for i in active if i.kind == MemoryKind.SEMANTIC),
+            "active": active,
+            "episodic": episodic,
+            "semantic": semantic,
             "links": links,
             "cues": cues,
-            "avg_importance": round(
-                sum(i.importance for i in active) / max(1, len(active)), 3
-            ),
-            "avg_strength": round(sum(i.strength for i in active) / max(1, len(active)), 3),
+            "avg_importance": round(float(avg[0]), 3),
+            "avg_strength": round(float(avg[1]), 3),
         }
 
+    @_locked
     def close(self) -> None:
         if self._term_pending:
             self._conn.commit()
             self._term_pending = 0
         self._conn.close()
+
+    def __enter__(self) -> "SQLiteBackend":
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
 
 
 def _merge_stats(target: MemoryItem, incoming: MemoryItem) -> None:
