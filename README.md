@@ -297,6 +297,11 @@ A larger retrieval-only run (50 questions) confirms exact parity on every
 metric (@1 0.42 / @5 0.78 / @10 0.86 / gold-answer-token hit@5 0.38) with
 1.37x faster ingestion (44.6s vs 61.2s per question).
 
+The end-to-end run with cloud Qwen judging (30 questions, mem0 vs dense)
+again shows identical retrieval (@1 0.433 / @5 0.767 / @10 0.867) and equal
+answer accuracy (0.433 both), with 2.1x faster ingestion (28.0s vs 58.8s
+per question).
+
 At a 50k-input / 25k-active real-Chinese store, recall is 26-85ms and
 sleep consolidation ~2.3s after the large-store scaling work (batched term
 df, batched REM links, generic-cue skipping).
