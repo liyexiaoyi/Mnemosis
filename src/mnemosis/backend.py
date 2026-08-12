@@ -28,6 +28,10 @@ _BULK_DELETE_TEMP_INDEX_MIN = 2_000
 """Semantic batches at least this large get a temporary terms index during
 bulk-mode DELETEs, since bulk mode defers idx_terms_memory."""
 
+_UPDATE_BATCH = 500
+"""Rows per transaction in update_many: bounds SQLite write-lock hold time
+so concurrent writers (e.g. the reinforcement worker) do not stall long."""
+
 
 def _locked(method):
     """Serialize a backend method on the instance lock (reentrant)."""
@@ -948,7 +952,14 @@ class SQLiteBackend(Backend):
         *,
         busy_timeout_ms: int | None = None,
     ) -> None:
-        """Update many memory rows in one atomic transaction."""
+        """Update many memory rows in bounded transactions.
+
+        Commits every ``_UPDATE_BATCH`` rows so the SQLite write lock is
+        held briefly; a single huge transaction can stall concurrent
+        writers for the whole batch. NOTE: this intentionally does NOT
+        guarantee all-or-nothing atomicity across the whole batch -- an
+        error mid-batch leaves earlier chunks committed.
+        """
         if not items:
             return
         rows = []
@@ -988,24 +999,26 @@ class SQLiteBackend(Backend):
                 f"PRAGMA busy_timeout={int(busy_timeout_ms)}"
             )
         try:
-            with self._conn:
-                self._conn.executemany(
-                    """
-                    UPDATE memories SET
-                        content = ?, content_hash = ?, source_json = ?,
-                        cues_json = ?,
-                        created_at = ?, last_access_at = ?, access_count = ?,
-                        importance = ?, strength = ?, confidence = ?,
-                        status = ?,
-                        context = ?, affect = ?, evidence_count = ?,
-                        storage_strength = ?, updated_at = ?,
-                        revision_count = ?,
-                        seq = ?, last_review_at = ?, review_streak = ?,
-                        retrieval_successes = ?, retrieval_failures = ?
-                    WHERE id = ?
-                    """,
-                    rows,
-                )
+            for start in range(0, len(rows), _UPDATE_BATCH):
+                with self._conn:
+                    self._conn.executemany(
+                        """
+                        UPDATE memories SET
+                            content = ?, content_hash = ?, source_json = ?,
+                            cues_json = ?,
+                            created_at = ?, last_access_at = ?,
+                            access_count = ?,
+                            importance = ?, strength = ?, confidence = ?,
+                            status = ?,
+                            context = ?, affect = ?, evidence_count = ?,
+                            storage_strength = ?, updated_at = ?,
+                            revision_count = ?,
+                            seq = ?, last_review_at = ?, review_streak = ?,
+                            retrieval_successes = ?, retrieval_failures = ?
+                        WHERE id = ?
+                        """,
+                        rows[start : start + _UPDATE_BATCH],
+                    )
         finally:
             if busy_timeout_ms is not None and previous_timeout is not None:
                 try:

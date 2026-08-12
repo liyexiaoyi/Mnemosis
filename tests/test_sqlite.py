@@ -310,6 +310,29 @@ class SQLiteBackendTest(unittest.TestCase):
         finally:
             backend.close()
 
+    def test_update_many_chunked_updates_all(self):
+        backend = SQLiteBackend(":memory:")
+        try:
+            user = SourceRecord(origin=SourceType.USER)
+            items = [
+                MemoryItem(
+                    content=f"chunk update {index}",
+                    kind=MemoryKind.EPISODIC,
+                    source=user,
+                )
+                for index in range(1_200)
+            ]
+            backend.add_many(items)
+            for item in items:
+                item.strength = 0.25
+            backend.update_many(items)
+            count = backend._conn.execute(
+                "SELECT COUNT(*) FROM memories WHERE strength = 0.25"
+            ).fetchone()[0]
+            self.assertEqual(count, 1_200)
+        finally:
+            backend.close()
+
     def test_get_many_large_batch_json_path_and_dedupe(self):
         backend = SQLiteBackend(":memory:")
         try:
