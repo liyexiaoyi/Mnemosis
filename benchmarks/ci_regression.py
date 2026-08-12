@@ -65,6 +65,48 @@ def _full_chain_ok(full: dict, baseline: dict) -> bool:
     )
 
 
+def _run_zh_retrieval_gate(script: str, project: str) -> tuple[bool, str]:
+    """Run a Chinese retrieval benchmark in retrieval-only mode and parse
+    the final multi-line JSON stats (subprocess isolation + UTF-8 pipes).
+    """
+    proc = subprocess.run(
+        [
+            sys.executable,
+            os.path.join(_BENCH, script),
+            "--project",
+            project,
+            "--retrieval-only",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=180,
+        check=False,
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+    )
+    stats: dict = {}
+    lines = proc.stdout.splitlines()
+    start = next(
+        (index for index, line in enumerate(lines) if line.strip() == "{"),
+        None,
+    )
+    if start is not None:
+        try:
+            stats = json.loads("\n".join(lines[start:])).get(
+                "stats", {}
+            )
+        except json.JSONDecodeError:
+            pass
+    ok = (
+        proc.returncode == 0
+        and bool(stats)
+        and stats.get("n", 0) > 0
+        and stats.get("ordered", 0) == stats.get("n", 0)
+        and stats.get("coverage", 0) >= stats.get("n", 0)
+    )
+    return ok, str(stats)
+
+
 def run_chunked_build_snapshot() -> dict[str, int]:
     """Deterministic chunked-build graph snapshot.
 
@@ -279,44 +321,22 @@ def main() -> int:
         ),
     )
 
-    proc = subprocess.run(
-        [
-            sys.executable,
-            os.path.join(_BENCH, "process_zh_bench.py"),
-            "--project",
-            "mnemosis_steps",
-            "--retrieval-only",
-        ],
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        timeout=180,
-        check=False,
-        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+    zh_ok, zh_detail = _run_zh_retrieval_gate(
+        "process_zh_bench.py", "mnemosis_steps"
     )
-    zh_stats: dict = {}
-    lines = proc.stdout.splitlines()
-    start = next(
-        (index for index, line in enumerate(lines) if line.strip() == "{"),
-        None,
-    )
-    if start is not None:
-        try:
-            zh_stats = json.loads(
-                "\n".join(lines[start:])
-            ).get("stats", {})
-        except json.JSONDecodeError:
-            pass
     check(
         "zh process: recall_steps covers and orders all steps",
-        (
-            proc.returncode == 0
-            and bool(zh_stats)
-            and zh_stats.get("n", 0) > 0
-            and zh_stats.get("ordered", 0) == zh_stats.get("n", 0)
-            and zh_stats.get("coverage", 0) >= zh_stats.get("n", 0)
-        ),
-        str(zh_stats),
+        zh_ok,
+        zh_detail,
+    )
+
+    reuse_ok, reuse_detail = _run_zh_retrieval_gate(
+        "plan_reuse_zh_bench.py", "mnemosis"
+    )
+    check(
+        "zh reuse: recall_steps retrieves reference plan steps",
+        reuse_ok,
+        reuse_detail,
     )
 
     failed = [name for name, ok, _ in _CHECKS if not ok]

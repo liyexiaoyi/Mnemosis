@@ -259,6 +259,11 @@ def main() -> int:
         choices=["mnemosis", "mem0", "tencent", "cognitive"],
     )
     parser.add_argument("--out", default=None)
+    parser.add_argument(
+        "--retrieval-only",
+        action="store_true",
+        help="skip cloud answering (CI smoke)",
+    )
     args = parser.parse_args()
     if args.project == "mnemosis":
         data = _mnemosis()
@@ -276,8 +281,14 @@ def main() -> int:
         context = by_q[s["question"]]["context"]
         cov = _coverage(context, s["steps"])
         ordered = int(cov == len(s["steps"])) and _ordered(context, s["steps"])
-        answer = _answer_cloud(s["question"], context)
-        score = int(all(k in answer for k in s["keys"]))
+        answer = "" if args.retrieval_only else _answer_cloud(
+            s["question"], context
+        )
+        score = (
+            0
+            if args.retrieval_only
+            else int(all(k in answer for k in s["keys"]))
+        )
         hits += score
         details.append(
             {
@@ -306,8 +317,17 @@ def main() -> int:
         "details": details,
     }
     print(json.dumps(
-        {"system": report["system"], "coverage": report["coverage"],
-         "ordered": report["ordered"], "accuracy": report["accuracy"]},
+        {
+            "system": report["system"],
+            "stats": {
+                "n": report["n"],
+                "coverage": report["coverage"],
+                "ordered": report["ordered"],
+            },
+            "accuracy": (
+                None if args.retrieval_only else report["accuracy"]
+            ),
+        },
         ensure_ascii=False,
         indent=2,
     ))
