@@ -39,6 +39,9 @@ mnemosis-mcp = "mnemosis.mcp_server:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+mnemosis = ["py.typed"]
+
 [tool.ruff.lint.per-file-ignores]
 # Benchmarks are one-off dev scripts; SIM115 (file context managers)
 # would churn 284 call sites with no runtime benefit. src/ and tests/

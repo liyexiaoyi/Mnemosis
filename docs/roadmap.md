@@ -64,8 +64,9 @@
 - [ ] **CHANGELOG 收口**：1.0 时把 v0.3.x 的实验行为写清楚，明确稳定边界。
 - [ ] **废弃接口清理**：对 v0.x 遗留的废弃方法强制标记
       `DeprecationWarning` 或移除，确保 1.0 的“API 冻结”没有隐藏破坏。
-- [ ] **干净环境安装验证**：在全新 venv / Docker 中端到端验证
+- [x] **干净环境安装验证**：在全新 venv / Docker 中端到端验证
       `pip install` 与 Quickstart（含 `py.typed`、entry_points、打包内容）。
+      （2026-08-13 已通过：wheel 安装、CLI/MCP 入口、py.typed、quickstart 冒烟）
 
 ## 之后（1.1+ 候选）
 
