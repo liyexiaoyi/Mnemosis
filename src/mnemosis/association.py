@@ -7,6 +7,7 @@ memory, and related memories are reachable from each other.
 from __future__ import annotations
 
 import heapq
+from operator import attrgetter
 
 from .backend import Backend
 from .types import MemoryItem
@@ -57,7 +58,9 @@ class AssociationIndex:
         ]
         related = [other for other in related if other is not None]
         related.sort(
-            key=lambda other: (other.seq, other.content),
+            # seq is globally unique per store, so the content tie-break
+            # is dead code; an int key is much cheaper to build/compare.
+            key=attrgetter("seq"),
             reverse=True,
         )
         for other in related[:max_links]:
@@ -103,7 +106,7 @@ class AssociationIndex:
                 by_id[rid] for rid in related_ids if rid in by_id
             ]
             related.sort(
-                key=lambda other: (other.seq, other.content),
+                key=attrgetter("seq"),
                 reverse=True,
             )
             for other in related[:max_links]:
@@ -189,7 +192,7 @@ class AssociationIndex:
                     related = heapq.nlargest(
                         max_links,
                         candidates.values(),
-                        key=lambda other: (other.seq, other.content),
+                        key=attrgetter("seq"),
                     )
                 else:
                     related = list(candidates.values())
