@@ -11,6 +11,7 @@ from collections import deque
 from datetime import datetime
 from typing import ClassVar
 
+from .affective_mixin import AffectiveMixin
 from .analysis_mixin import AnalysisMixin
 from .association import AssociationIndex
 from .backend import Backend, make_backend
@@ -64,6 +65,7 @@ class MemoryEngine(
     PracticeMixin,
     ConsolidationInsightsMixin,
     NarrativeMixin,
+    AffectiveMixin,
 ):
     """The one thing most users touch.
 
