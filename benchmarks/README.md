@@ -1,5 +1,46 @@
 # Benchmarks
 
+> 规范：所有 benchmark 必须 pin 本地 `src/`（`sys.path.insert(0, ../src)`）
+> 并打印被测模块路径，禁止静默依赖 site-packages 里的旧安装包——否则会把
+> 旧版本误当成当前代码来测（详见下方 high_df_recall_bench 的历史说明）。
+
+## high_df_recall_bench.py
+
+High-document-frequency keyword recall at scale (run manually). Every
+record in the synthetic corpus contains the term 用户, so queries like
+"用户" or "用户 投影仪" exercise the worst-case keyword channel (df ~=
+store size).
+
+```bash
+python benchmarks/high_df_recall_bench.py --count 100000 --chunk 5000
+```
+
+The script pins the **local** `src/` on `sys.path` and prints the module
+path under test, so it can never silently measure a stale installed copy.
+Fails (exit 1) if warm "用户" p99 exceeds the 100ms guard (this only
+catches catastrophic regressions such as importing the stale release; it
+does not promise to catch medium regressions).
+
+> 冷启动说明：`cold_start_ms` 是进程内冷启动（重新加载数据库文件），
+> 并未清理操作系统 Page Cache；跨机器对比时受文件系统缓存影响。
+
+### Results (2026-08-13, 100k local build)
+
+| Metric | Value |
+|---|---|
+| Build (`remember_many_chunked`, 100k) | 27.0 s |
+| df lookup for "用户" (100k ids, median of 5) | 81.8 ms |
+| First query right after build | 2853 ms |
+| Cold start (reopen store, first query) | 2898 ms |
+| Warm "用户" p50 / p95 / p99 | 0.42 / 0.89 / 2.16 ms |
+| Warm "用户 投影仪" p50 / p95 / p99 | 0.42 / 0.93 / 2.12 ms |
+| Warm zero-hit p50 / p95 / p99 | 0.77 / 1.47 / 9.20 ms |
+
+History: the old round-13 smoke script imported `mnemosis` from
+site-packages and reported ~1.8-2.3s per high-df query on a 100k store.
+That number was an artifact of measuring a stale installed release; the
+same queries on the local source are sub-ms to ~30ms warm.
+
 ## compare_with_models.py
 
 Compares Mnemosis against local LLMs (via Ollama) on a small memory
