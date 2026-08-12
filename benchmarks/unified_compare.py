@@ -14,6 +14,10 @@ import os
 import sys
 from collections import defaultdict
 
+from bench_utils import pin_local_src
+
+pin_local_src()
+
 from mnemosis import MemoryEngine
 from mnemosis.embedding import NGramEmbedder
 from mnemosis.types import MemoryKind, SourceRecord, SourceType

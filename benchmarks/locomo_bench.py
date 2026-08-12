@@ -28,6 +28,10 @@ import time
 from collections import defaultdict
 from datetime import date, timedelta
 
+from bench_utils import pin_local_src
+
+pin_local_src()
+
 from bm25_baseline import Bm25Index
 from embedding_baseline import EmbeddingBaseline
 

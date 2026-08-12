@@ -17,6 +17,10 @@ import sys
 import time
 from datetime import timedelta
 
+from bench_utils import pin_local_src
+
+pin_local_src()
+
 from mnemosis import MemoryEngine
 from mnemosis.embedding import NGramEmbedder
 from mnemosis.types import MemoryKind, SourceRecord, SourceType, utcnow

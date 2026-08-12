@@ -20,6 +20,10 @@ import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 
+from bench_utils import pin_local_src
+
+pin_local_src()
+
 from mnemosis import MemoryEngine
 from mnemosis.types import MemoryKind, SourceRecord, SourceType
 

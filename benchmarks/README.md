@@ -10,7 +10,9 @@
 `sys.path`）、`assert_local_mnemosis()`（导入 `mnemosis` 并断言来自本地
 `src/`，否则抛错拒绝运行）、`percentile(values, pct)`（线性插值分位数）。
 核心基准与门禁脚本（build / scalability / sleep / ci_regression / ci_perf /
-high_df_recall）都已迁移到该工具，新基准脚本应直接复用。
+high_df_recall）以及独立评测脚本（bm25 / embedding / lifecycle / locomo /
+mem0 / mem0-style / hipporag / compare_with_models / unified_compare）都已
+迁移到该工具，新基准脚本应直接复用。
 
 ## high_df_recall_bench.py
 

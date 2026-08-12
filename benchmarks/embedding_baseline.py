@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+from bench_utils import pin_local_src
+
+pin_local_src()
+
 from mnemosis.embedding import Embedder, NGramEmbedder
 
 

@@ -10,6 +10,10 @@ from __future__ import annotations
 import math
 from collections import Counter
 
+from bench_utils import pin_local_src
+
+pin_local_src()
+
 from mnemosis.types import tokenize
 
 
