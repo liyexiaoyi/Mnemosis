@@ -31,8 +31,13 @@ from .types import (
 )
 from .zh_nlp import expand_synonyms
 
-_FALLBACK_SCAN_LIMIT = 1000
-"""Max memories loaded for a zero-hit query (recency fallback)."""
+_FALLBACK_SCAN_LIMIT = 200
+"""Max memories loaded for a zero-hit query (recency fallback).
+
+Zero-hit queries return the most retrievable recent traces; the top 200 by
+insertion order approximate that (new traces have high retrievability) and
+keep the fallback cheap at 100k+ scale.
+"""
 
 _DENSE_RERANK_CANDIDATES = 64
 """Max candidates embedded per query.

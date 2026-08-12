@@ -322,8 +322,9 @@ df, batched REM links, generic-cue skipping).
 
 At 100k input (50k active, real Chinese): batch ingestion is ~6.8 minutes
 (was >2h before the bulk upsert + generic-cue skip work), hit recall
-~6ms, zero-hit recall ~165ms, sleep ~1.7s after the trusted row fast path
-(SQLite reads skip per-row validation/normalization).
+~4ms, zero-hit recall ~4ms (status+seq index for the recency fallback),
+sleep ~1.3s after the trusted row fast path (SQLite reads skip per-row
+validation/normalization).
 
 ## Independent public benchmark (LongMemEval)
 

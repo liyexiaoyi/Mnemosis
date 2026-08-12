@@ -592,6 +592,12 @@ class SQLiteBackend(Backend):
                     self._conn.execute(
                         f"ALTER TABLE memories ADD COLUMN {ddl}"
                     )
+            # seq is added by the migration above, so this index must be
+            # created after the column exists.
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_memories_status_seq "
+                "ON memories(status, seq)"
+            )
 
     @_locked
     def add(self, item: MemoryItem) -> None:
