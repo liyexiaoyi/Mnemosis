@@ -40,6 +40,7 @@ from .overview_mixin import OverviewMixin
 from .planning_mixin import PlanningMixin
 from .practice_mixin import PracticeMixin
 from .recycle import RecycleBin
+from .retrieval_diagnostics_mixin import RetrievalDiagnosticsMixin
 from .retrieval_mixin import RetrievalMixin
 from .review_mixin import ReviewMixin
 from .schema import EventChainIndex
@@ -78,6 +79,7 @@ class MemoryEngine(
     OverviewMixin,
     ExplanationMixin,
     ForgettingQualityMixin,
+    RetrievalDiagnosticsMixin,
 ):
     """The one thing most users touch.
 
