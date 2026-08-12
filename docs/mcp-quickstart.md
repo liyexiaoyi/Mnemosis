@@ -25,6 +25,10 @@ MCP 服务：
 python -m mnemosis.mcp_server --db memory.db
 ```
 
+> 启动预热：MCP 服务器启动后会在后台线程扫描主表/索引页（`engine.warmup()`），
+> 在真实冷启动场景（容器重启 / VPS 冷启）下可显著减少第一次查询的磁盘页
+> 加载等待；本地热缓存环境感知不明显。
+
 ## 快速看一眼记忆
 
 ```bash

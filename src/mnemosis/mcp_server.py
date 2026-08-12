@@ -39,6 +39,7 @@ class MCPServer(MCPHandlersMixin):
         expose: str = "advanced",
     ) -> None:
         self.engine = engine or MemoryEngine()
+        self.engine.warmup()  # background page-cache warm for cold starts
         self._tool_handlers = {
             name: getattr(self, method_name)
             for name, method_name in registered_handlers().items()

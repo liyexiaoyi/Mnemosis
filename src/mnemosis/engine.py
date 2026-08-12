@@ -155,6 +155,9 @@ class MemoryEngine(
         self.recycle = RecycleBin(self.backend)
         self._recall_log: deque[dict] = deque(maxlen=100)
         self._active_warmup_cues: set[str] = set()
+        self._closed_event = threading.Event()
+        self._warmed_event = threading.Event()
+        self._warmup_lock = threading.Lock()
         self._warmup_at: float | None = None
         self._warmup_recalls = 0
         self._warmup_hits = 0
@@ -1196,8 +1199,42 @@ class MemoryEngine(
             "persisted": True,
         }
 
+    @property
+    def _closed(self) -> bool:
+        """True once close() has been called (thread-safe via an Event)."""
+        return self._closed_event.is_set()
+
+    def warmup(self, background: bool = True) -> None:
+        """Warm the OS/SQLite page cache so the first query is fast.
+
+        Scans the main tables/indexes with cheap COUNT(*) queries in a
+        background daemon thread (default), so a long-running MCP server
+        does not pay the full cold page-load cost on its first recall.
+        """
+        with self._warmup_lock:
+            if self._warmed_event.is_set():
+                return
+            self._warmed_event.set()
+
+        def _warm() -> None:
+            if self._closed_event.is_set():
+                return
+            try:
+                self.backend.warm_pages(
+                    stop=lambda: self._closed_event.is_set()
+                )
+            except Exception:  # noqa: BLE001 - warmup must never break startup
+                _LOG.debug("startup warmup failed", exc_info=True)
+
+        if background:
+            threading.Thread(
+                target=_warm, name="mnemosis-warmup", daemon=True
+            ).start()
+        else:
+            _warm()
+
     def close(self) -> None:
-        self._closed = True
+        self._closed_event.set()
         self.store.shutdown_reinforce_worker()
         if hasattr(self.backend, "close"):
             self.backend.close()

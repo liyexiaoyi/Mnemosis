@@ -8,10 +8,11 @@ checkpoint TRUNCATE); Python 3.9+ ships with a recent enough build.
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import threading
 from abc import ABC, abstractmethod
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from functools import wraps
 from itertools import islice
 
@@ -32,6 +33,8 @@ bulk-mode DELETEs, since bulk mode defers idx_terms_memory."""
 _UPDATE_BATCH = 500
 """Rows per transaction in update_many: bounds SQLite write-lock hold time
 so concurrent writers (e.g. the reinforcement worker) do not stall long."""
+
+_LOG = logging.getLogger(__name__)
 
 _WRITE_BATCH = 2_000
 """Rows per transaction in add_many/add_cues_many: a single giant insert
@@ -175,6 +178,16 @@ class Backend(ABC):
 
     def end_bulk_mode(self) -> None:
         """Restore normal settings after a bulk import (no-op by default)."""
+
+    def warm_pages(
+        self, stop: Callable[[], bool] | None = None
+    ) -> None:
+        """Warm OS/SQLite page caches for the main tables/indexes.
+
+        No-op by default; SQLite backends scan cheap COUNT(*) queries so
+        the first real query after startup does not pay the full cold
+        page-load cost.
+        """
 
 
 class DictBackend(Backend):
@@ -484,6 +497,11 @@ class DictBackend(Backend):
             and (kind is None or item.kind == kind)
         )
 
+    def warm_pages(
+        self, stop: Callable[[], bool] | None = None
+    ) -> None:
+        """In-memory backend: nothing to warm."""
+
     @_locked
     def list_strongest(
         self,
@@ -612,6 +630,7 @@ class SQLiteBackend(Backend):
     _JSON_EACH_THRESHOLD = 64
 
     def __init__(self, path: str = "mnemosis.db") -> None:
+        self._path = path
         self._conn = sqlite3.connect(path, check_same_thread=False)
         self._term_pending = 0
         self._bulk_terms_index_deferred = False
@@ -1565,6 +1584,44 @@ class SQLiteBackend(Backend):
             sql += " AND kind = ?"
             params.append(kind.value)
         return int(self._conn.execute(sql, params).fetchone()[0])
+
+    def warm_pages(
+        self, stop: Callable[[], bool] | None = None
+    ) -> None:
+        """Scan the main tables/indexes so their pages land in the OS cache.
+
+        COUNT(*) scans the covering indexes (terms/links/cues/PK), which is
+        exactly what a cold recall needs for candidate generation; full
+        content data pages are fetched on demand for the handful of top
+        results and are intentionally not pre-scanned (avoids polluting the
+        OS cache with gigabytes of long text).
+
+        Uses a dedicated connection for reading instead of the shared one,
+        so the background warmup never contends with the main thread's lock.
+        """
+        if self._path == ":memory:":
+            return
+        try:
+            conn = sqlite3.connect(
+                self._path, check_same_thread=False, timeout=5.0
+            )
+        except sqlite3.Error:
+            return
+        try:
+            for sql in (
+                "SELECT COUNT(*) FROM memories",
+                "SELECT COUNT(*) FROM memories WHERE status = 'active'",
+                "SELECT COUNT(*) FROM terms",
+                "SELECT COUNT(*) FROM links",
+                "SELECT COUNT(*) FROM cues",
+            ):
+                if stop is not None and stop():
+                    break
+                conn.execute(sql).fetchone()
+        except sqlite3.Error as exc:
+            _LOG.debug("warmup scan skipped: %s", exc)
+        finally:
+            conn.close()
 
     @_locked
     def count_links(self) -> int:
