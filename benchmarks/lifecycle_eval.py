@@ -288,7 +288,7 @@ def run_spaced_review_eval(
         now = now + timedelta(days=7)
     kept = sum(
         1
-        for item in engine.backend.list()
+        for item in engine.backend.list_items()
         if engine.curve.retrievability(item, now) > 0.5
     )
     engine.close()
@@ -304,7 +304,7 @@ def run_spaced_review_eval(
         )
     kept_no_review = sum(
         1
-        for item in engine2.backend.list()
+        for item in engine2.backend.list_items()
         if engine2.curve.retrievability(item, now) > 0.5
     )
     engine2.close()

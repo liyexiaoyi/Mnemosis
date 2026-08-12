@@ -72,7 +72,7 @@ def main() -> int:
     start = time.perf_counter()
     engine.remember_many_chunked(records, chunk_size=args.chunk)
     build_s = time.perf_counter() - start
-    active = len(engine.store.backend.list())
+    active = len(engine.store.backend.list_items())
 
     def _q(query: str) -> None:
         engine.recall(query, top_k=3)

@@ -25,7 +25,7 @@ class EventChainTest(unittest.TestCase):
         self.event("Alice visited the museum on 2026-02-01.", 1)
         self.event("Alice had ramen for dinner on 2026-02-02.", 1)
         self.event("Alice bought a camera on 2026-02-03.", 1)
-        items = self.engine.backend.list(kind=MemoryKind.EPISODIC)
+        items = self.engine.backend.list_items(kind=MemoryKind.EPISODIC)
         by_date = sorted(items, key=lambda i: _date_of(i))
         chain = EventChainIndex(self.engine.backend)
         self.assertEqual(

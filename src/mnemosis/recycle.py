@@ -33,7 +33,7 @@ class RecycleBin:
         return True
 
     def list_trash(self, limit: int = 50) -> list[MemoryItem]:
-        return self.backend.list(status=MemoryStatus.RECYCLED, limit=limit)
+        return self.backend.list_items(status=MemoryStatus.RECYCLED, limit=limit)
 
     def purge(self, before: datetime | None = None, limit: int = 1000) -> int:
         """Hard-delete recycled memories; optionally only those older than `before`."""
@@ -49,7 +49,7 @@ class RecycleBin:
         lost.
         """
         purged: list[str] = []
-        for item in self.backend.list(status=MemoryStatus.RECYCLED, limit=limit):
+        for item in self.backend.list_items(status=MemoryStatus.RECYCLED, limit=limit):
             if (
                 before is None or item.created_at < before
             ) and self.backend.delete_if_recycled(item.id):

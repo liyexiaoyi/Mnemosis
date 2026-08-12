@@ -40,12 +40,12 @@ class EmotionalConsolidationTest(unittest.TestCase):
 
         emotional = next(
             item
-            for item in engine.backend.list()
+            for item in engine.backend.list_items()
             if item.affect == "negative"
         )
         neutral = next(
             item
-            for item in engine.backend.list()
+            for item in engine.backend.list_items()
             if item.affect is None
             and "release notes" in item.content
         )
@@ -83,7 +83,7 @@ class EmotionalConsolidationTest(unittest.TestCase):
             cues=["carol", "tracker"],
         )
         engine.sleep()
-        by_content = {item.content: item for item in engine.backend.list()}
+        by_content = {item.content: item for item in engine.backend.list_items()}
         emo_a = by_content["Alice felt anxious before the launch."]
         emo_b = by_content["Alice felt relieved after the launch."]
         neu_a = by_content["Bob checked the schedule on Tuesday."]
@@ -116,7 +116,7 @@ class EmotionalConsolidationTest(unittest.TestCase):
         engine.sleep(now=now)
         semantic = [
             item
-            for item in engine.backend.list(kind=MemoryKind.SEMANTIC)
+            for item in engine.backend.list_items(kind=MemoryKind.SEMANTIC)
             if "new office" in item.content
         ]
         self.assertTrue(semantic)

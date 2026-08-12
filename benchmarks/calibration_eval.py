@@ -56,7 +56,7 @@ def run() -> dict:
         sum(r["hit"] for r in rows) / len(rows), 3
     )
 
-    items = engine.backend.list()
+    items = engine.backend.list_items()
     raw_stats = engine.meta.calibration_stats(items)
 
     # calibrated ECE: per-item |calibrated_pred - empirical|

@@ -85,7 +85,7 @@ class SQLiteBackendTest(unittest.TestCase):
             ]
         }
         self.engine.import_memories(payload)
-        seqs = [item.seq for item in self.engine.backend.list()]
+        seqs = [item.seq for item in self.engine.backend.list_items()]
         self.assertEqual(len(seqs), len(set(seqs)))
         self.assertEqual(max(seqs), third.seq + 3)
 
@@ -123,7 +123,7 @@ class SQLiteBackendTest(unittest.TestCase):
             self.assertEqual(proc.returncode, 0, err.decode("utf-8", "ignore"))
         backend = SQLiteBackend(self.path)
         try:
-            seqs = [item.seq for item in backend.list()]
+            seqs = [item.seq for item in backend.list_items()]
             self.assertEqual(len(seqs), 50)
             self.assertEqual(len(set(seqs)), 50)
             self.assertEqual(set(seqs), set(range(1, 51)))
@@ -492,7 +492,7 @@ class SQLiteBackendTest(unittest.TestCase):
 
         backend = SQLiteBackend(self.path)
         try:
-            items = backend.list()
+            items = backend.list_items()
             self.assertEqual(len(items), 1)
             self.assertEqual(items[0].content, "old fact")
             self.assertEqual(items[0].storage_strength, 1.0)

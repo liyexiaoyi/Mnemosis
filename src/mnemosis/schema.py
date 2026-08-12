@@ -72,7 +72,7 @@ class EventChainIndex:
         if self._cache is not None and self._version == self._built_version:
             return self._cache
         groups: dict[tuple[str, int | None], list[MemoryItem]] = {}
-        for item in self.backend.list(kind=MemoryKind.EPISODIC):
+        for item in self.backend.list_items(kind=MemoryKind.EPISODIC):
             if item.status is not MemoryStatus.ACTIVE:
                 continue
             person, session = _person_and_session(item)

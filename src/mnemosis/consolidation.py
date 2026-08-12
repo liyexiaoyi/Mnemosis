@@ -560,7 +560,7 @@ class Consolidator:
         """
         # backend.list already orders by seq DESC, so only the replay window
         # is loaded instead of the whole episodic store.
-        episodes = self.backend.list(
+        episodes = self.backend.list_items(
             kind=MemoryKind.EPISODIC, limit=self.replay_window
         )
         replay_window_seconds = self.replay_recency_days * 86400.0

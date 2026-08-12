@@ -84,7 +84,7 @@ def _run() -> dict:
         stats = engine.backend.stats()
         manual = {
             "active": len(items),
-            "recycled": len(engine.backend.list(status=MemoryStatus.RECYCLED)),
+            "recycled": len(engine.backend.list_items(status=MemoryStatus.RECYCLED)),
             "semantic": stats["semantic"],
             "episodic": stats["episodic"],
             "revised": sum(1 for i in items if i.revision_count > 0),

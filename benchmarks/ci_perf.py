@@ -555,8 +555,8 @@ def _build_backend() -> SQLiteBackend:
 
 def main() -> int:
     backend = _build_backend()
-    ids = [item.id for item in backend.list(limit=2000)]
-    recycled_id = backend.list(
+    ids = [item.id for item in backend.list_items(limit=2000)]
+    recycled_id = backend.list_items(
         status=MemoryStatus.RECYCLED, limit=1
     )[0].id
     failures: list[str] = []

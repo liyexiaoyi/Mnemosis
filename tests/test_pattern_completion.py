@@ -60,7 +60,7 @@ def _build() -> MemoryEngine:
 class PatternCompletionTest(unittest.TestCase):
     def test_mechanism_boosts_only_strongly_linked_two_cue_neighbors(self) -> None:
         engine = _build()
-        items = {i.content: i for i in engine.backend.list()}
+        items = {i.content: i for i in engine.backend.list_items()}
         a = items["Alice visited the aquarium on 2026-03-01."]
         b = items["Alice bought a notebook during session0."]
         c = items["Bob visited the museum on 2026-03-01."]
@@ -90,7 +90,7 @@ class PatternCompletionTest(unittest.TestCase):
 
     def test_full_match_is_not_a_partial_cue(self) -> None:
         engine = _build()
-        items = {i.content: i for i in engine.backend.list()}
+        items = {i.content: i for i in engine.backend.list_items()}
         a = items["Alice visited the aquarium on 2026-03-01."]
         b = items["Alice bought a notebook during session0."]
         scored = [

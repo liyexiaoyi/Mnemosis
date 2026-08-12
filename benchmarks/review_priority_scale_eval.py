@@ -65,7 +65,7 @@ def run(
     final = now + timedelta(days=days)
     high_kept = 0
     low_kept = 0
-    for item in engine.backend.list():
+    for item in engine.backend.list_items():
         if engine.curve.retrievability(item, final) > 0.3:
             if item.importance >= 0.7:
                 high_kept += 1

@@ -76,7 +76,7 @@ class CalibrationTest(unittest.TestCase):
             item.retrieval_successes = 1
             item.retrieval_failures = 9  # empirical ~0.17 vs predicted 0.95
             engine.backend.update(item)
-        items = engine.backend.list()
+        items = engine.backend.list_items()
         raw_stats = engine.meta.calibration_stats(items)
         self.assertGreater(raw_stats["ece"], 0.3)
         # calibrated predictions should be closer to the empirical rate
@@ -109,13 +109,13 @@ class CalibrationTest(unittest.TestCase):
 
         aware_engine = build()
         aware_item = aware_engine.review(
-            aware_engine.backend.list()[0].id,
+            aware_engine.backend.list_items()[0].id,
             success=True,
             confidence_aware=True,
         )
         naive_engine = build()
         naive_item = naive_engine.review(
-            naive_engine.backend.list()[0].id,
+            naive_engine.backend.list_items()[0].id,
             success=True,
             confidence_aware=False,
         )

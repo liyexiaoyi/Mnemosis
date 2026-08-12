@@ -91,7 +91,7 @@ class AssociationIndex:
         """
         if max_links <= 0:
             return []
-        pool = self.backend.list()
+        pool = self.backend.list_items()
         by_id = {item.id: item for item in pool}
         cue_freq: dict[str, int] = {}
         for item in pool:
@@ -166,7 +166,7 @@ class AssociationIndex:
         if max_links <= 0:
             return []
         if not self._batch_pool:
-            pool = self.backend.list()
+            pool = self.backend.list_items()
             self._batch_pool = {item.id: item for item in pool}
             self._batch_cue_freq = {}
             for item in pool:

@@ -1263,7 +1263,7 @@ class PlanningMixin:
         noun = failed_step.lstrip(_ACTION_PREFIXES) or failed_step
         # which person(s) actually failed this step? (evidence-weighted)
         failing_persons: dict[str, float] = {}
-        for item in self.backend.list(kind=MemoryKind.EPISODIC):
+        for item in self.backend.list_items(kind=MemoryKind.EPISODIC):
             if "执行失败" not in item.content or len(item.cues) < 3:
                 continue
             step_cue = item.cues[1]
@@ -1358,7 +1358,7 @@ class PlanningMixin:
             return
         _ACTION_PREFIXES = "订买卖打包收拾请找定学搬选入"
         outcome_by_step: dict[tuple[str, str], float] = {}
-        for item in self.backend.list(kind=MemoryKind.EPISODIC):
+        for item in self.backend.list_items(kind=MemoryKind.EPISODIC):
             if "执行成功" not in item.content and "执行失败" not in item.content:
                 continue
             if len(item.cues) < 3:
@@ -1458,7 +1458,7 @@ class PlanningMixin:
         _ACTION_PREFIXES = "订买卖打包收拾请找定学搬选入"
         noun = step.lstrip(_ACTION_PREFIXES) or step
         success = failure = 0
-        for item in self.backend.list(kind=MemoryKind.EPISODIC):
+        for item in self.backend.list_items(kind=MemoryKind.EPISODIC):
             if "执行成功" not in item.content and "执行失败" not in item.content:
                 continue
             if len(item.cues) < 3:
@@ -1481,7 +1481,7 @@ class PlanningMixin:
         _ACTION_PREFIXES = "订买卖打包收拾请找定学搬选入"
         noun = step.lstrip(_ACTION_PREFIXES) or step
         # fast path: consolidated step-experience summary from sleep replay
-        for item in self.backend.list(kind=MemoryKind.SEMANTIC):
+        for item in self.backend.list_items(kind=MemoryKind.SEMANTIC):
             if "历史成功率" not in item.content:
                 continue
             if noun not in item.content and step not in item.content:
@@ -1599,7 +1599,7 @@ class PlanningMixin:
         """Evidence-weighted success probe for one plan step."""
         _ACTION_PREFIXES = "订买卖打包收拾请找定学搬选入"
         success = failure = 0
-        for item in self.backend.list(kind=MemoryKind.EPISODIC):
+        for item in self.backend.list_items(kind=MemoryKind.EPISODIC):
             if (
                 "执行成功" not in item.content
                 and "执行失败" not in item.content
@@ -1640,7 +1640,7 @@ class PlanningMixin:
         """Find a remembered successful alternative for the same person."""
         _ACTION_PREFIXES = "订买卖打包收拾请找定学搬选入"
         step_cue_alt = ""
-        for item in self.backend.list(kind=MemoryKind.EPISODIC):
+        for item in self.backend.list_items(kind=MemoryKind.EPISODIC):
             if "执行成功" not in item.content or len(item.cues) < 3:
                 continue
             if item.cues[0][:2] != person:
@@ -1694,7 +1694,7 @@ class PlanningMixin:
             if result.score >= 0.05
         ]
         formula_memories = []
-        for item in self.backend.list(kind=MemoryKind.SEMANTIC):
+        for item in self.backend.list_items(kind=MemoryKind.SEMANTIC):
             text = item.content
             cue_text = " ".join(item.cues)
             if "公式" not in cue_text and "公式" not in text:
@@ -1818,7 +1818,7 @@ class PlanningMixin:
             for raw in re.findall(r"\d+(?:\.\d+)?", scene)
         ]
         law_memories = []
-        for item in self.backend.list(kind=MemoryKind.SEMANTIC):
+        for item in self.backend.list_items(kind=MemoryKind.SEMANTIC):
             text = item.content
             cue_text = " ".join(item.cues)
             if "物理" not in cue_text and "定律" not in text:

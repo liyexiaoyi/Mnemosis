@@ -244,7 +244,7 @@ class MemoryEngineTest(unittest.TestCase):
             ]
         }
         engine.import_memories(payload)
-        items = engine.backend.list()
+        items = engine.backend.list_items()
         first = next(item for item in items if "camera" in item.content)
         second = next(item for item in items if "kyoto" in item.content)
         self.assertEqual(engine.event_chain.next_event_id(first.id), second.id)
@@ -1731,7 +1731,7 @@ class MemoryEngineTest(unittest.TestCase):
                 },
             ]
         )
-        items = engine.backend.list()
+        items = engine.backend.list_items()
         first = next(item for item in items if "camera" in item.content)
         second = next(item for item in items if "kyoto" in item.content)
         self.assertEqual(engine.event_chain.next_event_id(first.id), second.id)

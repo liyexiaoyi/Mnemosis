@@ -925,7 +925,7 @@ class ReviewMixin:
             self.curve.retrievability(item, now) for item in items
         ]
         recycled = len(
-            self.backend.list(status=MemoryStatus.RECYCLED)
+            self.backend.list_items(status=MemoryStatus.RECYCLED)
         )
         due_now = 0
         for item in items:
@@ -1219,7 +1219,7 @@ class ReviewMixin:
         """
         touched = [
             item
-            for item in self.backend.list()
+            for item in self.backend.list_items()
             if item.last_access_at is not None
         ]
         touched.sort(key=lambda item: item.last_access_at, reverse=True)
@@ -1295,7 +1295,7 @@ class ReviewMixin:
         self.store.invalidate_fallback_cache()
         steps: dict[str, list[int]] = {}
         replayed = 0
-        for item in self.backend.list(kind=MemoryKind.EPISODIC):
+        for item in self.backend.list_items(kind=MemoryKind.EPISODIC):
             if "执行成功" not in item.content and "执行失败" not in item.content:
                 continue
             if len(item.cues) < 3:

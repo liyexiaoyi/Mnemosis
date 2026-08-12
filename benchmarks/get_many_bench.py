@@ -31,7 +31,7 @@ def main() -> int:
         return 1
     engine = MemoryEngine(memory_file=db_path)
     backend = engine.store.backend
-    ids = [item.id for item in backend.list(limit=5000)]
+    ids = [item.id for item in backend.list_items(limit=5000)]
     for count in (100, 1000, 5000):
         sample = ids[:count]
         backend.get_many(sample)  # warm

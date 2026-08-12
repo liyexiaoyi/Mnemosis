@@ -35,7 +35,7 @@ class ConstructivistMemoryTest(unittest.TestCase):
         report = engine.sleep()
         self.assertGreaterEqual(report.accommodated, 1)
         items = {
-            i.content: i for i in engine.backend.list(kind=MemoryKind.SEMANTIC)
+            i.content: i for i in engine.backend.list_items(kind=MemoryKind.SEMANTIC)
         }
         self.assertIn("The API rate limit is 500 per minute.", items)
         self.assertNotIn("The API rate limit is 200 per minute.", items)
@@ -65,7 +65,7 @@ class ConstructivistMemoryTest(unittest.TestCase):
         self.assertEqual(report.accommodated, 0)
         active = [
             item
-            for item in engine.backend.list(kind=MemoryKind.SEMANTIC)
+            for item in engine.backend.list_items(kind=MemoryKind.SEMANTIC)
             if item.status is MemoryStatus.ACTIVE
         ]
         self.assertEqual(len(active), 2)

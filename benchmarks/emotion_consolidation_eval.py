@@ -111,7 +111,7 @@ def run(seed: int = 7) -> dict:
     def tag(item) -> str:
         return item.affect if item.affect else "neutral"
 
-    active = engine.backend.list()
+    active = engine.backend.list_items()
     by_tag: dict[str, list] = {"negative": [], "neutral": []}
     for item in active:
         by_tag.setdefault(tag(item), []).append(item)

@@ -614,7 +614,7 @@ class DualTrackStore:
             # (status, seq) / (status, importance) indexes, keeping the
             # fallback cheap at 100k+ scale.
             fallback_mode = True
-            recent = self.backend.list(kind=kind, limit=_FALLBACK_RECENT)
+            recent = self.backend.list_items(kind=kind, limit=_FALLBACK_RECENT)
             strong = self.backend.list_strongest(
                 kind=kind, limit=_FALLBACK_STRONG
             )
@@ -2001,14 +2001,14 @@ class DualTrackStore:
     def recent(
         self, kind: MemoryKind | None = None, limit: int = 10
     ) -> list[MemoryItem]:
-        return self.backend.list(kind=kind, limit=limit)
+        return self.backend.list_items(kind=kind, limit=limit)
 
     def all_active(
         self,
         kind: MemoryKind | None = None,
         limit: int | None = None,
     ) -> list[MemoryItem]:
-        return self.backend.list(kind=kind, limit=limit)
+        return self.backend.list_items(kind=kind, limit=limit)
 
 
 def _overlap(query_terms: set[str], item_terms: frozenset[str]) -> float:
