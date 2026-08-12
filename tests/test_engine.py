@@ -545,6 +545,46 @@ class MemoryEngineTest(unittest.TestCase):
         # gap ~0.03 absolute but <30% relative -> no cliff, all embedded.
         self.assertEqual(remote.calls, 17)
 
+    def test_rerank_uses_batch_embedding_for_remote(self):
+        """A 16-candidate pool must produce one embed_many call."""
+
+        class _BatchRemoteEmbedder(Embedder):
+            remote = True
+
+            def __init__(self) -> None:
+                self.embed_calls = 0
+                self.embed_many_calls = 0
+                self.batch_sizes: list[int] = []
+
+            def embed(self, text: str) -> list[float]:
+                self.embed_calls += 1
+                return [1.0, 0.0, 0.0]
+
+            def embed_many(self, texts: list[str]) -> list[list[float]]:
+                self.embed_many_calls += 1
+                self.batch_sizes.append(len(texts))
+                return [[1.0, 0.0, 0.0] for _ in texts]
+
+        embedder = _BatchRemoteEmbedder()
+        engine = MemoryEngine(
+            embedder=embedder,
+            dense_rerank_candidates=20,
+            zero_hit_rerank_pool=20,
+        )
+        source = SourceRecord(origin=SourceType.USER)
+        for index in range(16):
+            engine.remember(
+                f"alpha beta shared content {index}",
+                kind=MemoryKind.EPISODIC,
+                source=source,
+                importance=0.5,
+                auto_cues=False,
+            )
+        engine.recall("alpha beta", top_k=3)
+        self.assertEqual(embedder.embed_many_calls, 1)
+        self.assertEqual(embedder.batch_sizes, [16])
+        self.assertLessEqual(embedder.embed_calls, 16)  # query + cache misses
+
     def test_remember_many_embeds_in_one_batch_call(self):
         embedder = _BatchCountingEmbedder()
         engine = MemoryEngine(

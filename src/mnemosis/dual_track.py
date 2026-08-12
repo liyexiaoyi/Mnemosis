@@ -754,23 +754,55 @@ class DualTrackStore:
                     )
                 ]
             rerank_ids = {entry[2].id for entry in pool}
-            for index, (score, overlap, item, reasons, matched) in enumerate(
-                scored
-            ):
-                if item.id not in rerank_ids:
-                    continue
-                item_vector = self._embedding(item, embedder)
-                semantic = embedder.cosine(query_vector, item_vector)
-                score = score + 0.20 * semantic
-                if semantic > 0.5:
-                    reasons.append(f"semantic similarity {semantic:.2f}")
-                scored[index] = (
-                    score,
-                    overlap,
-                    item,
-                    reasons,
-                    matched or semantic >= 0.2,
+            rerank_items = [
+                entry[2] for entry in scored if entry[2].id in rerank_ids
+            ]
+            if rerank_items:
+                # Batch embed: network-backed embedders turn N per-item calls
+                # into one HTTP request via embed_many.
+                vectors = embedder.embed_many(
+                    [item.content for item in rerank_items]
                 )
+                if len(vectors) != len(rerank_items):
+                    raise RuntimeError(
+                        f"embed_many returned {len(vectors)} vectors for "
+                        f"{len(rerank_items)} items"
+                    )
+                embedder_key = (
+                    f"{type(embedder).__module__}.{type(embedder).__name__}"
+                )
+                with self._lock:
+                    for item, vector in zip(rerank_items, vectors):
+                        self._embed_cache[
+                            (
+                                item.content_hash,
+                                embedder_key,
+                                getattr(embedder, "cache_key", ""),
+                            )
+                        ] = vector
+                vector_by_id = {
+                    item.id: vector
+                    for item, vector in zip(rerank_items, vectors)
+                }
+                for index, (score, overlap, item, reasons, matched) in enumerate(
+                    scored
+                ):
+                    if item.id not in rerank_ids:
+                        continue
+                    item_vector = vector_by_id[item.id]
+                    semantic = embedder.cosine(query_vector, item_vector)
+                    score = score + 0.20 * semantic
+                    if semantic > 0.5:
+                        reasons.append(
+                            f"semantic similarity {semantic:.2f}"
+                        )
+                    scored[index] = (
+                        score,
+                        overlap,
+                        item,
+                        reasons,
+                        matched or semantic >= 0.2,
+                    )
             scored.sort(key=lambda entry: entry[0], reverse=True)
         scored.sort(key=lambda entry: entry[0], reverse=True)
         self._spread_activation(
