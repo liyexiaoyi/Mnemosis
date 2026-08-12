@@ -156,6 +156,7 @@ class OverviewMixin:
             "node_count": len(nodes),
             "edge_count": len(edges),
         }
+
     def learner_profile(self, now: datetime | None = None) -> dict:
         """Estimate the learner's rate from review history.
 
@@ -205,6 +206,7 @@ class OverviewMixin:
             "profile": profile,
             "suggested_interval_scale": scale,
         }
+
     def context_pack(
         self,
         queries: list[str],
@@ -265,6 +267,7 @@ class OverviewMixin:
             "truncated_count": truncated,
             "packed": packed,
         }
+
     def encoding_quality(self, memory_id: str) -> dict | None:
         """Score how well one memory was encoded.
 

@@ -59,6 +59,7 @@ class ExplanationMixin:
                 else None
             ),
         }
+
     def compare_memories(self, id_a: str, id_b: str) -> dict | None:
         """Compare two memories: overlap, differences and verdict.
 
@@ -111,6 +112,7 @@ class ExplanationMixin:
             "shared_cues": shared_cues[:5],
             "verdict": verdict,
         }
+
     def summarize_cluster(
         self,
         memory_ids: list[str],
@@ -157,6 +159,7 @@ class ExplanationMixin:
             "total_chars": total_chars,
             "previews": previews,
         }
+
     def multi_hop_report(
         self,
         start_id: str,
@@ -203,6 +206,7 @@ class ExplanationMixin:
             "total_reached": len(seen) - 1,
             "reached_ids": sorted(seen - {start_id})[: max(1, int(limit))],
         }
+
     def cramming_plan(
         self,
         target_at: datetime,
@@ -255,6 +259,7 @@ class ExplanationMixin:
             "sessions": sessions,
             "total_memories": len(picked),
         }
+
     def session_summary(
         self,
         memory_ids: list[str],

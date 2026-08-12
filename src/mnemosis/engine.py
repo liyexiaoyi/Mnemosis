@@ -31,6 +31,7 @@ from .dual_track import (
 from .embedding import Embedder
 from .explanation_mixin import ExplanationMixin
 from .forgetting import ForgettingCurve, ReviewScheduler
+from .forgetting_quality_mixin import ForgettingQualityMixin
 from .importance import ImportanceScorer
 from .learning_mixin import LearningSessionMixin
 from .metacognition import ConfidenceLabel, Metacognition, MetacognitiveCheck
@@ -76,6 +77,7 @@ class MemoryEngine(
     CognitiveMixin,
     OverviewMixin,
     ExplanationMixin,
+    ForgettingQualityMixin,
 ):
     """The one thing most users touch.
 
