@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 import math
 import re
 import statistics
 import threading
 import time
 from collections import deque
+from contextlib import suppress
 from datetime import datetime
 from typing import ClassVar
 
@@ -54,6 +56,8 @@ from .types import (
     utcnow,
 )
 from .zh_nlp import expand_synonyms, has_cjk  # noqa: F401  (public re-exports)
+
+_LOG = logging.getLogger(__name__)
 
 
 class MemoryEngine(
@@ -515,7 +519,16 @@ class MemoryEngine(
         if item is None:
             return None
         now = now or utcnow()
+        new_vector = None
         if content is not None and content.strip() and content != item.content:
+            if (
+                item.status is MemoryStatus.ACTIVE
+                and self.vector_index is not None
+                and self.index_embedder is not None
+            ):
+                # Embed before mutating: a failed embedding call must not
+                # leave the store half-updated (same rule as remember paths).
+                new_vector = self.index_embedder.embed(content)
             new_hash = hash_content(content)
             if item.kind is MemoryKind.SEMANTIC:
                 duplicate = self.backend.find_by_hash(MemoryKind.SEMANTIC, new_hash)
@@ -537,6 +550,24 @@ class MemoryEngine(
         self.backend.update(item)
         self.store.reindex_terms(item)
         self.store.invalidate_fallback_cache()
+        if new_vector is not None:
+            fresh = self.backend.get(item.id)
+            if fresh is not None and fresh.status is MemoryStatus.ACTIVE:
+                try:
+                    self.vector_index.add(item.id, new_vector)
+                except Exception:  # noqa: BLE001
+                    _LOG.warning(
+                        "vector refresh failed for %s; stale vector dropped",
+                        item.id,
+                        exc_info=True,
+                    )
+                    with suppress(Exception):
+                        self.vector_index.remove([item.id])
+            else:
+                # Defensive: a concurrent forget/purge must never leave a
+                # vector behind for a non-active memory.
+                with suppress(Exception):
+                    self.vector_index.remove([item.id])
         return item
 
 
@@ -998,20 +1029,44 @@ class MemoryEngine(
         result = self.recycle.trash(memory_id)
         if result:
             self.store.invalidate_fallback_cache()
+            if self.vector_index is not None:
+                self.vector_index.remove([memory_id])
         return result
 
     def restore(self, memory_id: str) -> bool:
         result = self.recycle.restore(memory_id)
         if result:
             self.store.invalidate_fallback_cache()
+            self._restore_vector(memory_id)
         return result
 
+    def _restore_vector(self, memory_id: str) -> None:
+        """Re-embed a restored memory so semantic recall works again."""
+        if self.vector_index is None or self.index_embedder is None:
+            return
+        if self.vector_index.has(memory_id):
+            return
+        item = self.backend.get(memory_id)
+        if item is None or item.status is not MemoryStatus.ACTIVE:
+            return
+        try:
+            vector = self.index_embedder.embed(item.content)
+            self.vector_index.add(memory_id, vector)
+        except Exception:  # noqa: BLE001
+            _LOG.warning(
+                "vector restore failed for %s; rebuild_missing_vectors can repair",
+                memory_id,
+                exc_info=True,
+            )
+
     def purge(self, before: datetime | None = None, limit: int = 1000) -> int:
-        count = self.recycle.purge(before=before, limit=limit)
-        if count:
+        purged_ids = self.recycle.purge_ids(before=before, limit=limit)
+        if purged_ids and self.vector_index is not None:
+            self.vector_index.remove(purged_ids)
+        if purged_ids:
             self.store.invalidate_term_index()
             self.store.invalidate_fallback_cache()
-        return count
+        return len(purged_ids)
 
 
 

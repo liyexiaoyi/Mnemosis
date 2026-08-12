@@ -110,6 +110,14 @@ class Backend(ABC):
     def delete(self, memory_id: str) -> None: ...
 
     @abstractmethod
+    def delete_if_recycled(self, memory_id: str) -> bool: ...
+
+    @abstractmethod
+    def recycled_ids(
+        self, *, limit: int = 1000, after_seq: int = -1
+    ) -> list[tuple[int, str]]: ...
+
+    @abstractmethod
     def index_terms(
         self, memory_id: str, terms: Iterable[str], kind: MemoryKind
     ) -> None: ...
@@ -333,6 +341,26 @@ class DictBackend(Backend):
         self._adj.pop(memory_id, None)
         for neighbors in self._adj.values():
             neighbors.discard(memory_id)
+
+    @_locked
+    def delete_if_recycled(self, memory_id: str) -> bool:
+        item = self._items.get(memory_id)
+        if item is None or item.status is not MemoryStatus.RECYCLED:
+            return False
+        self.delete(memory_id)
+        return True
+
+    @_locked
+    def recycled_ids(
+        self, *, limit: int = 1000, after_seq: int = -1
+    ) -> list[tuple[int, str]]:
+        recycled = sorted(
+            (item.seq, item.id)
+            for item in self._items.values()
+            if item.status is MemoryStatus.RECYCLED
+            and item.seq > after_seq
+        )
+        return recycled[:limit]
 
     @_locked
     def index_terms(
@@ -1269,6 +1297,44 @@ class SQLiteBackend(Backend):
             self._conn.execute("DELETE FROM cues WHERE memory_id = ?", (memory_id,))
             self._conn.execute("DELETE FROM links WHERE src = ? OR dst = ?", (memory_id, memory_id))
             self._conn.execute("DELETE FROM terms WHERE memory_id = ?", (memory_id,))
+
+    @_locked
+    def delete_if_recycled(self, memory_id: str) -> bool:
+        """Atomically delete a memory only if it is still recycled.
+
+        The status check and delete happen in one statement, so a concurrent
+        restore() between check and delete cannot lose the memory.
+        """
+        with self._conn:
+            cursor = self._conn.execute(
+                "DELETE FROM memories WHERE id = ? AND status = 'recycled'",
+                (memory_id,),
+            )
+            if cursor.rowcount == 0:
+                return False
+            self._conn.execute(
+                "DELETE FROM cues WHERE memory_id = ?", (memory_id,)
+            )
+            self._conn.execute(
+                "DELETE FROM links WHERE src = ? OR dst = ?",
+                (memory_id, memory_id),
+            )
+            self._conn.execute(
+                "DELETE FROM terms WHERE memory_id = ?", (memory_id,)
+            )
+            return True
+
+    @_locked
+    def recycled_ids(
+        self, *, limit: int = 1000, after_seq: int = -1
+    ) -> list[tuple[int, str]]:
+        rows = self._conn.execute(
+            "SELECT seq, id FROM memories "
+            "WHERE status = 'recycled' AND seq > ? "
+            "ORDER BY seq LIMIT ?",
+            (after_seq, limit),
+        ).fetchall()
+        return [(row[0], row[1]) for row in rows]
 
     @_locked
     def index_terms(

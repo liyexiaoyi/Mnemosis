@@ -37,13 +37,24 @@ class RecycleBin:
 
     def purge(self, before: datetime | None = None, limit: int = 1000) -> int:
         """Hard-delete recycled memories; optionally only those older than `before`."""
-        count = 0
+        return len(self.purge_ids(before=before, limit=limit))
+
+    def purge_ids(
+        self, before: datetime | None = None, limit: int = 1000
+    ) -> list[str]:
+        """Hard-delete recycled memories and return the ids actually deleted.
+
+        The status is re-checked atomically inside the backend delete, so a
+        memory restored concurrently (between listing and deletion) is never
+        lost.
+        """
+        purged: list[str] = []
         for item in self.backend.list(status=MemoryStatus.RECYCLED, limit=limit):
-            if before is None or item.created_at < before:
-                self.backend.delete(item.id)
-                count += 1
-        return count
+            if (
+                before is None or item.created_at < before
+            ) and self.backend.delete_if_recycled(item.id):
+                purged.append(item.id)
+        return purged
 
 
 __all__ = ["RecycleBin"]
-

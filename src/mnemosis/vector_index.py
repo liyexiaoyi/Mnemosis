@@ -204,6 +204,34 @@ class VectorIndex:
             self._conn.commit()
             self._pending = 0
 
+    def remove(self, memory_ids: list[str]) -> int:
+        """Delete vectors and their bucket entries for the given memory ids.
+
+        Idempotent: ids that are not present are simply skipped. Used by the
+        engine when memories are hard-purged, so a stale vector cannot
+        resurface later or waste disk space.
+        """
+        if not memory_ids:
+            return 0
+        removed = 0
+        with self._lock:
+            self._matrix_cache = None
+            for start in range(0, len(memory_ids), 500):
+                chunk = memory_ids[start : start + 500]
+                placeholders = ",".join("?" for _ in chunk)
+                with self._conn:
+                    removed += self._conn.execute(
+                        f"DELETE FROM vectors WHERE memory_id IN "
+                        f"({placeholders})",
+                        tuple(chunk),
+                    ).rowcount
+                    self._conn.execute(
+                        f"DELETE FROM buckets WHERE memory_id IN "
+                        f"({placeholders})",
+                        tuple(chunk),
+                    )
+        return removed
+
     def search(
         self,
         query_vector: list[float],

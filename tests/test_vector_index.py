@@ -64,6 +64,37 @@ class VectorIndexTests(unittest.TestCase):
         self.assertTrue(index.has("a"))
         index.close()
 
+    def test_remove_drops_vectors_and_buckets(self) -> None:
+        index = VectorIndex(dim=3, bits=8, buckets_per_item=2)
+        for memory_id, vector in self._sample():
+            index.add(memory_id, vector)
+        self.assertEqual(index.size, 4)
+        self.assertEqual(index.remove(["a", "c"]), 2)
+        self.assertEqual(index.size, 2)
+        self.assertFalse(index.has("a"))
+        self.assertFalse(index.has("c"))
+        results = index.search([1.0, 0.05, 0.0], top_k=2)
+        self.assertNotIn("a", {memory_id for memory_id, _ in results})
+        bucket_count = index._conn.execute(
+            "SELECT COUNT(*) FROM buckets WHERE memory_id IN ('a', 'c')"
+        ).fetchone()[0]
+        self.assertEqual(bucket_count, 0)
+        index.close()
+
+    def test_remove_is_idempotent_and_chunked(self) -> None:
+        index = VectorIndex(dim=3, bits=8, buckets_per_item=2)
+        entries = [
+            (f"m{position}", [1.0, 0.0, 0.0])
+            for position in range(600)
+        ]
+        index.add_many(entries)
+        self.assertEqual(index.size, 600)
+        self.assertEqual(index.remove(["missing", "m0"]), 1)
+        self.assertEqual(index.remove(["m0"]), 0)
+        self.assertEqual(index.remove([f"m{i}" for i in range(600)]), 599)
+        self.assertEqual(index.size, 0)
+        index.close()
+
     def test_persists_across_reopen(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "index.sqlite")

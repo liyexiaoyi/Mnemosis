@@ -24,7 +24,7 @@ from collections.abc import Iterable
 from datetime import datetime
 
 from .embedding import NGramEmbedder
-from .types import RecallResult, utcnow
+from .types import MemoryStatus, RecallResult, utcnow
 
 _LOG = logging.getLogger(__name__)
 
@@ -256,15 +256,29 @@ def _dense_results(
     store = getattr(engine, "store", None)
     if vector_index is not None:
         query_vector = embedder.embed(query)
-        hits = vector_index.search(query_vector, top_k=top_k)
+        # Start with a generous candidate budget so small top_k values do
+        # not trigger repeated doubling when recycled memories are filtered.
+        requested = max(top_k, 64)
+        processed = 0
         results = []
-        for memory_id, score in hits:
-            item = store.backend.get(memory_id) if store is not None else None
-            if item is not None:
-                results.append(
-                    RecallResult(item=item, score=score, reasons=["dense:index"])
+        while True:
+            hits = vector_index.search(query_vector, top_k=requested)
+            for memory_id, score in hits[processed:]:
+                item = (
+                    store.backend.get(memory_id) if store is not None else None
                 )
-        return results
+                if item is not None and item.status is MemoryStatus.ACTIVE:
+                    results.append(
+                        RecallResult(
+                            item=item, score=score, reasons=["dense:index"]
+                        )
+                    )
+            processed = len(hits)
+            if len(results) >= top_k or len(hits) < requested:
+                return results[:top_k]
+            requested *= 2
+            if requested > 4096:
+                return results[:top_k]
     items = store.all_active(kind=kind) if store is not None else []
     if len(items) > _DENSE_FULL_SCAN_LIMIT:
         # Without a vector index every active memory would be embedded on

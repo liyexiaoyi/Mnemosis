@@ -1011,6 +1011,22 @@ class ReviewMixin:
     ) -> ConsolidationReport:
         self.store.invalidate_fallback_cache()
         report = self.consolidator.sleep(now, summarizer=summarizer)
+        if self.vector_index is not None:
+            after_seq = -1
+            cleaned = 0
+            max_cleanup = 10_000
+            while cleaned < max_cleanup:
+                recycled = self.backend.recycled_ids(
+                    limit=min(2000, max_cleanup - cleaned),
+                    after_seq=after_seq,
+                )
+                if not recycled:
+                    break
+                self.vector_index.remove(
+                    [memory_id for _, memory_id in recycled]
+                )
+                after_seq = recycled[-1][0]
+                cleaned += len(recycled)
         self._schedule_post_sleep_warmup()
         return report
 
