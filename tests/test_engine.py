@@ -1380,6 +1380,57 @@ class MemoryEngineTest(unittest.TestCase):
                 if os.path.exists(extra):
                     os.remove(extra)
 
+    def test_remember_many_chunked_links_snapshot(self):
+        """Lock the exact link graph produced by the incremental builder.
+
+        The tail-scan optimization must not change which edges are
+        created: this snapshot fails if the link count drifts.
+        """
+        import random
+
+        random.seed(42)
+        records = []
+        products = [
+            "投影仪", "手机", "空调", "冰箱",
+            "洗衣机", "电脑", "电视", "耳机",
+        ]
+        source = SourceRecord(origin=SourceType.USER)
+        for _ in range(240):
+            user = random.randint(1, 1000)
+            product = random.choice(products)
+            month = random.randint(1, 12)
+            day = random.randint(1, 28)
+            records.append(
+                {
+                    "content": (
+                        f"用户{user}在2026年{month}月{day}日购买了"
+                        f"{product}，花了{random.randint(100, 999)}元。"
+                    ),
+                    "kind": MemoryKind.EPISODIC,
+                    "source": source,
+                    "importance": 0.5,
+                }
+            )
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        if os.path.exists(path):
+            os.remove(path)
+        engine = MemoryEngine(path)
+        try:
+            engine.remember_many_chunked(
+                records, chunk_size=40
+            )
+            rows = engine.backend._conn.execute(
+                "SELECT COUNT(*) FROM links"
+            ).fetchone()[0]
+            self.assertEqual(rows, 14304)
+        finally:
+            engine.close()
+            for suffix in ("", "-wal", "-shm"):
+                extra = path + suffix
+                if os.path.exists(extra):
+                    os.remove(extra)
+
     def test_term_cache_is_bounded(self):
         import mnemosis.dual_track as dual_track_module
 

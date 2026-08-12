@@ -31,6 +31,11 @@ class AssociationIndex:
         self._batch_pool: dict[str, MemoryItem] = {}
         self._batch_cue_freq: dict[str, int] = {}
         self._batch_cue_map: dict[str, list[MemoryItem]] = {}
+        # Virtual append count for items already present in the initial
+        # pool load: lets the "too generic" drop heuristic trigger at the
+        # exact same iteration as the legacy implementation without
+        # bloating buckets with duplicate references.
+        self._batch_dup_count: dict[str, int] = {}
         self._batch_limit = 0
         self._batch_common: set[str] = set()
 
@@ -82,6 +87,8 @@ class AssociationIndex:
         one link transaction per edge (~128k transactions for 10k items),
         while this path costs one store load + one bulk insert.
         """
+        if max_links <= 0:
+            return []
         pool = self.backend.list()
         by_id = {item.id: item for item in pool}
         cue_freq: dict[str, int] = {}
@@ -95,11 +102,23 @@ class AssociationIndex:
                 if cue_freq.get(cue, 0) > limit:
                     continue
                 cue_map.setdefault(cue, []).append(item)
+        # Buckets are unique here (pool has no duplicate ids) and are
+        # sorted ascending so the tail-scan below can skip candidates
+        # that are dominated within their own bucket.
+        for bucket in cue_map.values():
+            bucket.sort(key=attrgetter("seq"))
         edge_set: set[tuple[str, str, float]] = set()
         for item in items:
             related_ids: set[str] = set()
             for cue in item.cues:
-                for other in cue_map.get(cue, ()):
+                bucket = cue_map.get(cue)
+                if not bucket:
+                    continue
+                # A candidate ranked k-th in a seq-sorted bucket is
+                # dominated by k higher-seq candidates from the same
+                # bucket. The item itself occupies one of those slots
+                # and is skipped below, so take max_links+1 entries.
+                for other in bucket[-(max_links + 1) :]:
                     if other.id != item.id:
                         related_ids.add(other.id)
             related = [
@@ -119,6 +138,7 @@ class AssociationIndex:
         self._batch_pool = {}
         self._batch_cue_freq = {}
         self._batch_cue_map = {}
+        self._batch_dup_count = {}
         self._batch_limit = 0
         self._batch_common = set()
 
@@ -141,6 +161,8 @@ class AssociationIndex:
         This is a heuristic approximation of the final-store frequency
         filter that prevents early bucket explosion on a cold start.
         """
+        if max_links <= 0:
+            return []
         if not self._batch_pool:
             pool = self.backend.list()
             self._batch_pool = {item.id: item for item in pool}
@@ -158,10 +180,23 @@ class AssociationIndex:
                     if self._batch_cue_freq.get(cue, 0) > self._batch_limit:
                         continue
                     self._batch_cue_map.setdefault(cue, []).append(item)
+            # Unique pool buckets, sorted ascending; new items are
+            # appended in seq order below, so the order stays sorted.
+            for bucket in self._batch_cue_map.values():
+                bucket.sort(key=attrgetter("seq"))
+        # Tail-scan is only valid when the chunk's items arrive in
+        # ascending seq order (the common episodic-import case). Semantic
+        # dedup chunks can return pre-existing items with arbitrary seqs;
+        # those fall back to the full scan, which is always correct.
+        chunk_seq_sorted = all(
+            items[i].seq <= items[i + 1].seq
+            for i in range(len(items) - 1)
+        )
         edge_set: set[tuple[str, str, float]] = set()
         for item in items:
             # Register the item before scanning so links inside this chunk
             # are found too; the self id is skipped below.
+            is_pooled = item.id in self._batch_pool
             self._batch_pool[item.id] = item
             self._batch_limit = _cue_bucket_limit(len(self._batch_pool))
             for cue in item.cues:
@@ -174,17 +209,41 @@ class AssociationIndex:
                 ):
                     continue
                 bucket = self._batch_cue_map.setdefault(cue, [])
-                if len(bucket) >= self._batch_limit:
+                virtual_len = len(bucket) + self._batch_dup_count.get(
+                    cue, 0
+                )
+                if virtual_len >= self._batch_limit:
                     # This cue became too generic: drop its whole bucket and
                     # ban it for the rest of the run (same semantics as the
                     # full-store frequency filter in link_related_batch).
                     self._batch_common.add(cue)
                     self._batch_cue_map.pop(cue, None)
+                    self._batch_dup_count.pop(cue, None)
                     continue
-                bucket.append(item)
+                if is_pooled:
+                    # The item is already in the bucket from the initial
+                    # store load. The original code appended a duplicate;
+                    # count it virtually so the drop heuristic (which used
+                    # the bloated length) stays byte-for-byte identical.
+                    self._batch_dup_count[cue] = (
+                        self._batch_dup_count.get(cue, 0) + 1
+                    )
+                else:
+                    bucket.append(item)
             candidates: dict[str, MemoryItem] = {}
             for cue in item.cues:
-                for other in self._batch_cue_map.get(cue, ()):
+                bucket = self._batch_cue_map.get(cue)
+                if not bucket:
+                    continue
+                # Same tail argument as link_related_batch: candidates
+                # outside the tail are dominated within their own bucket;
+                # the +1 covers the slot taken by the item itself.
+                scan = (
+                    bucket[-(max_links + 1) :]
+                    if chunk_seq_sorted
+                    else bucket
+                )
+                for other in scan:
                     if other.id != item.id:
                         candidates[other.id] = other
             if candidates:
