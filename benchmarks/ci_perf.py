@@ -52,6 +52,14 @@ _GRADUAL_SLOPE_MS = {100: 0.05, 500: 0.2, 2000: 1.0}
 _GRADUAL_TOTAL_MS = {100: 0.2, 500: 1.0, 2000: 4.0}
 _RESET_ENV = "MNEMOSIS_PERF_RESET"
 _SUMMARY_ENV = "MNEMOSIS_PERF_SUMMARY_PATH"
+_STATS_ENV = "MNEMOSIS_PERF_STATS_PATH"
+_DEFAULT_STATS_PATH = os.path.normpath(
+    os.path.join(
+        os.path.dirname(os.path.abspath(__file__)),
+        "results",
+        "get_many_stats.json",
+    )
+)
 _TREND_PATH = os.path.normpath(
     os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
@@ -248,15 +256,10 @@ def _r_squared(values: list[float], slope: float) -> float:
     return max(0.0, 1.0 - ss_res / ss_tot)
 
 
-def _gradual_warning(
+def _gradual_metrics(
     runs: list[dict], count: int
-) -> tuple[bool, float, float]:
-    """Detect slow, monotonic drift that single-run ratios miss.
-
-    Fits a line to the last N runs of best_ms and warns when the slope
-    exceeds a per-count floor AND the total drift over the window is
-    material, so a noisy but flat series never trips.
-    """
+) -> tuple[float, float, float]:
+    """Return (slope, r2, total_drift) over the last N runs of best_ms."""
     entries = [
         entry.get("best_ms")
         for entry in runs
@@ -265,16 +268,41 @@ def _gradual_warning(
     ]
     window = entries[-_GRADUAL_WINDOW:]
     if len(window) < _GRADUAL_MIN_RUNS:
-        return False, 0.0, 0.0
+        return 0.0, 0.0, 0.0
     slope = _slope_ms_per_run(window)
     r2 = _r_squared(window, slope)
     total_drift = window[-1] - window[0]
+    return slope, r2, total_drift
+
+
+def _gradual_warning(
+    runs: list[dict], count: int
+) -> tuple[bool, float, float]:
+    """Detect slow, monotonic drift that single-run ratios miss.
+
+    Fits a line to the last N runs of best_ms and warns when the slope
+    exceeds a per-count floor AND the total drift over the window is
+    material AND the fit is credible (R2 > 0.7), so a noisy but flat
+    series never trips.
+    """
+    slope, r2, total_drift = _gradual_metrics(runs, count)
     warned = (
         slope > _GRADUAL_SLOPE_MS[count]
         and total_drift > _GRADUAL_TOTAL_MS[count]
         and r2 > 0.7
     )
     return warned, slope, r2
+
+
+def _gradual_status(runs: list[dict], count: int) -> str:
+    """'warn' (credible drift), 'weak' (drift but poor fit), or 'ok'."""
+    slope, r2, total_drift = _gradual_metrics(runs, count)
+    if (
+        slope > _GRADUAL_SLOPE_MS[count]
+        and total_drift > _GRADUAL_TOTAL_MS[count]
+    ):
+        return "warn" if r2 > 0.7 else "weak"
+    return "ok"
 
 
 def _runner_label() -> str:
@@ -364,6 +392,7 @@ def _summary_markdown(
     noisy_env: bool = False,
     load1: float = 0.0,
     gradual: dict[int, tuple[float, float]] | None = None,
+    gradual_weak: dict[int, tuple[float, float]] | None = None,
 ) -> str:
     lines = [
         "## get_many performance gate",
@@ -420,6 +449,13 @@ def _summary_markdown(
             f"~{slope:.2f} ms per run (R² {r2:.2f}) over the last "
             f"{window_size} runs."
         )
+    gradual_weak = gradual_weak or {}
+    for count, (slope, r2) in sorted(gradual_weak.items()):
+        lines.append("")
+        lines.append(
+            f"> ℹ️ low-confidence drift on {count} ids: ~{slope:.2f} ms/run "
+            f"(R² {r2:.2f}); monitoring without blocking."
+        )
     if resets:
         lines.append("")
         lines.append(
@@ -428,6 +464,15 @@ def _summary_markdown(
             + " ids"
         )
     return "\n".join(lines) + "\n"
+
+
+def _write_stats(payload: dict) -> str:
+    """Persist structured metrics for dashboards (overwrites per run)."""
+    path = os.environ.get(_STATS_ENV) or _DEFAULT_STATS_PATH
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump(payload, handle, ensure_ascii=False, indent=2)
+    return path
 
 
 def _build_backend() -> SQLiteBackend:
@@ -564,14 +609,23 @@ def main() -> int:
                 "fixed baseline"
             )
     gradual_warns: dict[int, tuple[float, float]] = {}
+    gradual_weak: dict[int, tuple[float, float]] = {}
     for count in _CEILINGS_MS:
-        warned, slope, r2 = _gradual_warning(history, count)
-        if warned:
+        status = _gradual_status(history, count)
+        slope, r2, _ = _gradual_metrics(history, count)
+        if status == "warn":
             gradual_warns[count] = (slope, r2)
             print(
                 f"GRADUAL WARNING: {count} ids drift "
                 f"+{slope:.2f} ms/run (R² {r2:.2f}) over the last "
                 f"{_GRADUAL_WINDOW} runs"
+            )
+        elif status == "weak":
+            gradual_weak[count] = (slope, r2)
+            print(
+                f"INFO: {count} ids show high drift "
+                f"(+{slope:.2f} ms/run) but low confidence "
+                f"(R² {r2:.2f}); monitoring without blocking"
             )
     if resets:
         print(
@@ -595,6 +649,38 @@ def main() -> int:
             "NOTE: fixed baseline not established yet "
             "(need >= 3 recorded runs per id-count)."
         )
+    stats_payload = {
+        "ts": now_iso,
+        "runner": runner,
+        "noisy_env": noisy_env,
+        "load1": load1,
+        "gate_passed": not failures,
+        "resets": resets,
+        "per_count": {},
+    }
+    for count, best, p95 in _results:
+        slope, r2, drift = _gradual_metrics(history, count)
+        reference = _reference_value(history, count, "best_ms")
+        stats_payload["per_count"][str(count)] = {
+            "best_ms": best,
+            "p95_ms": p95,
+            "median_ms": medians.get(count),
+            "baseline_ms": baselines.get(count),
+            "delta_vs_prev3_ms": (
+                round(best - reference, 4) if reference is not None else None
+            ),
+            "gradual_slope_ms_per_run": round(slope, 4),
+            "gradual_r2": round(r2, 4),
+            "gradual_total_drift_ms": round(drift, 4),
+            "gradual_status": _gradual_status(history, count),
+            "p95_warn": _p95_warning(
+                p95,
+                _reference_value(history, count, "p95_ms"),
+                count,
+            ),
+        }
+    stats_path = _write_stats(stats_payload)
+    print(f"STATS: {stats_path}")
     summary = _summary_markdown(
         _results,
         medians,
@@ -604,6 +690,7 @@ def main() -> int:
         noisy_env=noisy_env,
         load1=load1,
         gradual=gradual_warns,
+        gradual_weak=gradual_weak,
     )
     step_summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if step_summary_path:

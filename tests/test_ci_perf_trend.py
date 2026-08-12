@@ -302,6 +302,54 @@ class TrendLogicTest(unittest.TestCase):
         self.assertLess(r2, 0.7)
         self.assertFalse(warned)
 
+    def test_gradual_status(self):
+        def runs_for(values):
+            return [
+                {
+                    "ts": f"2026-08-{index:02d}T00:00:00+00:00",
+                    "count": 100,
+                    "best_ms": value,
+                }
+                for index, value in enumerate(values, start=1)
+            ]
+
+        clean = runs_for([1.0 + 0.1 * index for index in range(8)])
+        self.assertEqual(ci_perf._gradual_status(clean, 100), "warn")
+        noisy_rise = runs_for([1.0, 5.0, 1.2, 4.8, 1.5, 4.5, 1.8, 4.2])
+        self.assertEqual(
+            ci_perf._gradual_status(noisy_rise, 100), "weak"
+        )
+        flat = runs_for([1.0] * 8)
+        self.assertEqual(ci_perf._gradual_status(flat, 100), "ok")
+        short = runs_for([1.0, 1.0, 1.0])
+        self.assertEqual(ci_perf._gradual_status(short, 100), "ok")
+
+    def test_write_stats(self):
+        fd, path = tempfile.mkstemp(suffix=".json")
+        os.close(fd)
+        if os.path.exists(path):
+            os.remove(path)
+        try:
+            with mock.patch.dict(
+                os.environ,
+                {"MNEMOSIS_PERF_STATS_PATH": path},
+            ):
+                written = ci_perf._write_stats(
+                    {
+                        "ts": "2026-08-10T00:00:00+00:00",
+                        "runner": "ubuntu24",
+                        "per_count": {"100": {"best_ms": 1.0}},
+                    }
+                )
+            self.assertEqual(written, path)
+            with open(path, encoding="utf-8") as handle:
+                payload = json.load(handle)
+            self.assertEqual(payload["runner"], "ubuntu24")
+            self.assertEqual(payload["per_count"]["100"]["best_ms"], 1.0)
+        finally:
+            if os.path.exists(path):
+                os.remove(path)
+
     def test_r_squared(self):
         rising = [float(index) for index in range(1, 9)]
         self.assertAlmostEqual(
