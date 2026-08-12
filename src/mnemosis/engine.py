@@ -307,34 +307,39 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
         """
         chunk_size = max(1, int(chunk_size))
         with self._lock:
-            records: list[dict] = []
-            for memory in memories:
-                content = memory["content"]
-                record = dict(memory)
-                record.setdefault("kind", MemoryKind.EPISODIC)
-                record["source"] = record.get("source") or SourceRecord(
-                    origin=SourceType.USER
-                )
-                if auto_context and record.get("context") is None:
-                    record["context"] = self._extract_context(content)
-                if auto_cues:
-                    record["cues"] = normalize_cues(
-                        list(record.get("cues") or [])
-                        + extract_cues(content)
+            def _prepare(chunk_memories: list[dict]) -> list[dict]:
+                prepared = []
+                for memory in chunk_memories:
+                    content = memory["content"]
+                    record = dict(memory)
+                    record.setdefault("kind", MemoryKind.EPISODIC)
+                    record["source"] = record.get("source") or SourceRecord(
+                        origin=SourceType.USER
                     )
-                records.append(record)
+                    if auto_context and record.get("context") is None:
+                        record["context"] = self._extract_context(content)
+                    if auto_cues:
+                        record["cues"] = normalize_cues(
+                            list(record.get("cues") or [])
+                            + extract_cues(content)
+                        )
+                    prepared.append(record)
+                return prepared
+
             if max_links is None:
                 max_links = min(
                     32,
-                    max(8, 1_000_000 // max(1, len(records))),
+                    max(8, 1_000_000 // max(1, len(memories))),
                 )
             self.associations.reset_batch()
             stored_all: list[MemoryItem] = []
-            if records:
+            if memories:
                 self.backend.begin_bulk_mode()
             try:
-                for start in range(0, len(records), chunk_size):
-                    chunk_records = records[start : start + chunk_size]
+                for start in range(0, len(memories), chunk_size):
+                    chunk_records = _prepare(
+                        memories[start : start + chunk_size]
+                    )
                     vectors = None
                     if (
                         self.vector_index is not None
@@ -370,7 +375,7 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
                         )
                     stored_all.extend(stored)
             finally:
-                if records:
+                if memories:
                     self.backend.end_bulk_mode()
                 self.associations.reset_batch()
             if any(

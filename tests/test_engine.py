@@ -1021,6 +1021,28 @@ class MemoryEngineTest(unittest.TestCase):
                 if os.path.exists(extra):
                     os.remove(extra)
 
+    def test_term_cache_is_bounded(self):
+        import mnemosis.dual_track as dual_track_module
+
+        original = dual_track_module._TERM_CACHE_LIMIT
+        dual_track_module._TERM_CACHE_LIMIT = 20
+        engine = MemoryEngine()
+        try:
+            source = SourceRecord(origin=SourceType.USER)
+            for index in range(60):
+                engine.remember(
+                    f"term cache {index} alpha beta",
+                    kind=MemoryKind.EPISODIC,
+                    source=source,
+                    auto_cues=False,
+                )
+            self.assertLessEqual(
+                len(engine.store._term_cache), 20
+            )
+        finally:
+            dual_track_module._TERM_CACHE_LIMIT = original
+            engine.close()
+
     def test_remember_many_embed_failure_leaves_store_untouched(self):
         class _FailingEmbedder(Embedder):
             def embed(self, text: str) -> list[float]:

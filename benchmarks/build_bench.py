@@ -16,6 +16,7 @@ import random
 import sys
 import tempfile
 import time
+import tracemalloc
 
 _SRC = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src")
@@ -95,15 +96,19 @@ def main() -> int:
         os.remove(db_path)
     engine = MemoryEngine(db_path)
     records = generate_records(args.count)
+    tracemalloc.start()
     start = time.perf_counter()
     stored = engine.remember_many_chunked(
         records, chunk_size=args.chunk_size
     )
     elapsed = time.perf_counter() - start
+    _, peak = tracemalloc.get_traced_memory()
+    tracemalloc.stop()
     print(
         f"built {len(stored)} memories in {elapsed:.1f}s "
         f"({len(stored) / elapsed:.0f} items/s)"
     )
+    print(f"peak python memory: {peak / 1e6:.0f} MB")
     if args.check_graph:
         ratio = giant_component_ratio(engine, len(stored))
         print(f"giant component share: {ratio:.3f}")

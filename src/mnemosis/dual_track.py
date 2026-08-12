@@ -45,6 +45,9 @@ core facts, so an old but critical memory (e.g. an allergy) still surfaces
 instead of being drowned by recency.
 """
 
+_TERM_CACHE_LIMIT = 50_000
+"""Upper bound for the per-item term cache (FIFO eviction)."""
+
 _FALLBACK_IMPORTANCE_BOOST = 0.20
 """Extra score per unit of importance in zero-hit fallback ranking.
 
@@ -175,7 +178,7 @@ class DualTrackStore:
         self.scorer = scorer
         self.dense_rerank_candidates = max(1, int(dense_rerank_candidates))
         self.zero_hit_rerank_pool = max(1, int(zero_hit_rerank_pool))
-        self._term_cache: dict[tuple, frozenset[str]] = {}
+        self._term_cache: OrderedDict[tuple, frozenset[str]] = OrderedDict()
         self._embed_cache: OrderedDict[tuple, list[float]] = OrderedDict()
         self.embed_cache_limit = max(1, int(embed_cache_limit))
         if embed_cache_memory_limit_mb is not None and embed_cache_memory_limit_mb > 0:
@@ -336,7 +339,8 @@ class DualTrackStore:
                 stored.append(item)
         self.backend.add_cues_many((item.id, item.cues) for item in stored)
         self.backend.index_terms_many(
-            (item.id, self._terms(item), item.kind) for item in stored
+            (item.id, self._terms(item, cache=False), item.kind)
+            for item in stored
         )
         self.invalidate_term_index()
         return stored
@@ -1417,15 +1421,28 @@ class DualTrackStore:
             item.retrieval_failures += 1
             self.backend.update(item)
 
-    def _terms(self, item: MemoryItem) -> frozenset[str]:
-        """Cached token terms for an item (auto-invalidated on change)."""
+    def _terms(
+        self, item: MemoryItem, *, cache: bool = True
+    ) -> frozenset[str]:
+        """Token terms for an item.
+
+        Cached per (id, content_hash, revision, cues) and auto-invalidated on
+        change. Bulk ingestion sets ``cache=False``: each item is touched
+        once, so an unbounded cache would retain millions of frozensets.
+        """
         key = (item.id, item.content_hash, item.revision_count, tuple(item.cues))
-        with self._lock:
-            cached = self._term_cache.get(key)
-            if cached is None:
-                cached = frozenset(tokenize(item.content)) | frozenset(item.cues)
-                self._term_cache[key] = cached
-            return cached
+        if cache:
+            with self._lock:
+                cached = self._term_cache.get(key)
+                if cached is not None:
+                    return cached
+        terms = frozenset(tokenize(item.content)) | frozenset(item.cues)
+        if cache:
+            with self._lock:
+                self._term_cache[key] = terms
+                while len(self._term_cache) > _TERM_CACHE_LIMIT:
+                    self._term_cache.popitem(last=False)
+        return terms
 
     def _embedding(self, item: MemoryItem, embedder: Embedder) -> list[float]:
         """Cached embedding for an item.
