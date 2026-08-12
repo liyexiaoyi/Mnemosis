@@ -69,6 +69,43 @@ class CliTest(unittest.TestCase):
         self.assertIn("shared: 2条", out)
         self.assertNotIn("solo:", out)
 
+    def test_memory_map_svg_output(self):
+        self.run_cli("remember", "alpha one.", "--cues", "shared")
+        svg_path = os.path.join(
+            tempfile.gettempdir(),
+            f"mnemosis_cli_map_{os.getpid()}.svg",
+        )
+        if os.path.exists(svg_path):
+            os.remove(svg_path)
+        try:
+            out = self.run_cli("memory-map", "--out", svg_path)
+            self.assertIn("saved", out)
+            with open(svg_path, encoding="utf-8") as handle:
+                svg = handle.read()
+            self.assertIn("<svg", svg)
+            self.assertIn("记忆强度分布", svg)
+        finally:
+            if os.path.exists(svg_path):
+                os.remove(svg_path)
+
+    def test_memory_map_svg_empty_store(self):
+        svg_path = os.path.join(
+            tempfile.gettempdir(),
+            f"mnemosis_cli_map_empty_{os.getpid()}.svg",
+        )
+        if os.path.exists(svg_path):
+            os.remove(svg_path)
+        try:
+            out = self.run_cli("memory-map", "--out", svg_path)
+            self.assertIn("saved", out)
+            with open(svg_path, encoding="utf-8") as handle:
+                svg = handle.read()
+            self.assertIn("<svg", svg)
+            self.assertIn("记忆强度分布", svg)
+        finally:
+            if os.path.exists(svg_path):
+                os.remove(svg_path)
+
     def test_update_and_recycle_via_cli(self):
         saved = self.run_cli("remember", "The deadline is Friday.")
         memory_id = saved.split()[1]

@@ -111,10 +111,16 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--limit", type=int, default=200)
     p.add_argument("--topic-min", type=int, default=1)
-    p.add_argument(
+    output_group = p.add_mutually_exclusive_group()
+    output_group.add_argument(
         "--json",
         action="store_true",
         help="print the full JSON payload instead of a human table",
+    )
+    output_group.add_argument(
+        "--out",
+        default=None,
+        help="write an SVG memory-map chart to this path",
     )
 
     p = sub.add_parser("review-due", help="list memories due for spaced review")
@@ -180,6 +186,13 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             if args.json:
                 print(json.dumps(data, ensure_ascii=False, indent=2))
+            elif args.out:
+                from .render import render_memory_map_svg
+
+                svg = render_memory_map_svg(data, "Mnemosis 记忆地图")
+                with open(args.out, "w", encoding="utf-8") as handle:
+                    handle.write(svg)
+                print(f"saved {args.out} ({len(data['topics'])} topics)")
             else:
                 print(f"已采样 {data['sampled']} 条记忆")
                 strength = data["strength"]
