@@ -1043,6 +1043,53 @@ class MemoryEngineTest(unittest.TestCase):
             dual_track_module._TERM_CACHE_LIMIT = original
             engine.close()
 
+    def test_dict_backend_term_cleanup_is_exact(self):
+        engine = MemoryEngine()
+        source = SourceRecord(origin=SourceType.USER)
+        first = engine.remember(
+            "alpha beta gamma",
+            kind=MemoryKind.EPISODIC,
+            source=source,
+            auto_cues=False,
+        )
+        second = engine.remember(
+            "beta delta",
+            kind=MemoryKind.EPISODIC,
+            source=source,
+            auto_cues=False,
+        )
+        backend = engine.backend
+        self.assertIn(
+            first.id, backend.find_by_terms(["alpha"], None)
+        )
+        backend.remove_terms(first.id)
+        self.assertNotIn(
+            first.id, backend.find_by_terms(["alpha"], None)
+        )
+        self.assertNotIn(first.id, backend._memory_terms)
+        self.assertIn(
+            second.id, backend.find_by_terms(["beta"], None)
+        )
+        third = engine.remember(
+            "gamma zeta",
+            kind=MemoryKind.EPISODIC,
+            source=source,
+            auto_cues=False,
+        )
+        backend.delete(third.id)
+        self.assertNotIn(
+            third.id, backend.find_by_terms(["gamma"], None)
+        )
+        self.assertNotIn(third.id, backend._memory_terms)
+        # Legacy state without the reverse map must self-heal on removal.
+        legacy_id = "legacy-1"
+        backend._terms_index = {"oldterm": {legacy_id}}
+        backend._memory_terms = {}
+        backend.remove_terms(legacy_id)
+        self.assertNotIn("oldterm", backend._terms_index)
+        self.assertNotIn(legacy_id, backend._memory_terms)
+        engine.close()
+
     def test_remember_many_embed_failure_leaves_store_untouched(self):
         class _FailingEmbedder(Embedder):
             def embed(self, text: str) -> list[float]:

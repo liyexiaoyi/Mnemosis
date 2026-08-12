@@ -267,6 +267,32 @@ class SQLiteBackendTest(unittest.TestCase):
         finally:
             reopened.close()
 
+    def test_bulk_semantic_terms_delete_uses_temp_index(self):
+        engine = self.engine
+        engine.backend.begin_bulk_mode()
+        try:
+            records = [
+                {
+                    "content": f"bulk semantic fact {index}",
+                    "kind": MemoryKind.SEMANTIC,
+                    "source": self.user,
+                }
+                for index in range(2_500)
+            ]
+            engine.store.remember_many(records)
+        finally:
+            engine.backend.end_bulk_mode()
+        self.assertTrue(
+            engine.recall("bulk semantic fact 1234", top_k=3)
+        )
+        indexes = {
+            row[1]
+            for row in engine.backend._conn.execute(
+                "PRAGMA index_list('terms')"
+            ).fetchall()
+        }
+        self.assertIn("idx_terms_memory", indexes)
+
     def test_get_many_large_batch_json_path_and_dedupe(self):
         backend = SQLiteBackend(":memory:")
         try:

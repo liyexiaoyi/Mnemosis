@@ -24,6 +24,10 @@ from .types import (
     utcnow,
 )
 
+_BULK_DELETE_TEMP_INDEX_MIN = 2_000
+"""Semantic batches at least this large get a temporary terms index during
+bulk-mode DELETEs, since bulk mode defers idx_terms_memory."""
+
 
 def _locked(method):
     """Serialize a backend method on the instance lock (reentrant)."""
@@ -133,6 +137,7 @@ class DictBackend(Backend):
         self._links: dict[tuple[str, str], float] = {}
         self._adj: dict[str, set[str]] = {}
         self._terms_index: dict[str, set[str]] = {}
+        self._memory_terms: dict[str, set[str]] = {}
         self._settings: dict[str, str] = {}
         self._seq = 0
 
@@ -271,11 +276,7 @@ class DictBackend(Backend):
     @_locked
     def delete(self, memory_id: str) -> None:
         self._items.pop(memory_id, None)
-        self._terms_index = {
-            term: ids
-            for term, ids in self._terms_index.items()
-            if memory_id not in ids
-        }
+        self._drop_terms_for(memory_id)
         self._cues = {cue: ids for cue, ids in self._cues.items() if memory_id not in ids}
         self._links = {
             (a, b): w for (a, b), w in self._links.items() if a != memory_id and b != memory_id
@@ -289,16 +290,38 @@ class DictBackend(Backend):
         self, memory_id: str, terms: Iterable[str], kind: MemoryKind
     ) -> None:
         self.remove_terms(memory_id)
-        for term in set(terms):
+        term_set = set(terms)
+        if term_set:
+            self._memory_terms.setdefault(memory_id, set()).update(term_set)
+        for term in term_set:
             self._terms_index.setdefault(term, set()).add(memory_id)
 
     @_locked
     def remove_terms(self, memory_id: str) -> None:
-        self._terms_index = {
-            term: ids
-            for term, ids in self._terms_index.items()
-            if memory_id not in ids
-        }
+        self._drop_terms_for(memory_id)
+
+    def _ensure_reverse_index(self) -> None:
+        """Rebuild the reverse map once if missing (legacy/deserialized)."""
+        if not self._memory_terms and self._terms_index:
+            for term, ids in self._terms_index.items():
+                for memory_id in ids:
+                    self._memory_terms.setdefault(
+                        memory_id, set()
+                    ).add(term)
+
+    def _drop_terms_for(self, memory_id: str) -> None:
+        """Remove a memory from the term index using the reverse map (O(M))."""
+        self._ensure_reverse_index()
+        terms = self._memory_terms.pop(memory_id, None)
+        if terms is None:
+            return
+        for term in terms:
+            ids = self._terms_index.get(term)
+            if ids is None:
+                continue
+            ids.discard(memory_id)
+            if not ids:
+                del self._terms_index[term]
 
     @_locked
     def find_by_terms(
@@ -496,6 +519,7 @@ class SQLiteBackend(Backend):
     def __init__(self, path: str = "mnemosis.db") -> None:
         self._conn = sqlite3.connect(path, check_same_thread=False)
         self._term_pending = 0
+        self._bulk_terms_index_deferred = False
         self._lock = threading.RLock()
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
@@ -888,6 +912,7 @@ class SQLiteBackend(Backend):
         self._conn.execute("PRAGMA cache_size=-80000")
         self._conn.execute("DROP INDEX IF EXISTS idx_links_dst")
         self._conn.execute("DROP INDEX IF EXISTS idx_terms_memory")
+        self._bulk_terms_index_deferred = True
 
     @_locked
     def end_bulk_mode(self) -> None:
@@ -902,6 +927,7 @@ class SQLiteBackend(Backend):
         self._conn.execute("PRAGMA synchronous=NORMAL")
         self._conn.execute("PRAGMA cache_size=-20000")
         self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        self._bulk_terms_index_deferred = False
 
     @_locked
     def update(self, item: MemoryItem) -> None:
@@ -1014,15 +1040,28 @@ class SQLiteBackend(Backend):
             # That is the intended trade-off: episodic imports
             # (replace=False) skip them entirely, and semantic upserts are
             # usually small.
-            with self._conn:
-                for start in range(0, len(ids), 500):
-                    chunk = ids[start : start + 500]
-                    placeholders = ",".join("?" for _ in chunk)
-                    self._conn.execute(
-                        "DELETE FROM terms "
-                        f"WHERE memory_id IN ({placeholders})",
-                        tuple(chunk),
-                    )
+            temp_index = False
+            if (
+                len(ids) >= _BULK_DELETE_TEMP_INDEX_MIN
+                and self._bulk_terms_index_deferred
+            ):
+                self._conn.execute(
+                    "CREATE INDEX idx_terms_memory ON terms(memory_id)"
+                )
+                temp_index = True
+            try:
+                with self._conn:
+                    for start in range(0, len(ids), 500):
+                        chunk = ids[start : start + 500]
+                        placeholders = ",".join("?" for _ in chunk)
+                        self._conn.execute(
+                            "DELETE FROM terms "
+                            f"WHERE memory_id IN ({placeholders})",
+                            tuple(chunk),
+                        )
+            finally:
+                if temp_index:
+                    self._conn.execute("DROP INDEX idx_terms_memory")
         # Sorting by (term, memory_id) makes the PK B-tree append-ordered:
         # 2M random-order rows churn pages, ordered rows stream in.
         entries.sort(key=lambda row: (row[0], row[1]))
