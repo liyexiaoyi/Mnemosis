@@ -12,7 +12,7 @@ os.environ["MEM0_TELEMETRY"] = "False"
 _BENCH = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _BENCH)
 
-from reasoning_zh_bench import MEMORIES, QUESTIONS  # noqa: E402
+from reasoning_zh_bench import MEMORIES, QUESTIONS
 
 
 def main() -> int:

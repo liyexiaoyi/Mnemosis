@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Chinese reasoning bench contexts from official cognitive-memory 0.5.1."""
 
 from __future__ import annotations
@@ -16,9 +15,8 @@ if os.path.isdir(_USER_SITE) and _USER_SITE not in sys.path:
 _BENCH = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _BENCH)
 
-from cognitive_memory import SyncCognitiveMemory  # noqa: E402
-
-from reasoning_zh_bench import MEMORIES, QUESTIONS  # noqa: E402
+from cognitive_memory import SyncCognitiveMemory
+from reasoning_zh_bench import MEMORIES, QUESTIONS
 
 
 def main() -> int:

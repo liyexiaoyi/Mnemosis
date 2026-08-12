@@ -22,14 +22,14 @@ _SRC = os.path.normpath(os.path.join(_BENCH, "..", "src"))
 sys.path.insert(0, _BENCH)
 sys.path.insert(0, _SRC)
 
-from locomo_bench import build_engine, eval_retrieval, generate_dataset  # noqa: E402
-from reasoning_mini_bench import build as build_reasoning  # noqa: E402
-from reasoning_mini_bench import evaluate as eval_reasoning  # noqa: E402
-from zh_locomo_bench import evaluate as eval_zh  # noqa: E402
-from zh_locomo_bench import generate as generate_zh  # noqa: E402
-from zh_locomo_bench import sample_questions  # noqa: E402
-from zh_long_dialogue_eval import build as build_zh200  # noqa: E402
-from zh_long_dialogue_eval import score_questions  # noqa: E402
+from locomo_bench import build_engine, eval_retrieval, generate_dataset
+from reasoning_mini_bench import build as build_reasoning
+from reasoning_mini_bench import evaluate as eval_reasoning
+from zh_locomo_bench import evaluate as eval_zh
+from zh_locomo_bench import generate as generate_zh
+from zh_locomo_bench import sample_questions
+from zh_long_dialogue_eval import build as build_zh200
+from zh_long_dialogue_eval import score_questions
 
 
 def main() -> int:

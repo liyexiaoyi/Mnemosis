@@ -7,7 +7,6 @@ import os
 
 from PIL import Image, ImageDraw, ImageFont
 
-
 _BENCH = os.path.dirname(os.path.abspath(__file__))
 _RESULTS = os.path.join(_BENCH, "results")
 _WORK = os.path.normpath(os.path.join(_BENCH, "..", "..", "work"))

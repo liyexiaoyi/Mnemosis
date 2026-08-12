@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """DeepSeek-side answers for round 279, merged into work/groupbuy_spot.json."""
 
 import json
@@ -9,10 +8,8 @@ _BENCH = os.path.dirname(os.path.abspath(__file__))
 _WORK = os.path.normpath(os.path.join(_BENCH, "..", "..", "work"))
 sys.path.insert(0, _BENCH)
 
-from game_dev_spot_bench import hit  # noqa: E402
-
-from groupbuy_spot_bench import QUESTIONS  # noqa: E402
-
+from game_dev_spot_bench import hit
+from groupbuy_spot_bench import QUESTIONS
 
 STANDARD = {
     "团购满多少免配送费？": "50元",

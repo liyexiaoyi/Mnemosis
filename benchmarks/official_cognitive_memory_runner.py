@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Run official cognitive-memory 0.5.1 benchmark (system Python 3.14)."""
 
 from __future__ import annotations

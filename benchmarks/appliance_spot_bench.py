@@ -6,7 +6,6 @@ import argparse
 
 from spot_common import run_spot
 
-
 DATASET = [
     {
         "content": "2026年1月10日买冰箱：海尔 4599 元。",

@@ -14,7 +14,7 @@ import sys
 _BENCH = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.normpath(os.path.join(_BENCH, "..", "src")))
 
-from mnemosis import MemoryEngine  # noqa: E402
+from mnemosis import MemoryEngine
 
 
 def render_svg(data: dict, title: str) -> str:

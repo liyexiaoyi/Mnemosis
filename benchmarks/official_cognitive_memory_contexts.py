@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Dump cognitive-memory 0.5.1 search contexts (system Python 3.14)."""
 
 from __future__ import annotations
@@ -13,7 +12,7 @@ _USER_SITE = os.path.join(
 if os.path.isdir(_USER_SITE) and _USER_SITE not in sys.path:
     sys.path.insert(0, _USER_SITE)
 
-from cognitive_memory import SyncCognitiveMemory  # noqa: E402
+from cognitive_memory import SyncCognitiveMemory
 
 
 def main() -> int:

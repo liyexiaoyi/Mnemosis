@@ -17,7 +17,7 @@ _WORK = os.path.normpath(os.path.join(_BENCH, "..", "..", "work"))
 sys.path.insert(0, _BENCH)
 sys.path.insert(0, _SRC)
 
-from game_dev_spot_bench import (  # noqa: E402
+from game_dev_spot_bench import (
     QUESTIONS,
     _mnemosis_contexts,
     cloud_generate,

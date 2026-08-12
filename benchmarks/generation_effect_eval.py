@@ -26,7 +26,7 @@ _SRC = os.path.normpath(os.path.join(_BENCH, "..", "src"))
 sys.path.insert(0, _BENCH)
 sys.path.insert(0, _SRC)
 
-from testing_effect_eval import _base_engine  # noqa: E402
+from testing_effect_eval import _base_engine
 
 
 def _simulate(engine, mode: str, seed: int) -> dict:

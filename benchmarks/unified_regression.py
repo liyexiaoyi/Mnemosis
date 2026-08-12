@@ -16,14 +16,14 @@ _SRC = os.path.normpath(os.path.join(_BENCH, "..", "src"))
 sys.path.insert(0, _BENCH)
 sys.path.insert(0, _SRC)
 
-from locomo_bench import build_engine as build_en88  # noqa: E402
-from locomo_bench import eval_retrieval as eval_en88  # noqa: E402
-from locomo_bench import generate_dataset as gen_en88  # noqa: E402
-from zh_locomo_bench import evaluate as eval_zh10k  # noqa: E402
-from zh_locomo_bench import generate as gen_zh  # noqa: E402
-from zh_locomo_bench import sample_questions  # noqa: E402
-from zh_long_dialogue_eval import build as build_zh200  # noqa: E402
-from zh_long_dialogue_eval import score_questions  # noqa: E402
+from locomo_bench import build_engine as build_en88
+from locomo_bench import eval_retrieval as eval_en88
+from locomo_bench import generate_dataset as gen_en88
+from zh_locomo_bench import evaluate as eval_zh10k
+from zh_locomo_bench import generate as gen_zh
+from zh_locomo_bench import sample_questions
+from zh_long_dialogue_eval import build as build_zh200
+from zh_long_dialogue_eval import score_questions
 
 
 def _run(name: str, fn) -> dict:
@@ -80,10 +80,12 @@ def main() -> int:
         return r
 
     def process() -> dict:
+        import re
+
         from process_zh_bench import SCENARIOS, _coverage, _memories, _order_score
+
         from mnemosis import MemoryEngine
         from mnemosis.types import MemoryKind, SourceRecord, SourceType
-        import re
 
         engine = MemoryEngine()
         source = SourceRecord(origin=SourceType.USER)
@@ -110,7 +112,7 @@ def main() -> int:
         return r
 
     def synonym10k() -> dict:
-        from synonym_zh_10k_bench import SCENARIOS, build_engine, _coverage, _ordered
+        from synonym_zh_10k_bench import SCENARIOS, _coverage, _ordered, build_engine
         e = build_engine()
         cov = ordered = 0
         for s in SCENARIOS:
@@ -121,7 +123,7 @@ def main() -> int:
         return {"coverage": cov, "ordered": ordered, "total_steps": 9}
 
     def compare10k() -> dict:
-        from compare_zh_10k_bench import SCENARIOS, build_engine, _coverage
+        from compare_zh_10k_bench import SCENARIOS, _coverage, build_engine
         e = build_engine()
         cov = 0
         for s in SCENARIOS:
@@ -141,7 +143,7 @@ def main() -> int:
         return {"top1_target": top1, "n": len(TARGETS)}
 
     def plan_choice10k() -> dict:
-        from plan_choice_10k_bench import GOAL, build_engine, ALI_STEPS, XIAOBO_STEPS
+        from plan_choice_10k_bench import ALI_STEPS, GOAL, XIAOBO_STEPS, build_engine
         e = build_engine()
         plan = e.plan_for_goal(GOAL, outcome_aware=True)
         ctx = [r.item.content for r in plan]

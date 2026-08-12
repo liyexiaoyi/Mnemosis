@@ -6,7 +6,6 @@ import argparse
 
 from spot_common import run_spot
 
-
 DATASET = [
     {
         "content": "产品 Nova 当前版本 v2.1，主打移动端；Nova Pro 是桌面版，当前 v1.4。",

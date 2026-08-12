@@ -6,7 +6,6 @@ import argparse
 
 from spot_common import run_spot
 
-
 DATASET = [
     {
         "content": "2026年1月4日第一次带孩子去儿童乐园，办年卡1999元。",

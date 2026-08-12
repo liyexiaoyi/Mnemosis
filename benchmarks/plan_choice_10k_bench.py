@@ -18,11 +18,10 @@ _SRC = os.path.normpath(os.path.join(_BENCH, "..", "src"))
 sys.path.insert(0, _BENCH)
 sys.path.insert(0, _SRC)
 
-from mnemosis import MemoryEngine  # noqa: E402
-from mnemosis.types import MemoryKind, SourceRecord, SourceType  # noqa: E402
+from reasoning_zh_10k_bench import generate_memories
 
-from reasoning_zh_10k_bench import generate_memories  # noqa: E402
-
+from mnemosis import MemoryEngine
+from mnemosis.types import MemoryKind, SourceRecord, SourceType
 
 GOAL = "大壮想去京都旅行，参考阿丽和小波谁的计划更好？"
 ALI_STEPS = [

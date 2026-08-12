@@ -23,7 +23,6 @@ from datetime import datetime, timezone
 from mnemosis import MemoryEngine
 from mnemosis.types import MemoryKind, SourceRecord, SourceType
 
-
 BENCHMARK = {
     "memories": [
         {

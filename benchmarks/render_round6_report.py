@@ -7,7 +7,6 @@ import os
 
 from PIL import Image, ImageDraw, ImageFont
 
-
 _BENCH = os.path.dirname(os.path.abspath(__file__))
 _RESULTS = os.path.join(_BENCH, "results")
 _OUT = os.path.normpath(os.path.join(_BENCH, "..", "..", "outputs", "charts"))
@@ -110,11 +109,11 @@ def chart_reliability() -> str:
               fill="#555", font=f_sub)
     draw.line([(chart_x0, chart_y1), (chart_x1, chart_y1)], fill="#999", width=2)
     draw.line([(chart_x0, chart_y0), (chart_x0, chart_y1)], fill="#999", width=2)
-    for i in range(0, 6):
+    for i in range(6):
         x = px(i * 0.2)
         draw.line([(x, chart_y0), (x, chart_y1)], fill="#e5e5e5", width=1)
         draw.text((x - 12, chart_y1 + 8), f"{i * 0.2:.1f}", fill="#666", font=f_val)
-    for i in range(0, 6):
+    for i in range(6):
         y = py(i * 0.2)
         draw.line([(chart_x0, y), (chart_x1, y)], fill="#e5e5e5", width=1)
         draw.text((chart_x0 - 42, y - 10), f"{i * 0.2:.1f}", fill="#666", font=f_val)

@@ -14,7 +14,6 @@ import json
 import math
 import os
 
-
 WIDTH, HEIGHT = 820, 460
 MARGIN_L, MARGIN_R, MARGIN_T, MARGIN_B = 70, 20, 60, 60
 PALETTE = ["#4c78a8", "#f58518", "#54a24b", "#e45756", "#72b7b2", "#f2cf5b"]
@@ -38,7 +37,7 @@ def _axes(ymax: float, ylabel: str) -> list[str]:
         f'<text x="16" y="{(MARGIN_T + HEIGHT - MARGIN_B) / 2}" font-size="12" fill="#666" '
         f'transform="rotate(-90 16,{(MARGIN_T + HEIGHT - MARGIN_B) / 2})" text-anchor="middle">{ylabel}</text>',
     ]
-    for tick in range(0, 5):
+    for tick in range(5):
         value = ymax * tick / 4
         y = HEIGHT - MARGIN_B - (HEIGHT - MARGIN_T - MARGIN_B) * tick / 4
         lines.append(f'<line x1="{MARGIN_L}" y1="{y:.1f}" x2="{WIDTH - MARGIN_R}" y2="{y:.1f}" stroke="#eee" stroke-width="1"/>')

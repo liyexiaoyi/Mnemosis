@@ -19,8 +19,8 @@ _SRC = os.path.normpath(os.path.join(_BENCH, "..", "src"))
 sys.path.insert(0, _BENCH)
 sys.path.insert(0, _SRC)
 
-from locomo_bench import generate_dataset  # noqa: E402
-from model_x_project import select_questions  # noqa: E402
+from locomo_bench import generate_dataset
+from model_x_project import select_questions
 
 
 def _contexts_for(project: str) -> list[dict]:

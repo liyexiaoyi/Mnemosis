@@ -26,7 +26,7 @@ os.environ["MEM0_TELEMETRY"] = "False"
 _BENCH = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _BENCH)
 
-from conflict_evidence_bench import SCENARIOS  # noqa: E402
+from conflict_evidence_bench import SCENARIOS
 
 
 def _memories() -> list[str]:

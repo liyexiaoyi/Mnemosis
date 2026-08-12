@@ -14,7 +14,6 @@ import argparse
 
 from spot_common import run_spot
 
-
 DATASET = [
     {
         "content": "2026年4月10日投了简历到云图科技：后端工程师，简历编号 R-2031。",

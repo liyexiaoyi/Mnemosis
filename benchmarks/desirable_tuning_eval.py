@@ -22,11 +22,11 @@ _SRC = os.path.normpath(os.path.join(_BENCH, "..", "src"))
 sys.path.insert(0, _BENCH)
 sys.path.insert(0, _SRC)
 
-from mnemosis import MemoryEngine  # noqa: E402
-from mnemosis.types import utcnow  # noqa: E402
+from zh_long_dialogue_eval import build as build_zh200
+from zh_long_dialogue_eval import score_questions
 
-from zh_long_dialogue_eval import build as build_zh200  # noqa: E402
-from zh_long_dialogue_eval import score_questions  # noqa: E402
+from mnemosis import MemoryEngine
+from mnemosis.types import utcnow
 
 
 def _simulate(engine: MemoryEngine, strategy: str, target: float | None,

@@ -18,7 +18,7 @@ _SRC = os.path.normpath(os.path.join(_BENCH, "..", "src"))
 sys.path.insert(0, _BENCH)
 sys.path.insert(0, _SRC)
 
-from unexpected_event_10k_bench import TARGET_RECORD, build_engine  # noqa: E402
+from unexpected_event_10k_bench import TARGET_RECORD, build_engine
 
 
 def main() -> int:

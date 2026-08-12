@@ -26,11 +26,10 @@ _WORK = os.path.normpath(os.path.join(_BENCH, "..", "..", "work"))
 sys.path.insert(0, _BENCH)
 sys.path.insert(0, _SRC)
 
-from mnemosis import MemoryEngine  # noqa: E402
-from mnemosis.types import MemoryKind, SourceRecord, SourceType  # noqa: E402
+from game_dev_spot_bench import cloud_generate, hit, score_answer
 
-from game_dev_spot_bench import cloud_generate, hit, score_answer  # noqa: E402
-
+from mnemosis import MemoryEngine
+from mnemosis.types import MemoryKind, SourceRecord, SourceType
 
 DATASET = [
     {

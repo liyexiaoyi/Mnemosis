@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Real-iteration comparison charts (Chinese, zero-dependency SVG).
 
 Reads the latest benchmark JSONs and writes Chinese-labeled SVG/PNG-ready
@@ -9,7 +8,6 @@ from __future__ import annotations
 
 import json
 import os
-
 
 OUT_DIR = os.path.normpath(
     os.path.join(os.path.dirname(__file__), "..", "..", "outputs", "charts")
@@ -83,7 +81,7 @@ def retrieval_chart() -> None:
     )
     _legend(lines, ml, 58, [("关键词模式", palette[0]), ("同义词模式 ngram", palette[1])])
     ymax = 110.0
-    for tick in range(0, 6):
+    for tick in range(6):
         v = ymax * tick / 5
         y = h - mb - plot_h * tick / 5
         lines.append(f'<line x1="{ml}" y1="{y:.0f}" x2="{w - mr}" y2="{y:.0f}" stroke="#eee"/>')
@@ -157,7 +155,7 @@ def tenk_ab_chart() -> None:
     )
     _legend(lines, ml, 58, [("上一版", palette[0]), ("本轮优化后", palette[1])])
     ymax = 1.25
-    for tick in range(0, 6):
+    for tick in range(6):
         v = ymax * tick / 5
         y = h - mb - plot_h * tick / 5
         lines.append(f'<line x1="{ml}" y1="{y:.0f}" x2="{w - mr}" y2="{y:.0f}" stroke="#eee"/>')
@@ -225,7 +223,7 @@ def unified_leaderboard_chart() -> None:
         lines.append(f'<text x="{x + 16}" y="68" font-size="12" fill="#333">{label}</text>')
         x += 26 + 13 * len(label) + 8
     ymax = 1.1
-    for tick in range(0, 6):
+    for tick in range(6):
         v = ymax * tick / 5
         y = h - mb - plot_h * tick / 5
         lines.append(f'<line x1="{ml}" y1="{y:.0f}" x2="{w - mr}" y2="{y:.0f}" stroke="#eee"/>')
@@ -276,7 +274,7 @@ def temporal_improvement_chart() -> None:
     )
     _legend(lines, ml, 58, [("优化前", palette[0]), ("优化后", palette[1])])
     ymax = 1.1
-    for tick in range(0, 6):
+    for tick in range(6):
         v = ymax * tick / 5
         y = h - mb - plot_h * tick / 5
         lines.append(f'<line x1="{ml}" y1="{y:.0f}" x2="{w - mr}" y2="{y:.0f}" stroke="#eee"/>')
@@ -322,7 +320,7 @@ def learning_curve_chart() -> None:
     )
     _legend(lines, ml, 58, [("练过一轮检索", palette[0]), ("全新引擎", palette[1])])
     ymax = 1.0
-    for tick in range(0, 6):
+    for tick in range(6):
         v = ymax * tick / 5
         y = h - mb - plot_h * tick / 5
         lines.append(f'<line x1="{ml}" y1="{y:.0f}" x2="{w - mr}" y2="{y:.0f}" stroke="#eee"/>')
@@ -369,7 +367,7 @@ def sleep_dedup_chart() -> None:
         w, h,
     )
     ymax = max(before, after, 5) * 1.15
-    for tick in range(0, 6):
+    for tick in range(6):
         v = ymax * tick / 5
         y = h - mb - plot_h * tick / 5
         lines.append(f'<line x1="{ml}" y1="{y:.0f}" x2="{w - mr}" y2="{y:.0f}" stroke="#eee"/>')
@@ -419,7 +417,7 @@ def spaced_review_chart() -> None:
         w, h,
     )
     ymax = total * 1.15
-    for tick in range(0, 6):
+    for tick in range(6):
         v = ymax * tick / 5
         y = h - mb - plot_h * tick / 5
         lines.append(f'<line x1="{ml}" y1="{y:.0f}" x2="{w - mr}" y2="{y:.0f}" stroke="#eee"/>')
@@ -465,7 +463,7 @@ def metacognition_chart() -> None:
         w, h,
     )
     ymax = 2.0
-    for tick in range(0, 5):
+    for tick in range(5):
         v = ymax * tick / 4
         y = h - mb - plot_h * tick / 4
         lines.append(f'<line x1="{ml}" y1="{y:.0f}" x2="{w - mr}" y2="{y:.0f}" stroke="#eee"/>')
@@ -511,7 +509,7 @@ def stress_scale_chart() -> None:
         w, h,
     )
     ymax = 1.05
-    for tick in range(0, 6):
+    for tick in range(6):
         v = ymax * tick / 5
         y = h - mb - plot_h * tick / 5
         lines.append(f'<line x1="{ml}" y1="{y:.0f}" x2="{w - mr}" y2="{y:.0f}" stroke="#eee"/>')
@@ -557,7 +555,7 @@ def llm_grounding_chart() -> None:
         w, h,
     )
     ymax = 1.0
-    for tick in range(0, 6):
+    for tick in range(6):
         v = ymax * tick / 5
         y = h - mb - plot_h * tick / 5
         lines.append(f'<line x1="{ml}" y1="{y:.0f}" x2="{w - mr}" y2="{y:.0f}" stroke="#eee"/>')
@@ -655,7 +653,7 @@ def real_github_compare_chart() -> None:
         lines.append(f'<text x="{x + 16}" y="68" font-size="11" fill="#333">{short}</text>')
         x += 24 + 7.2 * len(short) + 10
     ymax = 1.1
-    for tick in range(0, 6):
+    for tick in range(6):
         v = ymax * tick / 5
         y = h - mb - plot_h * tick / 5
         lines.append(f'<line x1="{ml}" y1="{y:.0f}" x2="{w - mr}" y2="{y:.0f}" stroke="#eee"/>')

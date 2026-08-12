@@ -6,7 +6,6 @@ import argparse
 
 from spot_common import run_spot
 
-
 DATASET = [
     {
         "content": "8月20日到 8月24日去东京玩，行程：20日浅草，21日涩谷，22日镰仓，23日台场，24日返程。",

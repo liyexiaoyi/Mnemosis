@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Render the Qwen (千问) capability evaluation report charts as PNG.
 
 Charts:
@@ -12,7 +11,6 @@ import json
 import os
 
 from PIL import Image, ImageDraw, ImageFont
-
 
 _BENCH = os.path.dirname(os.path.abspath(__file__))
 _RESULTS = os.path.join(_BENCH, "results")

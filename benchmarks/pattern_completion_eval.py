@@ -33,9 +33,8 @@ _SRC = os.path.normpath(os.path.join(_BENCH, "..", "src"))
 sys.path.insert(0, _BENCH)
 sys.path.insert(0, _SRC)
 
-from mnemosis import MemoryEngine  # noqa: E402
-from mnemosis.types import MemoryKind, SourceRecord, SourceType, utcnow  # noqa: E402
-
+from mnemosis import MemoryEngine
+from mnemosis.types import MemoryKind, SourceRecord, SourceType, utcnow
 
 PLACES = [
     "aquarium", "art museum", "planetarium", "old town", "harbor",

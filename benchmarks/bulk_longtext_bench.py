@@ -23,9 +23,10 @@ _WORK = os.path.normpath(os.path.join(_BENCH, "..", "..", "work"))
 sys.path.insert(0, _BENCH)
 sys.path.insert(0, _SRC)
 
-from game_dev_spot_bench import cloud_generate  # noqa: E402
-from mnemosis import MemoryEngine  # noqa: E402
-from mnemosis.types import MemoryKind, SourceRecord, SourceType  # noqa: E402
+from game_dev_spot_bench import cloud_generate
+
+from mnemosis import MemoryEngine
+from mnemosis.types import MemoryKind, SourceRecord, SourceType
 
 VISION_CONFIG = r"C:\Users\asus\plugins\image-viewer\scripts\vision_config.json"
 OLLAMA_URL = "http://127.0.0.1:11434"

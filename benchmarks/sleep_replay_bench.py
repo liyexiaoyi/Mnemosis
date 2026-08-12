@@ -18,7 +18,7 @@ _SRC = os.path.normpath(os.path.join(_BENCH, "..", "src"))
 sys.path.insert(0, _BENCH)
 sys.path.insert(0, _SRC)
 
-from mnemosis import MemoryEngine  # noqa: E402
+from mnemosis import MemoryEngine
 
 
 def build_engine() -> MemoryEngine:

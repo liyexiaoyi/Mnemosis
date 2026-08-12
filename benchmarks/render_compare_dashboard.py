@@ -7,7 +7,6 @@ import os
 
 from PIL import Image, ImageDraw, ImageFont
 
-
 _BENCH = os.path.dirname(os.path.abspath(__file__))
 _RESULTS = os.path.join(_BENCH, "results")
 _WORK = os.path.normpath(os.path.join(_BENCH, "..", "..", "work"))
@@ -54,8 +53,8 @@ def _leaderboard_rows() -> list[tuple[str, float, str]]:
     codex = json.load(
         open(os.path.join(_WORK, "codex_project_answers.json"), encoding="utf-8")
     )
-    from locomo_bench import generate_dataset
     from compare_with_models import score_answer
+    from locomo_bench import generate_dataset
 
     dataset = generate_dataset(seed=42, sessions=24, events_per_session=5)
     by_q = {q["q"]: q for q in dataset["questions"]}

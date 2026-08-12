@@ -28,12 +28,12 @@ import time
 from collections import defaultdict
 from datetime import date, timedelta
 
+from bm25_baseline import Bm25Index
+from embedding_baseline import EmbeddingBaseline
+
 from mnemosis import MemoryEngine
 from mnemosis.embedding import NGramEmbedder
 from mnemosis.types import MemoryKind, SourceRecord, SourceType
-
-from bm25_baseline import Bm25Index
-from embedding_baseline import EmbeddingBaseline
 
 try:
     from compare_with_models import ollama_generate, score_answer  # script mode

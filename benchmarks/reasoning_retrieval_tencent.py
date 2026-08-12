@@ -20,10 +20,8 @@ sys.path.insert(0, _BENCH)
 sys.path.insert(0, _SRC)
 sys.path.insert(0, _SDK)
 
-from tencentdb_agent_memory import MemoryClient  # noqa: E402
-
-from reasoning_zh_bench import MEMORIES, QUESTIONS  # noqa: E402
-
+from reasoning_zh_bench import MEMORIES, QUESTIONS
+from tencentdb_agent_memory import MemoryClient
 
 ENDPOINT = "http://127.0.0.1:8420"
 

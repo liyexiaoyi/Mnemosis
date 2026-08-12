@@ -36,9 +36,10 @@ _WORK = os.path.normpath(os.path.join(_BENCH, "..", "..", "work"))
 sys.path.insert(0, _BENCH)
 sys.path.insert(0, _SRC)
 
-from locomo_bench import generate_dataset  # noqa: E402
-from mnemosis import MemoryEngine  # noqa: E402
-from mnemosis.types import MemoryKind, SourceRecord, SourceType  # noqa: E402
+from locomo_bench import generate_dataset
+
+from mnemosis import MemoryEngine
+from mnemosis.types import MemoryKind, SourceRecord, SourceType
 
 try:
     from compare_with_models import score_answer

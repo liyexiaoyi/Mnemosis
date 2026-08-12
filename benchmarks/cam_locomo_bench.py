@@ -35,11 +35,10 @@ sys.path.insert(0, _SRC)
 sys.path.insert(0, os.path.join(_CAM, "prototype"))
 sys.path.insert(0, os.path.join(_CAM, "prototype", "tasks"))
 
-import numpy as np  # noqa: E402
-
-from locomo_bench import generate_dataset  # noqa: E402
-from compare_with_models import score_answer  # noqa: E402
-from model_x_project import select_questions  # noqa: E402
+import numpy as np
+from compare_with_models import score_answer
+from locomo_bench import generate_dataset
+from model_x_project import select_questions
 
 
 def main() -> int:

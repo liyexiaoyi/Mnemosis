@@ -22,7 +22,7 @@ _SRC_DIR = os.path.normpath(os.path.join(_BENCH_DIR, "..", "src"))
 sys.path.insert(0, _BENCH_DIR)
 sys.path.insert(0, _SRC_DIR)
 
-from locomo_bench import generate_dataset  # noqa: E402
+from locomo_bench import generate_dataset
 
 
 def _expected(question: dict) -> list[str]:

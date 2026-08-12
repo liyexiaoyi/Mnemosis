@@ -15,10 +15,9 @@ _BENCH = os.path.dirname(os.path.abspath(__file__))
 _WORK = os.path.normpath(os.path.join(_BENCH, "..", "..", "work"))
 sys.path.insert(0, _BENCH)
 
-from game_dev_spot_bench import hit  # noqa: E402
-
-from local_retest_round265 import MODELS, _generate, _prompt  # noqa: E402
-from job_spot_bench import QUESTIONS  # noqa: E402
+from game_dev_spot_bench import hit
+from job_spot_bench import QUESTIONS
+from local_retest_round265 import MODELS, _generate, _prompt
 
 QUESTION = "上次面试是哪一天？面了什么内容？"
 

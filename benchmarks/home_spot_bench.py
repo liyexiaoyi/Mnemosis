@@ -6,7 +6,6 @@ import argparse
 
 from spot_common import run_spot
 
-
 DATASET = [
     {
         "content": "新家 8 月交房，户型 89 平两居，装修预算 12 万，9 月开工。",

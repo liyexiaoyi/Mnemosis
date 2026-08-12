@@ -18,10 +18,9 @@ _SRC = os.path.normpath(os.path.join(_BENCH, "..", "src"))
 sys.path.insert(0, _BENCH)
 sys.path.insert(0, _SRC)
 
-from mnemosis import MemoryEngine  # noqa: E402
-from mnemosis.mcp_server import MCPServer  # noqa: E402
-from mnemosis.types import MemoryKind, SourceRecord, SourceType  # noqa: E402
-
+from mnemosis import MemoryEngine
+from mnemosis.mcp_server import MCPServer
+from mnemosis.types import MemoryKind, SourceRecord, SourceType
 
 REFERENCE_STEPS = [
     "阿丽在2026年4月1日订了去京都的机票。",

@@ -23,11 +23,10 @@ _SRC = os.path.normpath(os.path.join(_BENCH, "..", "src"))
 sys.path.insert(0, _BENCH)
 sys.path.insert(0, _SRC)
 
-from mnemosis import MemoryEngine  # noqa: E402
-from mnemosis.types import MemoryKind, SourceRecord, SourceType  # noqa: E402
+from reasoning_zh_bench import QUESTIONS
 
-from reasoning_zh_bench import QUESTIONS  # noqa: E402
-
+from mnemosis import MemoryEngine
+from mnemosis.types import MemoryKind, SourceRecord, SourceType
 
 MAIN_PERSONS = ["阿丽", "小波", "小王", "琳琳", "大壮", "强强", "朵朵", "小雨"]
 OBJECTS = ["笔记本", "手机", "相机", "音箱", "耳机", "手表", "平板", "钢笔"]

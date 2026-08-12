@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """DeepSeek-side answers for round 336, merged into work/boarding2_spot.json."""
 
 import json
@@ -9,10 +8,8 @@ _BENCH = os.path.dirname(os.path.abspath(__file__))
 _WORK = os.path.normpath(os.path.join(_BENCH, "..", "..", "work"))
 sys.path.insert(0, _BENCH)
 
-from game_dev_spot_bench import hit  # noqa: E402
-
-from boarding2_spot_bench import QUESTIONS  # noqa: E402
-
+from boarding2_spot_bench import QUESTIONS
+from game_dev_spot_bench import hit
 
 STANDARD = {
     "猫咪第一次寄养是什么时候？": "1月9日",

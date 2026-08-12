@@ -16,7 +16,7 @@ _BENCH = os.path.dirname(os.path.abspath(__file__))
 _WORK = os.path.normpath(os.path.join(_BENCH, "..", "..", "work"))
 sys.path.insert(0, _BENCH)
 
-from game_dev_spot_bench import hit  # noqa: E402
+from game_dev_spot_bench import hit
 
 OLLAMA_URL = "http://127.0.0.1:11434"
 MODELS = ["qwen2.5:3b", "gemma3:12b"]

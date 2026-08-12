@@ -6,7 +6,6 @@ import argparse
 
 from spot_common import run_spot
 
-
 DATASET = [
     {
         "content": "家里有两只猫：布丁（英短，3 岁）和奶糖（橘猫，1 岁）。",

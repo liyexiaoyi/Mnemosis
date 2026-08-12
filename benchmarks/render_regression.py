@@ -15,7 +15,7 @@ import time
 _BENCH = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _BENCH)
 
-import ci_regression  # noqa: E402
+import ci_regression
 
 
 def render_svg(checks: list[tuple[str, bool, str]], title: str) -> str:

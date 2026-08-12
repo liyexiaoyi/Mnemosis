@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """DeepSeek-side answers for round 313, merged into work/furniture_spot.json."""
 
 import json
@@ -9,10 +8,8 @@ _BENCH = os.path.dirname(os.path.abspath(__file__))
 _WORK = os.path.normpath(os.path.join(_BENCH, "..", "..", "work"))
 sys.path.insert(0, _BENCH)
 
-from game_dev_spot_bench import hit  # noqa: E402
-
-from furniture_spot_bench import QUESTIONS  # noqa: E402
-
+from furniture_spot_bench import QUESTIONS
+from game_dev_spot_bench import hit
 
 STANDARD = {
     "书桌多少钱？": "899元",

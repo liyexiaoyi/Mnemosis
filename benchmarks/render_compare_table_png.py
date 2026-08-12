@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """Render the official-package comparison table as a Chinese PNG.
 
 Falls back to Pillow (available in the codex runtime) when headless Edge is
@@ -11,7 +10,6 @@ import json
 import os
 
 from PIL import Image, ImageDraw, ImageFont
-
 
 _BENCH_DIR = os.path.dirname(os.path.abspath(__file__))
 _RESULTS = os.path.join(_BENCH_DIR, "results", "official_packages_compare.json")

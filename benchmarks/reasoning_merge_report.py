@@ -10,7 +10,7 @@ import sys
 _BENCH = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _BENCH)
 
-from reasoning_zh_bench import QUESTIONS  # noqa: E402
+from reasoning_zh_bench import QUESTIONS
 
 _STOP = {
     "买了", "花了", "笔记本", "最喜欢的", "城市", "是", "买", "花", "了",

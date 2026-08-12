@@ -34,7 +34,7 @@ sys.path.insert(0, _SRC_DIR)
 if os.path.isdir(_CM_SRC):
     sys.path.insert(0, _CM_SRC)
 
-from locomo_bench import generate_dataset  # noqa: E402
+from locomo_bench import generate_dataset
 
 
 def _expected(question: dict) -> list[str]:

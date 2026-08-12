@@ -12,15 +12,15 @@ _SRC = os.path.normpath(
 _WORK = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "work")
 )
-import sys  # noqa: E402
+import sys
 
 sys.path.insert(0, _SRC)
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from mnemosis import MemoryEngine  # noqa: E402
-from mnemosis.types import MemoryKind, SourceRecord, SourceType  # noqa: E402
+from game_dev_spot_bench import cloud_generate, hit, score_answer
 
-from game_dev_spot_bench import cloud_generate, hit, score_answer  # noqa: E402
+from mnemosis import MemoryEngine
+from mnemosis.types import MemoryKind, SourceRecord, SourceType
 
 
 def _mnemosis_contexts(dataset, questions):

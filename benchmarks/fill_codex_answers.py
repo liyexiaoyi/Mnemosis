@@ -12,7 +12,6 @@ from __future__ import annotations
 import json
 import os
 
-
 _WORK = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "work")
 )

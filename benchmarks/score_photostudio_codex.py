@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """DeepSeek-side answers for round 347, merged into work/photostudio_spot.json."""
 
 import json
@@ -9,10 +8,8 @@ _BENCH = os.path.dirname(os.path.abspath(__file__))
 _WORK = os.path.normpath(os.path.join(_BENCH, "..", "..", "work"))
 sys.path.insert(0, _BENCH)
 
-from game_dev_spot_bench import hit  # noqa: E402
-
-from photostudio_spot_bench import QUESTIONS  # noqa: E402
-
+from game_dev_spot_bench import hit
+from photostudio_spot_bench import QUESTIONS
 
 STANDARD = {
     "第一次预约儿童摄影是什么时候？": "1月6日",

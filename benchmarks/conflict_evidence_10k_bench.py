@@ -18,11 +18,11 @@ _SRC = os.path.normpath(os.path.join(_BENCH, "..", "src"))
 sys.path.insert(0, _BENCH)
 sys.path.insert(0, _SRC)
 
-from mnemosis import MemoryEngine  # noqa: E402
-from mnemosis.types import MemoryKind, SourceRecord, SourceType  # noqa: E402
+from conflict_evidence_bench import SCENARIOS
+from reasoning_zh_10k_bench import generate_memories
 
-from conflict_evidence_bench import SCENARIOS  # noqa: E402
-from reasoning_zh_10k_bench import generate_memories  # noqa: E402
+from mnemosis import MemoryEngine
+from mnemosis.types import MemoryKind, SourceRecord, SourceType
 
 
 def build_engine(use_evidence: bool) -> MemoryEngine:

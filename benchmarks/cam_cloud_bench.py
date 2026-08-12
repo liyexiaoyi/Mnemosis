@@ -31,12 +31,10 @@ sys.path.insert(0, _SRC)
 sys.path.insert(0, os.path.join(_CAM, "prototype"))
 sys.path.insert(0, os.path.join(_CAM, "prototype", "tasks"))
 
-import numpy as np  # noqa: E402
-
-from locomo_bench import generate_dataset  # noqa: E402
-from compare_with_models import score_answer  # noqa: E402
-from model_x_project import select_questions  # noqa: E402
-
+import numpy as np
+from compare_with_models import score_answer
+from locomo_bench import generate_dataset
+from model_x_project import select_questions
 
 _CONFIG = os.path.join(
     "C:\\Users\\asus",
@@ -70,8 +68,8 @@ def main() -> int:
     # `tasks.tools.utils`; both resolve to SEPARATE module copies because
     # `prototype/tasks` is on sys.path. Patch BOTH so every OpenAI client
     # routes chat completions to the cloud and embeddings stay local.
-    from tasks.tools.utils import OpenAIClient as TasksOpenAIClient  # noqa: E402
-    from tools.utils import OpenAIClient as ToolsOpenAIClient  # noqa: E402
+    from tasks.tools.utils import OpenAIClient as TasksOpenAIClient
+    from tools.utils import OpenAIClient as ToolsOpenAIClient
 
     # Route only chat completions to the cloud; keep embeddings local.
     def _make_dual_init(orig_init):
@@ -115,8 +113,8 @@ def main() -> int:
         cls.send_request = _cloud_send
         cls.get_embedding = _local_embed
 
-    from constructivist_memory import CAM  # noqa: E402
-    from tasks.question_answering import Explorer  # noqa: E402
+    from constructivist_memory import CAM
+    from tasks.question_answering import Explorer
 
     dataset = generate_dataset(seed=42, sessions=24, events_per_session=5)
     questions = select_questions(dataset)

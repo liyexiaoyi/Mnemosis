@@ -28,13 +28,11 @@ sys.path.insert(0, _BENCH)
 sys.path.insert(0, _SRC)
 sys.path.insert(0, _SDK)
 
-from tencentdb_agent_memory import MemoryClient  # noqa: E402
-
-from locomo_bench import generate_dataset  # noqa: E402
-from compare_with_models import score_answer  # noqa: E402
-from cloud_qwen_matrix import cloud_generate  # noqa: E402
-from model_x_project import select_questions  # noqa: E402
-
+from cloud_qwen_matrix import cloud_generate
+from compare_with_models import score_answer
+from locomo_bench import generate_dataset
+from model_x_project import select_questions
+from tencentdb_agent_memory import MemoryClient
 
 ENDPOINT = "http://127.0.0.1:8420"
 

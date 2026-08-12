@@ -23,10 +23,9 @@ _WORK = os.path.normpath(os.path.join(_BENCH, "..", "..", "work"))
 sys.path.insert(0, _BENCH)
 sys.path.insert(0, _SRC)
 
-from locomo_bench import generate_dataset  # noqa: E402
-from compare_with_models import score_answer  # noqa: E402
-from model_x_project import select_questions  # noqa: E402
-
+from compare_with_models import score_answer
+from locomo_bench import generate_dataset
+from model_x_project import select_questions
 
 VISION_CONFIG = r"C:\Users\asus\plugins\image-viewer\scripts\vision_config.json"
 

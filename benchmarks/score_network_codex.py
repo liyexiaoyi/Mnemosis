@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """DeepSeek-side answers for round 311, merged into work/network_spot.json."""
 
 import json
@@ -9,10 +8,8 @@ _BENCH = os.path.dirname(os.path.abspath(__file__))
 _WORK = os.path.normpath(os.path.join(_BENCH, "..", "..", "work"))
 sys.path.insert(0, _BENCH)
 
-from game_dev_spot_bench import hit  # noqa: E402
-
-from network_spot_bench import QUESTIONS  # noqa: E402
-
+from game_dev_spot_bench import hit
+from network_spot_bench import QUESTIONS
 
 STANDARD = {
     "现在宽带多少兆？": "千兆",

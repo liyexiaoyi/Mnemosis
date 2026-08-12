@@ -11,7 +11,7 @@ _SRC = os.path.normpath(os.path.join(_BENCH, "..", "src"))
 sys.path.insert(0, _BENCH)
 sys.path.insert(0, _SRC)
 
-from reasoning_zh_bench import QUESTIONS, score_answer  # noqa: E402
+from reasoning_zh_bench import QUESTIONS, score_answer
 
 
 def _load(path: str) -> dict:

@@ -12,7 +12,6 @@ import argparse
 
 from spot_common import run_spot
 
-
 DATASET = [
     # Similar-entity interference: 老王修车店 vs 老王修理店
     {

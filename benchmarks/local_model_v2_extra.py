@@ -15,10 +15,11 @@ _SRC = os.path.normpath(os.path.join(_BENCH, "..", "src"))
 sys.path.insert(0, _BENCH)
 sys.path.insert(0, _SRC)
 
-from compare_with_models import ollama_generate  # noqa: E402
-from replan_bench import build_engine as build_replan_engine  # noqa: E402
-from replan_bench import ALI_FLIGHT, GOAL  # noqa: E402
-from mnemosis import MemoryEngine  # noqa: E402
+from compare_with_models import ollama_generate
+from replan_bench import ALI_FLIGHT, GOAL
+from replan_bench import build_engine as build_replan_engine
+
+from mnemosis import MemoryEngine
 
 MODEL = "qwen2.5:3b"
 URL = "http://127.0.0.1:11434"

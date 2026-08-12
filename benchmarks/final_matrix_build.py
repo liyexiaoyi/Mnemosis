@@ -24,9 +24,9 @@ def _load(path: str):
 
 
 def _codex_en_scores() -> dict[str, float]:
+    from compare_with_models import score_answer
     from locomo_bench import generate_dataset
     from model_x_project import select_questions
-    from compare_with_models import score_answer
 
     answers = _load(
         os.path.join(_BENCH, "..", "..", "work", "codex_project_answers.json")

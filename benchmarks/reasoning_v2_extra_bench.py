@@ -24,8 +24,7 @@ _SRC = os.path.normpath(os.path.join(_BENCH, "..", "src"))
 sys.path.insert(0, _BENCH)
 sys.path.insert(0, _SRC)
 
-from reasoning_zh_bench import MEMORIES  # noqa: E402
-
+from reasoning_zh_bench import MEMORIES
 
 NEW_QUESTIONS = [
     {
