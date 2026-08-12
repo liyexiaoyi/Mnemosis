@@ -26,6 +26,7 @@ from .dual_track import (
 from .embedding import Embedder
 from .forgetting import ForgettingCurve, ReviewScheduler
 from .importance import ImportanceScorer
+from .learning_mixin import LearningSessionMixin
 from .metacognition import ConfidenceLabel, Metacognition, MetacognitiveCheck
 from .planning_mixin import PlanningMixin
 from .recycle import RecycleBin
@@ -49,7 +50,13 @@ from .types import (
 from .zh_nlp import expand_synonyms, has_cjk  # noqa: F401  (public re-exports)
 
 
-class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
+class MemoryEngine(
+    RetrievalMixin,
+    PlanningMixin,
+    ReviewMixin,
+    AnalysisMixin,
+    LearningSessionMixin,
+):
     """The one thing most users touch.
 
     ```python
