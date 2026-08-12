@@ -94,6 +94,32 @@ ingesting ~5x faster.
 > 导致 20 题里 15 题缺 `ANSWER:` 行、被判 0.25（假低分）。上限提到 1200
 > 后同一批题升到 0.65；mem0 上下文条目少，不受影响（0.45 不变）。
 
+## sleep_bench.py
+
+Sleep-consolidation benchmark with steady-state timing:
+
+```bash
+python benchmarks/sleep_bench.py --count 20000 --tail-queries 0 --steady-runs 3
+```
+
+`--steady-runs N` times additional `sleep()` calls after the first and prints
+median/p99. The first sleep includes whole-store consolidation work; the
+steady-state number is the honest per-cycle cost.
+
+### Results (2026-08-13, 20k store, local build)
+
+| Metric | Value |
+|---|---|
+| First sleep | 0.51 s |
+| Steady-state sleep (median of 3) | 0.48 s |
+
+Profiling note (100k input / 50k active store): steady-state sleep is
+~1.0-1.1s on this machine; the dominant cost is SQLite row → `MemoryItem`
+materialization (JSON source/cues + object creation), which the phases
+genuinely need (`source.trust` is used by accommodation). Enum-lookup
+micro-tuning measured neutral and was reverted; no further safe win found
+without changing consolidation semantics.
+
 ## compare_with_models.py
 
 Compares Mnemosis against local LLMs (via Ollama) on a small memory
