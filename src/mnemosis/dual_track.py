@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 import math
 import numbers
+import queue
 import re
 import threading
 import time
@@ -216,6 +217,10 @@ class DualTrackStore:
         self._df_cache: OrderedDict[
             tuple[str, MemoryKind | None], int
         ] = OrderedDict()
+        self._reinforce_queue: queue.Queue = queue.Queue()
+        self._reinforce_thread: threading.Thread | None = None
+        self._worker_lock = threading.Lock()
+        self._is_shutdown = False
         self._lock = threading.RLock()
         self.pattern_completions = 0
 
@@ -479,7 +484,7 @@ class DualTrackStore:
                 top_k,
                 kind,
                 context,
-                tuple(sorted(exclude_ids or ())),
+                frozenset(exclude_ids or ()),
                 embedder_key,
             )
             cached = self._fallback_cache_get(fallback_cache_key)
@@ -1139,6 +1144,86 @@ class DualTrackStore:
                 },
             )
         return results
+
+    def _ensure_reinforce_worker(self) -> None:
+        """Lazily start the single background reinforcement worker."""
+        if self._is_shutdown:
+            return
+        with self._worker_lock:
+            if (
+                self._reinforce_thread is not None
+                and self._reinforce_thread.is_alive()
+            ):
+                return
+            self._reinforce_thread = threading.Thread(
+                target=self._reinforce_worker_loop,
+                name="mnemosis-reinforce",
+                daemon=True,
+            )
+            self._reinforce_thread.start()
+
+    def _reinforce_worker_loop(self) -> None:
+        while True:
+            first = self._reinforce_queue.get()
+            if first is None:
+                self._reinforce_queue.task_done()
+                return
+            batches = [first]
+            sentinel = False
+            while True:
+                try:
+                    extra = self._reinforce_queue.get_nowait()
+                except queue.Empty:
+                    break
+                if extra is None:
+                    sentinel = True
+                    break
+                batches.append(extra)
+            merged: list[MemoryItem] = []
+            seen: set[str] = set()
+            for batch in batches:
+                for item in batch:
+                    if item.id not in seen:
+                        seen.add(item.id)
+                        merged.append(item)
+            try:
+                self.backend.update_many(merged)
+            except Exception as exc:  # noqa: BLE001
+                _LOG.debug("background reinforcement failed: %s", exc)
+            for _ in batches:
+                self._reinforce_queue.task_done()
+            if sentinel:
+                self._reinforce_queue.task_done()
+                return
+
+    def enqueue_reinforce(self, items: list[MemoryItem]) -> None:
+        """Queue a best-effort reinforcement batch for the worker."""
+        if not items:
+            return
+        if self._is_shutdown:
+            _LOG.debug("reinforcement dropped: worker already shut down")
+            return
+        self._ensure_reinforce_worker()
+        self._reinforce_queue.put(items)
+
+    def shutdown_reinforce_worker(self) -> None:
+        """Drain pending reinforcement writes and stop the worker."""
+        with self._worker_lock:
+            self._is_shutdown = True
+            thread = self._reinforce_thread
+        if thread is None or not thread.is_alive():
+            return
+        self._reinforce_queue.put(None)
+        thread.join(timeout=10)
+        if thread.is_alive():
+            _LOG.warning(
+                "reinforce worker did not stop within 10s; "
+                "leaving daemon thread"
+            )
+            return
+        with self._worker_lock:
+            if self._reinforce_thread is thread:
+                self._reinforce_thread = None
 
     @staticmethod
     def _precise_event_match(query: str, item: MemoryItem) -> bool:
@@ -1806,14 +1891,10 @@ class DualTrackStore:
                 item.retrieval_successes += 1
                 updated_items.append(item)
             if updated_items:
-                try:
-                    self.backend.update_many(updated_items)
-                except Exception as exc:  # noqa: BLE001
-                    # Best-effort reinforcement: a write failure must not
-                    # skip miss accounting or the recall itself.
-                    _LOG.debug(
-                        "reinforcement batch update failed: %s", exc
-                    )
+                # Best-effort reinforcement: the write happens on a
+                # background worker so a cached hit can return without
+                # waiting on SQLite I/O; engine.close() drains the queue.
+                self.enqueue_reinforce(updated_items)
             self._record_misses(scored, top_k, now)
             # Note: _record_misses only inspects scored[:top_k], and the
             # cached payload is exactly the top-k slice, so the side effect
