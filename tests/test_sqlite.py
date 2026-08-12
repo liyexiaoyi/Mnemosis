@@ -250,6 +250,23 @@ class SQLiteBackendTest(unittest.TestCase):
         finally:
             backend.close()
 
+    def test_reopen_self_heals_missing_links_index(self):
+        self.engine.backend._conn.execute(
+            "DROP INDEX IF EXISTS idx_links_dst"
+        )
+        self.engine.close()
+        reopened = MemoryEngine(self.path)
+        try:
+            indexes = {
+                row[1]
+                for row in reopened.backend._conn.execute(
+                    "PRAGMA index_list('links')"
+                ).fetchall()
+            }
+            self.assertIn("idx_links_dst", indexes)
+        finally:
+            reopened.close()
+
     def test_get_many_large_batch_json_path_and_dedupe(self):
         backend = SQLiteBackend(":memory:")
         try:

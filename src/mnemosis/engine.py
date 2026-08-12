@@ -256,11 +256,13 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
                 )
             # Cues were already persisted in bulk by store.remember_many, so
             # the per-item associations.index loop is not needed here. The
-            # link budget shrinks for very large batches: 64 links/item is
-            # fine at 10k, but at 100k it would write ~13M edges, so the
-            # budget is scaled down (>= 8) to keep ingestion linear.
+            # link budget shrinks for very large batches: 32 links/item is
+            # plenty for associative recall at 10k-20k, and at 100k it is
+            # scaled down (>= 8) to keep ingestion linear and the edge table
+            # from dominating the build (bulk link insertion is the largest
+            # single cost of a 100k import).
             link_budget = min(
-                64, max(8, 1_000_000 // max(1, len(stored)))
+                32, max(8, 1_000_000 // max(1, len(stored)))
             )
             pairs = self.associations.link_related_batch(
                 stored, max_links=link_budget
@@ -279,6 +281,104 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
             ):
                 self.event_chain.invalidate()
             return stored
+
+    def remember_many_chunked(
+        self,
+        memories: list[dict],
+        *,
+        chunk_size: int = 2000,
+        auto_cues: bool = True,
+        auto_context: bool = True,
+        max_links: int | None = None,
+    ) -> list[MemoryItem]:
+        """Chunked batch remember with incremental association linking.
+
+        Same per-record semantics as ``remember_many``, but for very large
+        imports the association pool is loaded once and extended chunk by
+        chunk instead of reloading the whole store per batch. At 100k scale
+        that reload is the dominant O(n^2) cost, so this path is several
+        times faster than calling ``remember_many`` repeatedly.
+
+        .. warning::
+           Unlike ``remember_many``, this method is NOT atomic. It commits
+           chunk by chunk; if a later chunk fails, earlier chunks are already
+           persisted. Use it for bulk imports where a partial import can be
+           retried or cleaned up.
+        """
+        chunk_size = max(1, int(chunk_size))
+        with self._lock:
+            records: list[dict] = []
+            for memory in memories:
+                content = memory["content"]
+                record = dict(memory)
+                record.setdefault("kind", MemoryKind.EPISODIC)
+                record["source"] = record.get("source") or SourceRecord(
+                    origin=SourceType.USER
+                )
+                if auto_context and record.get("context") is None:
+                    record["context"] = self._extract_context(content)
+                if auto_cues:
+                    record["cues"] = normalize_cues(
+                        list(record.get("cues") or [])
+                        + extract_cues(content)
+                    )
+                records.append(record)
+            if max_links is None:
+                max_links = min(
+                    32,
+                    max(8, 1_000_000 // max(1, len(records))),
+                )
+            self.associations.reset_batch()
+            stored_all: list[MemoryItem] = []
+            if records:
+                self.backend.begin_bulk_mode()
+            try:
+                for start in range(0, len(records), chunk_size):
+                    chunk_records = records[start : start + chunk_size]
+                    vectors = None
+                    if (
+                        self.vector_index is not None
+                        and self.index_embedder is not None
+                    ):
+                        vectors = self.index_embedder.embed_many(
+                            [
+                                record["content"]
+                                for record in chunk_records
+                            ]
+                        )
+                    stored = self.store.remember_many(chunk_records)
+                    if vectors is not None and len(vectors) != len(stored):
+                        raise RuntimeError(
+                            "embedder returned "
+                            f"{len(vectors)} vectors for "
+                            f"{len(stored)} memories"
+                        )
+                    pairs = (
+                        self.associations
+                        .link_related_batch_incremental(
+                            stored, max_links=max_links
+                        )
+                    )
+                    if pairs:
+                        self.backend.add_links_many(pairs)
+                    if vectors is not None:
+                        self.vector_index.add_many(
+                            [
+                                (item.id, vector)
+                                for item, vector in zip(stored, vectors)
+                            ]
+                        )
+                    stored_all.extend(stored)
+            finally:
+                if records:
+                    self.backend.end_bulk_mode()
+                self.associations.reset_batch()
+            if any(
+                item.kind is MemoryKind.EPISODIC
+                for item in stored_all
+            ):
+                self.event_chain.invalidate()
+            return stored_all
 
     def rebuild_missing_vectors(
         self, embedder: Embedder | None = None

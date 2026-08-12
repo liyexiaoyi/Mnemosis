@@ -1,4 +1,6 @@
 import numbers
+import os
+import tempfile
 import time
 import unittest
 from datetime import timedelta
@@ -976,6 +978,48 @@ class MemoryEngineTest(unittest.TestCase):
             self.assertEqual(engine.vector_index.size, 30)
         finally:
             engine.close()
+
+    def test_remember_many_chunked_stores_and_links(self):
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        if os.path.exists(path):
+            os.remove(path)
+        engine = MemoryEngine(path)
+        try:
+            source = SourceRecord(origin=SourceType.USER)
+            records = [
+                {
+                    "content": f"chunked memory {index} shared topic",
+                    "kind": MemoryKind.EPISODIC,
+                    "source": source,
+                    "cues": ["shared-topic"],
+                }
+                for index in range(120)
+            ]
+            stored = engine.remember_many_chunked(
+                records, chunk_size=40
+            )
+            self.assertEqual(len(stored), 120)
+            self.assertTrue(engine.recall("shared topic", top_k=3))
+            self.assertTrue(engine.related(stored[0].id))
+            conn = engine.backend._conn
+            indexes = {
+                row[1]
+                for row in conn.execute(
+                    "PRAGMA index_list('links')"
+                ).fetchall()
+            }
+            self.assertIn("idx_links_dst", indexes)
+            sync = conn.execute("PRAGMA synchronous").fetchone()[0]
+            self.assertEqual(sync, 1)  # NORMAL restored after bulk mode
+            cache = conn.execute("PRAGMA cache_size").fetchone()[0]
+            self.assertEqual(cache, -20000)
+        finally:
+            engine.close()
+            for suffix in ("", "-wal", "-shm"):
+                extra = path + suffix
+                if os.path.exists(extra):
+                    os.remove(extra)
 
     def test_remember_many_embed_failure_leaves_store_untouched(self):
         class _FailingEmbedder(Embedder):

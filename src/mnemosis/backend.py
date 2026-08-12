@@ -116,6 +116,12 @@ class Backend(ABC):
     @abstractmethod
     def stats(self) -> dict: ...
 
+    def begin_bulk_mode(self) -> None:
+        """Switch to fast bulk-import settings (no-op by default)."""
+
+    def end_bulk_mode(self) -> None:
+        """Restore normal settings after a bulk import (no-op by default)."""
+
 
 class DictBackend(Backend):
     """In-memory backend for tests and quickstarts."""
@@ -493,6 +499,7 @@ class SQLiteBackend(Backend):
         self._conn.execute("PRAGMA cache_size=-20000")
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._create_schema()
+        self._ensure_runtime_state()
         self._json_each_ok = self._json_each_probe()
 
     def _create_schema(self) -> None:
@@ -823,6 +830,57 @@ class SQLiteBackend(Backend):
         except sqlite3.OperationalError:
             return False
 
+    def _ensure_runtime_state(self) -> None:
+        """Self-heal after a crash inside a bulk import.
+
+        begin_bulk_mode() drops idx_links_dst and weakens durability; if the
+        process died before end_bulk_mode(), the missing index would silently
+        slow every reverse-link traversal. Recreate it and restore the normal
+        pragmas on the next open.
+        """
+        indexes = {
+            row[1]
+            for row in self._conn.execute(
+                "PRAGMA index_list('links')"
+            ).fetchall()
+        }
+        if "idx_links_dst" not in indexes:
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_links_dst ON links(dst)"
+            )
+        sync = self._conn.execute("PRAGMA synchronous").fetchone()[0]
+        if sync != 1:
+            self._conn.execute("PRAGMA synchronous=NORMAL")
+        cache = self._conn.execute("PRAGMA cache_size").fetchone()[0]
+        if cache != -20000:
+            self._conn.execute("PRAGMA cache_size=-20000")
+
+    @_locked
+    def begin_bulk_mode(self) -> None:
+        """Fast bulk-import settings: no fsync per commit, bigger cache,
+        and the reverse-link index deferred to a single rebuild at the end.
+
+        Only for single-process imports; other connections would miss the
+        dropped index until ``end_bulk_mode`` recreates it. Do NOT let
+        another process/connection write to ``links`` while bulk mode is
+        active: the missing reverse index slows it and the final index
+        rebuild needs the schema lock.
+        """
+        self._conn.execute("PRAGMA synchronous=OFF")
+        self._conn.execute("PRAGMA cache_size=-80000")
+        self._conn.execute("DROP INDEX IF EXISTS idx_links_dst")
+
+    @_locked
+    def end_bulk_mode(self) -> None:
+        """Restore durability settings, rebuild the deferred index, and
+        checkpoint the WAL back into the main database file."""
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_links_dst ON links(dst)"
+        )
+        self._conn.execute("PRAGMA synchronous=NORMAL")
+        self._conn.execute("PRAGMA cache_size=-20000")
+        self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+
     @_locked
     def update(self, item: MemoryItem) -> None:
         with self._conn:
@@ -922,8 +980,9 @@ class SQLiteBackend(Backend):
             )
         if not entries:
             return
-        # Chunked commits keep one huge bulk write from ballooning the WAL
-        # or blocking other connections for minutes.
+        # Deletes are small and share one transaction; inserts commit every
+        # 200k rows so the WAL stays bounded (a single multi-million-row
+        # transaction can balloon to multiple GB before checkpointing).
         with self._conn:
             for start in range(0, len(ids), 500):
                 chunk = ids[start : start + 500]
@@ -932,12 +991,12 @@ class SQLiteBackend(Backend):
                     f"DELETE FROM terms WHERE memory_id IN ({placeholders})",
                     tuple(chunk),
                 )
-        for offset in range(0, len(entries), 50_000):
+        for offset in range(0, len(entries), 200_000):
             with self._conn:
                 self._conn.executemany(
                     "INSERT OR REPLACE INTO terms (term, memory_id, kind) "
                     "VALUES (?, ?, ?)",
-                    entries[offset : offset + 50_000],
+                    entries[offset : offset + 200_000],
                 )
 
     @_locked
