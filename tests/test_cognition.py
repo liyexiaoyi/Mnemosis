@@ -951,6 +951,28 @@ class MemoryMapTest(unittest.TestCase):
         self.assertEqual(topics["项目"], 1)
         self.assertEqual(sum(report["strength"].values()), 4)
 
+    def test_memory_map_limit_samples_newest_only(self):
+        engine = MemoryEngine()
+        try:
+            user = SourceRecord(origin=SourceType.USER)
+            for index in range(10):
+                engine.remember(
+                    f"记忆编号{index}",
+                    kind=MemoryKind.SEMANTIC,
+                    source=user,
+                    cues=[f"topic{index}"],
+                    auto_cues=False,
+                )
+            report = engine.memory_map(limit=3)
+            self.assertEqual(report["sampled"], 3)
+            self.assertEqual(sum(report["strength"].values()), 3)
+            topics = {row["topic"] for row in report["topics"]}
+            # backend.list orders by seq DESC, so the sample must be the
+            # last three inserted memories (topic7/8/9), not arbitrary ones.
+            self.assertTrue({"topic7", "topic8", "topic9"} <= topics)
+        finally:
+            engine.close()
+
 
 class ConsolidationScaleTest(unittest.TestCase):
     def test_bounded_pairs_caps_huge_groups(self) -> None:

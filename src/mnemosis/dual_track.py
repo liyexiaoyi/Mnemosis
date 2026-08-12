@@ -2000,8 +2000,12 @@ class DualTrackStore:
     ) -> list[MemoryItem]:
         return self.backend.list(kind=kind, limit=limit)
 
-    def all_active(self, kind: MemoryKind | None = None) -> list[MemoryItem]:
-        return self.backend.list(kind=kind)
+    def all_active(
+        self,
+        kind: MemoryKind | None = None,
+        limit: int | None = None,
+    ) -> list[MemoryItem]:
+        return self.backend.list(kind=kind, limit=limit)
 
 
 def _overlap(query_terms: set[str], item_terms: frozenset[str]) -> float:

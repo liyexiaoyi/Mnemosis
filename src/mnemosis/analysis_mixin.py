@@ -83,7 +83,9 @@ class AnalysisMixin:
         data behind the human-readable memory-map chart.
         """
         now = now or utcnow()
-        items = self.store.all_active()[: max(1, int(limit))]
+        # Sample only the newest `limit` memories instead of loading the
+        # whole store (the default chart is about the recent working set).
+        items = self.store.all_active(limit=max(1, int(limit)))
         groups: dict[str, list[MemoryItem]] = {}
         for item in items:
             topic = item.cues[0] if item.cues else item.content[:12]
