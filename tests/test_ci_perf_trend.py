@@ -202,15 +202,23 @@ class TrendLogicTest(unittest.TestCase):
             },
         ]
         summary = ci_perf._summary_markdown(
-            [(100, 2.0), (500, 5.0), (2000, 20.0)],
+            [(100, 2.0, 2.5), (500, 5.0, 6.0), (2000, 20.0, 22.0)],
             {100: 2.0, 500: 5.0, 2000: 20.0},
             {100: 1.0, 500: 5.0, 2000: 20.0},
             [],
             runs,
         )
-        self.assertIn("Δ vs prev", summary)
+        self.assertIn("Δ vs prev(3)", summary)
+        self.assertIn("p95 ms", summary)
         self.assertIn("🔴 +1.00", summary)
         self.assertIn("🟢 -1.00", summary)
+        self.assertIn("| 100 | 2.00 | 🔴 +1.00 | 2.00 | 2.50 |", summary)
+
+    def test_percentile_nearest_rank(self):
+        values = [float(index) for index in range(1, 11)]
+        self.assertEqual(ci_perf._percentile(values, 50), 5.0)
+        self.assertEqual(ci_perf._percentile(values, 95), 10.0)
+        self.assertEqual(ci_perf._percentile(values, 99), 10.0)
 
 
 if __name__ == "__main__":

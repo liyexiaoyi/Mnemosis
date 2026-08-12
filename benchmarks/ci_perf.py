@@ -11,6 +11,7 @@ runners. The query-plan unit test guards the *plan*; this gate guards the
 from __future__ import annotations
 
 import json
+import math
 import os
 import statistics
 import sys
@@ -34,6 +35,7 @@ from mnemosis.types import (
 _CEILINGS_MS = {100: 300.0, 500: 700.0, 2000: 2500.0}
 _ACTIVE_ROWS = 20_000
 _RECYCLED_ROWS = 500
+_ITERATIONS = 10
 _HISTORY_KEEP = 100
 _BASELINE_MIN = 3
 _BASELINE_MAX = 10
@@ -157,6 +159,13 @@ def _cooldown_elapsed(
         return True
 
 
+def _percentile(values: list[float], percent: float) -> float:
+    """Nearest-rank percentile over a non-empty list."""
+    ordered = sorted(values)
+    index = max(0, math.ceil(percent / 100.0 * len(ordered)) - 1)
+    return ordered[index]
+
+
 def _update_trend(
     meta: dict,
     best_by_count: dict[int, float],
@@ -218,32 +227,41 @@ def _update_trend(
 
 
 def _summary_markdown(
-    results: list[tuple[int, float]],
+    results: list[tuple[int, float, float]],
     medians: dict[int, float],
     baselines: dict[int, float],
     resets: list[int],
     runs: list[dict],
 ) -> str:
-    def _previous_best(count: int) -> float | None:
+    def _reference_best(count: int) -> float | None:
+        """Median of the up-to-3 previous runs (excludes the current run)."""
         entries = [
             entry for entry in runs if entry["count"] == count
         ]
-        if len(entries) >= 2:
-            return entries[-2].get("best_ms")
-        return None
+        previous = [
+            entry.get("best_ms")
+            for entry in entries[:-1][-3:]
+            if isinstance(entry.get("best_ms"), (int, float))
+        ]
+        if not previous:
+            return None
+        return statistics.median(previous)
 
     lines = [
         "## get_many performance gate",
         "",
-        "| ids | best ms | Δ vs prev | median ms | baseline ms | ceiling ms |",
-        "|---|---|---|---|---|---|",
+        (
+            "| ids | best ms | Δ vs prev(3) | median ms | "
+            "p95 ms | baseline ms | ceiling ms |"
+        ),
+        "|---|---|---|---|---|---|---|",
     ]
-    for count, best in results:
-        previous = _previous_best(count)
-        if previous is None:
+    for count, best, p95 in results:
+        reference = _reference_best(count)
+        if reference is None:
             delta = "-"
         else:
-            diff = best - previous
+            diff = best - reference
             if diff > 0.05:
                 delta = f"🔴 +{diff:.2f}"
             elif diff < -0.05:
@@ -256,7 +274,7 @@ def _summary_markdown(
         )
         lines.append(
             f"| {count} | {best:.2f} | {delta} | {median_ms} | "
-            f"{baseline_ms} | {_CEILINGS_MS[count]:.0f} |"
+            f"{p95:.2f} | {baseline_ms} | {_CEILINGS_MS[count]:.0f} |"
         )
     if resets:
         lines.append("")
@@ -301,7 +319,7 @@ def main() -> int:
         status=MemoryStatus.RECYCLED, limit=1
     )[0].id
     failures: list[str] = []
-    _results: list[tuple[int, float]] = []
+    _results: list[tuple[int, float, float]] = []
     meta = _load_trend()
     if os.environ.get(_RESET_ENV, "").strip().lower() in (
         "1",
@@ -321,26 +339,42 @@ def main() -> int:
     for count in (100, 500, 2000):
         sample = ids[:count] + [recycled_id]
         backend.get_many(sample)  # warm
-        best = float("inf")
-        for _ in range(3):
+        samples: list[float] = []
+        for _ in range(_ITERATIONS):
             start = time.perf_counter()
             items = backend.get_many(sample)
-            best = min(best, (time.perf_counter() - start) * 1000)
+            samples.append((time.perf_counter() - start) * 1000)
             if len(items) != count:
                 raise RuntimeError(
                     f"expected {count} items, got {len(items)}"
                 )
             if recycled_id in {item.id for item in items}:
                 raise RuntimeError("recycled memory leaked through get_many")
+        best = min(samples)
+        median_ms = statistics.median(samples)
+        p95 = _percentile(samples, 95)
+        p99 = _percentile(samples, 99)
         ceiling = _CEILINGS_MS[count]
         status = "OK" if best <= ceiling else "FAIL"
-        print(f"get_many {count}: best {best:.2f} ms (ceiling {ceiling:.0f}) {status}")
-        _results.append((count, best))
-        history.append({"ts": now_iso, "count": count, "best_ms": best})
+        print(
+            f"get_many {count}: best {best:.2f} / p95 {p95:.2f} ms "
+            f"(ceiling {ceiling:.0f}) {status}"
+        )
+        _results.append((count, best, p95))
+        history.append(
+            {
+                "ts": now_iso,
+                "count": count,
+                "best_ms": best,
+                "median_ms": median_ms,
+                "p95_ms": p95,
+                "p99_ms": p99,
+            }
+        )
         if best > ceiling:
             failures.append(f"{count} ids took {best:.2f} ms")
     backend.close()
-    best_by_count = dict(_results)
+    best_by_count = {count: best for count, best, _ in _results}
     meta, resets, medians, baselines = _update_trend(
         meta, best_by_count, now_iso=now_iso
     )
