@@ -43,7 +43,7 @@ from .types import (
     extract_cues,
     hash_content,
     normalize_cues,
-    tokenize,  # noqa: F401  (public re-export)
+    tokenize,
     utcnow,
 )
 from .zh_nlp import expand_synonyms, has_cjk  # noqa: F401  (public re-exports)
@@ -238,11 +238,14 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
                 if auto_context and record.get("context") is None:
                     record["context"] = self._extract_context(content)
                 if auto_cues:
-                    # MemoryItem.__post_init__ normalizes cues later;
-                    # here we only merge the extracted ones.
+                    # Tokenize once: reuse the tokens for cue extraction
+                    # and stash them so the term index does not tokenize
+                    # the same content a second time.
+                    tokens = tokenize(content)
+                    record["_tokens"] = frozenset(tokens)
                     record["cues"] = (
                         list(record.get("cues") or [])
-                        + extract_cues(content)
+                        + extract_cues(content, tokens=tokens)
                     )
                 records.append(record)
             # Embed BEFORE writing: if the batch API fails halfway, the
@@ -326,9 +329,11 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
                     if auto_context and record.get("context") is None:
                         record["context"] = self._extract_context(content)
                     if auto_cues:
+                        tokens = tokenize(content)
+                        record["_tokens"] = frozenset(tokens)
                         record["cues"] = (
                             list(record.get("cues") or [])
-                            + extract_cues(content)
+                            + extract_cues(content, tokens=tokens)
                         )
                     prepared.append(record)
                 return prepared

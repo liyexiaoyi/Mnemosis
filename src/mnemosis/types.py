@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import re
 import uuid
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
@@ -352,16 +353,21 @@ def _zh_numeral(text: str) -> int:
     return total + section + number
 
 
-def extract_cues(content: str, limit: int = 6) -> list[str]:
+def extract_cues(
+    content: str,
+    limit: int = 6,
+    tokens: Iterable[str] | None = None,
+) -> list[str]:
     """Derive retrieval cues from content (encoding specificity).
 
     Latin words (>= 4 chars) and CJK bigrams become additional retrieval
     routes, so a memory can be reached from more than one angle even when the
-    caller supplied no explicit cues.
+    caller supplied no explicit cues. Callers that already tokenized the
+    content (e.g. bulk import) can pass ``tokens`` to skip the second pass.
     """
     seen: set[str] = set()
     cues: list[str] = []
-    for token in tokenize(content):
+    for token in tokenize(content) if tokens is None else tokens:
         if token in STOPWORDS or token in seen or len(token) < 2:
             continue
         if re.fullmatch(r"[a-z0-9]+", token) and len(token) < 4:

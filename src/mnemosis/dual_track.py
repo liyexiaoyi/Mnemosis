@@ -379,8 +379,16 @@ class DualTrackStore:
                 stored.append(item)
         self.backend.index_terms_many(
             (
-                (item.id, self._terms(item, cache=False), item.kind)
-                for item in stored
+                (
+                    item.id,
+                    (
+                        record.get("_tokens") | frozenset(item.cues)
+                        if record.get("_tokens") is not None
+                        else self._terms(item, cache=False)
+                    ),
+                    item.kind,
+                )
+                for item, record in zip(stored, records)
             ),
             replace=bool(semantic),
         )

@@ -1085,7 +1085,13 @@ class SQLiteBackend(Backend):
         entries: list[tuple[str, str, str]] = []
         ids: list[str] = []
         for memory_id, terms, kind in pairs:
-            normalized = sorted(set(terms))
+            # Dedupe only; the global entries.sort() below provides the
+            # PK-ordered stream, so a per-item sort would be wasted work.
+            normalized = (
+                terms
+                if isinstance(terms, (set, frozenset))
+                else set(terms)
+            )
             if not normalized:
                 continue
             ids.append(memory_id)

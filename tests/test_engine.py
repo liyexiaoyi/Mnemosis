@@ -1312,6 +1312,74 @@ class MemoryEngineTest(unittest.TestCase):
                 if os.path.exists(extra):
                     os.remove(extra)
 
+    def test_remember_many_chunked_terms_include_explicit_cues(self):
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        if os.path.exists(path):
+            os.remove(path)
+        engine = MemoryEngine(path)
+        try:
+            source = SourceRecord(origin=SourceType.USER)
+            records = [
+                {
+                    "content": f"plain body {i}",
+                    "kind": MemoryKind.EPISODIC,
+                    "source": source,
+                    "cues": ["external-tag"],
+                    "importance": 0.5,
+                }
+                for i in range(4)
+            ]
+            engine.remember_many_chunked(
+                records, chunk_size=2, auto_cues=True
+            )
+            df = engine.backend.term_dfs({"external-tag"}, None)[
+                "external-tag"
+            ]
+            self.assertEqual(df, 4)
+        finally:
+            engine.close()
+            for suffix in ("", "-wal", "-shm"):
+                extra = path + suffix
+                if os.path.exists(extra):
+                    os.remove(extra)
+
+    def test_remember_many_chunked_semantic_dedup_terms_align(self):
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        if os.path.exists(path):
+            os.remove(path)
+        engine = MemoryEngine(path)
+        try:
+            source = SourceRecord(origin=SourceType.USER)
+            records = [
+                {
+                    "content": "semantic alpha beta",
+                    "kind": MemoryKind.SEMANTIC,
+                    "source": source,
+                    "cues": ["tag-x"],
+                    "importance": 0.8,
+                }
+                for _ in range(3)
+            ]
+            stored = engine.remember_many_chunked(
+                records, chunk_size=2, auto_cues=True
+            )
+            # One entry per input record, but all dedupe to one memory.
+            self.assertEqual(len({item.id for item in stored}), 1)
+            ids = engine.backend.find_by_terms({"tag-x"}, None)
+            self.assertEqual(ids, {stored[0].id})
+            self.assertEqual(
+                engine.backend.term_dfs({"tag-x"}, None)["tag-x"], 1
+            )
+            self.assertIn("alpha", stored[0].content)
+        finally:
+            engine.close()
+            for suffix in ("", "-wal", "-shm"):
+                extra = path + suffix
+                if os.path.exists(extra):
+                    os.remove(extra)
+
     def test_term_cache_is_bounded(self):
         import mnemosis.dual_track as dual_track_module
 
