@@ -14,7 +14,6 @@ from datetime import datetime
 from typing import ClassVar
 
 from .affective_mixin import AffectiveMixin
-from .analysis_mixin import AnalysisMixin
 from .association import AssociationIndex
 from .backend import Backend, make_backend
 from .cognitive_mixin import CognitiveMixin
@@ -39,6 +38,7 @@ from .narrative_mixin import NarrativeMixin
 from .overview_mixin import OverviewMixin
 from .planning_mixin import PlanningMixin
 from .practice_mixin import PracticeMixin
+from .recall_insights_mixin import RecallInsightsMixin
 from .recycle import RecycleBin
 from .retrieval_diagnostics_mixin import RetrievalDiagnosticsMixin
 from .retrieval_mixin import RetrievalMixin
@@ -68,7 +68,6 @@ class MemoryEngine(
     RetrievalMixin,
     PlanningMixin,
     ReviewMixin,
-    AnalysisMixin,
     LearningSessionMixin,
     SnapshotMixin,
     PracticeMixin,
@@ -80,6 +79,7 @@ class MemoryEngine(
     ExplanationMixin,
     ForgettingQualityMixin,
     RetrievalDiagnosticsMixin,
+    RecallInsightsMixin,
 ):
     """The one thing most users touch.
 

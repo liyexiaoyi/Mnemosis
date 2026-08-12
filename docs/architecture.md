@@ -65,11 +65,11 @@ Mnemosis 是一个零依赖的 Python 记忆层：公开入口是 `mnemosis.Memo
 | `explanation_mixin.py` | 解释与报告：单条记忆解释、双条对比、聚类摘要、多跳关联、考前突击计划、会话总结 |
 | `forgetting_quality_mixin.py` | 遗忘与质量：话题漂移、遗忘曲线导出、复习覆盖率、来源可信度校准、遗忘风险排行、桥接建议 |
 | `retrieval_diagnostics_mixin.py` | 检索诊断：检索质量评估、回忆轨迹解释、记忆社区检测、主题 schema 报告 |
+| `recall_insights_mixin.py` | 回忆洞察：推理前提打包、步进回忆、复习一致性、相似度报告、关联网络报告 |
 ### 分析与元认知
 
 | 模块 | 职责 |
 |---|---|
-| `analysis_mixin.py` | 剩余分析报告：解释记忆、对比、多跳报告、遗忘报告、检索质量、回忆轨迹、社区/相似度/关联报告 |
 | `metacognition.py` | 置信度标签、矛盾报告、知识缺口 |
 
 ### 工具与渲染
@@ -89,11 +89,11 @@ flowchart LR
     E --> RM[RetrievalMixin]
     E --> PM[PlanningMixin]
     E --> VM[ReviewMixin]
-    E --> AM[AnalysisMixin]
     E --> OM[OverviewMixin]
     E --> EM[ExplanationMixin]
     E --> FM[ForgettingQualityMixin]
     E --> RD[RetrievalDiagnosticsMixin]
+    E --> RI[RecallInsightsMixin]
     RM --> DT[DualTrackStore]
     PM --> DT
     VM --> C[Consolidator]

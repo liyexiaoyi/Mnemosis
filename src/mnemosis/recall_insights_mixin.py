@@ -1,4 +1,4 @@
-"""Analysis mixin: reports, metacognition and learning advice."""
+"""Recall insights mixin: reasoning pack, step retrieval, review consistency, similarity and association reports."""
 
 from __future__ import annotations
 
@@ -6,16 +6,11 @@ import re
 from datetime import datetime
 
 from .reasoning import suggested_pack_size
-from .types import (
-    MemoryKind,
-    RecallResult,
-    tokenize,
-    utcnow,
-)
+from .types import MemoryKind, RecallResult, tokenize, utcnow
 from .zh_nlp import expand_synonyms
 
 
-class AnalysisMixin:
+class RecallInsightsMixin:
     def recall_reasoning(
         self,
         query: str,
@@ -37,6 +32,7 @@ class AnalysisMixin:
             now=now,
             reasoning_pack=True,
         )
+
     def recall_steps(
         self,
         query: str,
@@ -189,6 +185,7 @@ class AnalysisMixin:
                     "\u601d\u7ef4\u94fe\u6b65\u9aa4(\u6309\u65f6\u95f4\u6392\u5e8f)"
                 )
         return ordered[:top_k]
+
     def review_consistency(
         self,
         *,
@@ -276,6 +273,7 @@ class AnalysisMixin:
             "top_overdue": reviewed[:3],
             "advice": advice,
         }
+
     def similarity_report(
         self,
         threshold: float = 0.6,
@@ -311,6 +309,7 @@ class AnalysisMixin:
                     )
         pairs.sort(key=lambda p: p["overlap"], reverse=True)
         return pairs[: max(1, int(limit))]
+
     def association_report(self, limit: int = 10) -> dict:
         """Summarize the memory association network.
 
@@ -354,4 +353,3 @@ class AnalysisMixin:
             ),
             "top_connected": top_connected,
         }
-
