@@ -26,7 +26,19 @@ jobs:
         run: python benchmarks/ci_regression.py
         env:
           PYTHONPATH: src
-      - name: get_many performance gate
+      - name: Restore get_many trend cache
+        # Trend history is cached across runs so slow ("frog in boiling
+        # water") regressions show up as median drift, not only ceiling hits.
+        # The key must change every run (run_id) or the cache save is
+        # skipped and the trend never updates; matrix.python-version keeps
+        # the three Python jobs from fighting over one file.
+        uses: actions/cache@v4
+        with:
+          path: benchmarks/results/get_many_trend.json
+          key: get-many-trend-v1-${{ matrix.python-version }}-${{ github.run_id }}
+          restore-keys: |
+            get-many-trend-v1-${{ matrix.python-version }}-
+      - name: get_many performance gate (run)
         run: python benchmarks/ci_perf.py
         env:
           PYTHONPATH: src
