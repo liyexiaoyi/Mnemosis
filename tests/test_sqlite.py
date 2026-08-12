@@ -333,6 +333,54 @@ class SQLiteBackendTest(unittest.TestCase):
         finally:
             backend.close()
 
+    def test_add_many_chunked_inserts_all_with_unique_seq(self):
+        backend = SQLiteBackend(":memory:")
+        try:
+            user = SourceRecord(origin=SourceType.USER)
+            items = [
+                MemoryItem(
+                    content=f"add chunk {index}",
+                    kind=MemoryKind.EPISODIC,
+                    source=user,
+                )
+                for index in range(5_000)
+            ]
+            backend.add_many(items)
+            total = backend._conn.execute(
+                "SELECT COUNT(*) FROM memories"
+            ).fetchone()[0]
+            unique_seq = backend._conn.execute(
+                "SELECT COUNT(DISTINCT seq) FROM memories"
+            ).fetchone()[0]
+            self.assertEqual(total, 5_000)
+            self.assertEqual(unique_seq, 5_000)
+        finally:
+            backend.close()
+
+    def test_add_cues_many_chunked_inserts_all(self):
+        backend = SQLiteBackend(":memory:")
+        try:
+            user = SourceRecord(origin=SourceType.USER)
+            items = [
+                MemoryItem(
+                    content=f"cue chunk {index}",
+                    kind=MemoryKind.EPISODIC,
+                    source=user,
+                    cues=["alpha", "beta"],
+                )
+                for index in range(3_000)
+            ]
+            backend.add_many(items)
+            backend.add_cues_many(
+                (item.id, item.cues) for item in items
+            )
+            total = backend._conn.execute(
+                "SELECT COUNT(*) FROM cues"
+            ).fetchone()[0]
+            self.assertEqual(total, 6_000)
+        finally:
+            backend.close()
+
     def test_get_many_large_batch_json_path_and_dedupe(self):
         backend = SQLiteBackend(":memory:")
         try:

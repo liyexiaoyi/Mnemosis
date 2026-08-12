@@ -32,6 +32,10 @@ _UPDATE_BATCH = 500
 """Rows per transaction in update_many: bounds SQLite write-lock hold time
 so concurrent writers (e.g. the reinforcement worker) do not stall long."""
 
+_WRITE_BATCH = 2_000
+"""Rows per transaction in add_many/add_cues_many: a single giant insert
+can hold the write lock for seconds during large imports."""
+
 
 def _locked(method):
     """Serialize a backend method on the instance lock (reentrant)."""
@@ -699,34 +703,43 @@ class SQLiteBackend(Backend):
 
     @_locked
     def add_many(self, items: list[MemoryItem]) -> None:
-        """Insert many memories and their cues in one atomic transaction."""
+        """Insert many memories and their cues in bounded transactions.
+
+        NOTE: no longer globally atomic -- an error mid-way leaves earlier
+        batches committed. Retry callers must tolerate already-inserted ids
+        (use a fresh run or upsert semantics).
+        """
         if not items:
             return
-        self._begin_immediate()
-        try:
-            row = self._conn.execute(
-                "SELECT COALESCE(MAX(seq), 0) AS next FROM memories"
-            ).fetchone()
-            seq = int(row["next"])
-            rows: list[tuple] = []
-            cue_rows: list[tuple[str, str]] = []
-            for item in items:
-                seq += 1
-                item.seq = seq
-                rows.append(_item_row(item))
-                cue_rows.extend(
-                    (cue, item.id) for cue in normalize_cues(item.cues)
-                )
-            self._conn.executemany(_INSERT_SQL, rows)
-            if cue_rows:
-                self._conn.executemany(
-                    "INSERT OR IGNORE INTO cues (cue, memory_id) VALUES (?, ?)",
-                    cue_rows,
-                )
-            self._conn.commit()
-        except Exception:
-            self._conn.rollback()
-            raise
+        for start in range(0, len(items), _WRITE_BATCH):
+            chunk = items[start : start + _WRITE_BATCH]
+            self._begin_immediate()
+            try:
+                row = self._conn.execute(
+                    "SELECT COALESCE(MAX(seq), 0) AS next FROM memories"
+                ).fetchone()
+                seq = int(row["next"])
+                rows: list[tuple] = []
+                cue_rows: list[tuple[str, str]] = []
+                for item in chunk:
+                    seq += 1
+                    item.seq = seq
+                    rows.append(_item_row(item))
+                    cue_rows.extend(
+                        (cue, item.id)
+                        for cue in normalize_cues(item.cues)
+                    )
+                self._conn.executemany(_INSERT_SQL, rows)
+                if cue_rows:
+                    self._conn.executemany(
+                        "INSERT OR IGNORE INTO cues (cue, memory_id) "
+                        "VALUES (?, ?)",
+                        cue_rows,
+                    )
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
 
     @_locked
     def upsert(self, item: MemoryItem) -> MemoryItem:
@@ -1285,7 +1298,7 @@ class SQLiteBackend(Backend):
 
     @_locked
     def add_cues_many(self, pairs: Iterable[tuple[str, Iterable[str]]]) -> None:
-        """Add cues for many memories in one atomic transaction."""
+        """Add cues for many memories in bounded transactions (batch-atomic)."""
         rows = [
             (cue, memory_id)
             for memory_id, cues in pairs
@@ -1293,11 +1306,13 @@ class SQLiteBackend(Backend):
         ]
         if not rows:
             return
-        with self._conn:
-            self._conn.executemany(
-                "INSERT OR IGNORE INTO cues (cue, memory_id) VALUES (?, ?)",
-                rows,
-            )
+        for start in range(0, len(rows), _WRITE_BATCH):
+            with self._conn:
+                self._conn.executemany(
+                    "INSERT OR IGNORE INTO cues (cue, memory_id) "
+                    "VALUES (?, ?)",
+                    rows[start : start + _WRITE_BATCH],
+                )
 
     @_locked
     def remove_cues(self, memory_id: str, cues: Iterable[str]) -> None:
