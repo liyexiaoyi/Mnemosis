@@ -11,6 +11,8 @@ import uuid
 from dataclasses import fields
 from datetime import datetime, timezone
 
+from plan_assert import assert_plan_uses_index
+
 from mnemosis import MemoryEngine
 from mnemosis.backend import SQLiteBackend, _row_to_item
 from mnemosis.types import (
@@ -196,25 +198,38 @@ class SQLiteBackendTest(unittest.TestCase):
             backend.add_link(stored[1].id, stored[0].id, 1.0)
             backend._conn.execute("ANALYZE")
             plans = backend.audit_query_plans()
-            self.assertIn("USING INDEX", plans["get_many"])
-            self.assertIn(
-                "sqlite_autoindex_memories_1",
+            assert_plan_uses_index(
+                self,
                 plans["get_many"],
+                "sqlite_autoindex_memories_1",
+                alias="m",
+                table="memories",
             )
             self.assertNotIn(
                 "idx_memories_status_importance", plans["get_many"]
             )
-            self.assertNotIn("SCAN m", plans["get_many"])
-            self.assertIn("USING INDEX", plans["get_many_long"])
-            self.assertIn(
-                "sqlite_autoindex_memories_1",
+            assert_plan_uses_index(
+                self,
                 plans["get_many_long"],
+                "sqlite_autoindex_memories_1",
+                alias="m",
+                table="memories",
             )
             self.assertNotIn(
                 "idx_memories_status_importance",
                 plans["get_many_long"],
             )
-            self.assertNotIn("SCAN m", plans["get_many_long"])
+            assert_plan_uses_index(
+                self,
+                plans["get_many_json"],
+                "sqlite_autoindex_memories_1",
+                alias="m",
+                table="memories",
+            )
+            self.assertNotIn(
+                "idx_memories_status_importance",
+                plans["get_many_json"],
+            )
             self.assertIn("idx_memories_status_seq", plans["list_recent"])
             self.assertNotIn("SCAN", plans["list_recent"])
             self.assertIn(
@@ -232,6 +247,40 @@ class SQLiteBackendTest(unittest.TestCase):
             self.assertIn(
                 "sqlite_autoindex_memories_1", plans["related_memories"]
             )
+        finally:
+            backend.close()
+
+    def test_get_many_large_batch_json_path_and_dedupe(self):
+        backend = SQLiteBackend(":memory:")
+        try:
+            stored = []
+            for index in range(100):
+                item = MemoryItem(
+                    content=f"batch item {index}",
+                    kind=MemoryKind.EPISODIC,
+                    source=SourceRecord(origin=SourceType.USER),
+                )
+                backend.add(item)
+                stored.append(item)
+            ids = [item.id for item in stored]
+            batch = backend.get_many(ids[:70])  # >= 64 -> json_each path
+            self.assertEqual(len(batch), 70)
+            self.assertEqual(
+                {item.id for item in batch}, set(ids[:70])
+            )
+            dup_batch = ids[:67] + [ids[0], ids[1], ids[2]]
+            deduped_large = backend.get_many(dup_batch)
+            self.assertEqual(len(deduped_large), 67)
+            self.assertEqual(
+                {item.id for item in deduped_large}, set(ids[:67])
+            )
+            self.assertEqual(deduped_large[0].id, ids[66])
+            deduped = backend.get_many(
+                [ids[0], ids[0], ids[1], ids[1], ids[2]]
+            )
+            self.assertEqual(len(deduped), 3)
+            # get_many sorts by seq descending, so the newest id comes first.
+            self.assertEqual(deduped[0].id, ids[2])
         finally:
             backend.close()
 

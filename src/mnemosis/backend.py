@@ -479,6 +479,8 @@ class DictBackend(Backend):
 class SQLiteBackend(Backend):
     """Durable SQLite backend (WAL mode). Pass ``":memory:"`` for tests."""
 
+    _JSON_EACH_THRESHOLD = 64
+
     def __init__(self, path: str = "mnemosis.db") -> None:
         self._conn = sqlite3.connect(path, check_same_thread=False)
         self._term_pending = 0
@@ -491,6 +493,7 @@ class SQLiteBackend(Backend):
         self._conn.execute("PRAGMA cache_size=-20000")
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._create_schema()
+        self._json_each_ok = self._json_each_probe()
 
     def _create_schema(self) -> None:
         with self._conn:
@@ -772,17 +775,28 @@ class SQLiteBackend(Backend):
         if not ids:
             return []
         items: list[MemoryItem] = []
-        for start in range(0, len(ids), 500):
-            chunk = ids[start : start + 500]
-            # A long `id IN (...)` list can make SQLite scan the table on
-            # small stores and after ANALYZE; a VALUES CTE join always
-            # resolves through the primary key index.
-            placeholders = "),(".join("?" for _ in chunk)
-            rows = self._conn.execute(
-                "WITH cte(id) AS (VALUES (" + placeholders + ")) "
-                "SELECT m.* FROM memories m JOIN cte ON m.id = cte.id",
-                tuple(chunk),
-            ).fetchall()
+        for start in range(0, len(ids), 1000):
+            chunk = ids[start : start + 1000]
+            if len(chunk) >= self._JSON_EACH_THRESHOLD and self._json_each_ok:
+                # json_each (SQLite 3.38+) passes the whole list as one JSON
+                # parameter: no giant SQL string to parse, same PK-index
+                # lookup, and no per-chunk VALUES bloat for very large lists
+                # (1000 UUIDs serialize to ~40KB, far below SQLite limits).
+                rows = self._conn.execute(
+                    "SELECT m.* FROM memories m "
+                    "JOIN json_each(?) AS j ON m.id = j.value",
+                    (json.dumps(chunk, default=str),),
+                ).fetchall()
+            else:
+                # A long `id IN (...)` list can make SQLite scan the table on
+                # small stores and after ANALYZE; a VALUES CTE join always
+                # resolves through the primary key index.
+                placeholders = "),(".join("?" for _ in chunk)
+                rows = self._conn.execute(
+                    "WITH cte(id) AS (VALUES (" + placeholders + ")) "
+                    "SELECT m.* FROM memories m JOIN cte ON m.id = cte.id",
+                    tuple(chunk),
+                ).fetchall()
             items.extend(
                 item
                 for row in rows
@@ -791,6 +805,16 @@ class SQLiteBackend(Backend):
             )
         items.sort(key=lambda item: item.seq, reverse=True)
         return items
+
+    def _json_each_probe(self) -> bool:
+        """Whether json_each is usable (older SQLite builds lack it)."""
+        try:
+            self._conn.execute(
+                "SELECT value FROM json_each(?) LIMIT 1", ("[]",)
+            ).fetchone()
+            return True
+        except sqlite3.OperationalError:
+            return False
 
     @_locked
     def update(self, item: MemoryItem) -> None:
@@ -1237,6 +1261,11 @@ class SQLiteBackend(Backend):
                 + "),(".join("?" for _ in range(50))
                 + ")) SELECT m.* FROM memories m JOIN cte ON m.id = cte.id",
                 tuple(f"id{i}" for i in range(50)),
+            ),
+            "get_many_json": self.query_plan(
+                "SELECT m.* FROM memories m "
+                "JOIN json_each(?) AS j ON m.id = j.value",
+                ("[]",),
             ),
             "list_recent": self.query_plan(
                 "SELECT * FROM memories WHERE status = ? "
