@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 import sys
 
 _BENCH = os.path.dirname(os.path.abspath(__file__))
@@ -34,10 +35,30 @@ XIAOBO_STEPS = [
 ]
 
 
-def build_engine() -> MemoryEngine:
+def build_engine(noise_scale: float = 1.0, seed: int = 27) -> MemoryEngine:
+    """Build the benchmark engine.
+
+    ``noise_scale`` controls how much of the background noise is kept
+    (CI uses a small ratio for speed); the reference plans and rival
+    projects are always injected in full. A fixed-seed random sample is
+    used instead of a head slice so the reduced store still represents a
+    uniform mix of the noise distribution.
+    """
     engine = MemoryEngine()
     source = SourceRecord(origin=SourceType.USER)
-    for content in generate_memories():
+    noise = generate_memories()
+    # Reference plans are injected separately below, but keep them out of
+    # the sampled noise explicitly so a future generator change cannot
+    # accidentally drop them from the reduced CI store.
+    key_contents = set(XIAOBO_STEPS) | set(ALI_STEPS)
+    noise = [
+        content for content in noise if content not in key_contents
+    ]
+    sample_size = max(1, int(len(noise) * noise_scale))
+    sample = random.Random(seed).sample(
+        noise, min(sample_size, len(noise))
+    )
+    for content in sample:
         cue = content.split("最")[0].split("比")[0].split("买")[0]
         engine.remember(
             content,

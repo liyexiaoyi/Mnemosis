@@ -24,6 +24,14 @@ from locomo_bench import (
     eval_retrieval,
     generate_dataset,
 )
+from plan_choice_10k_bench import (
+    ALI_STEPS,
+    GOAL,
+    XIAOBO_STEPS,
+)
+from plan_choice_10k_bench import (
+    build_engine as build_plan_engine,
+)
 
 from mnemosis import MemoryEngine
 from mnemosis.types import MemoryKind, SourceRecord, SourceType
@@ -228,6 +236,44 @@ def main() -> int:
         (
             f"{full['total']}/{full['n']} vs "
             f"{baseline['total']}/{baseline['n']}"
+        ),
+    )
+
+    # 0.2 noise (~2k memories) keeps the fast CI gate; top_k=30 keeps the
+    # down-weighted plan safely inside the window so the assertion checks
+    # ranking, not recall. The full 10k run is available standalone.
+    plan_engine = build_plan_engine(noise_scale=0.2)
+    try:
+        plan_on = plan_engine.plan_for_goal(
+            GOAL, top_k=30, outcome_aware=True
+        )
+        plan_off = plan_engine.plan_for_goal(
+            GOAL, top_k=30, outcome_aware=False
+        )
+    finally:
+        plan_engine.close()
+
+    def _rank(plan: list, content: str) -> int | None:
+        contents = [r.item.content for r in plan]
+        return contents.index(content) if content in contents else None
+
+    on_x = _rank(plan_on, XIAOBO_STEPS[0])
+    on_a = _rank(plan_on, ALI_STEPS[0])
+    off_x = _rank(plan_off, XIAOBO_STEPS[0])
+    off_a = _rank(plan_off, ALI_STEPS[0])
+    check(
+        "zh planning: outcome-aware ranks successful plan",
+        (
+            on_x is not None
+            and on_a is not None
+            and off_x is not None
+            and off_a is not None
+            and on_x < on_a
+            and off_x > off_a
+        ),
+        (
+            f"on 小波@{on_x} 阿丽@{on_a}; "
+            f"off 小波@{off_x} 阿丽@{off_a}"
         ),
     )
 
