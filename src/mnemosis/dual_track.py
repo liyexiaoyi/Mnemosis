@@ -48,6 +48,9 @@ instead of being drowned by recency.
 _TERM_CACHE_LIMIT = 50_000
 """Upper bound for the per-item term cache (FIFO eviction)."""
 
+_DF_CACHE_LIMIT = 50_000
+"""Upper bound for the term document-frequency cache (FIFO eviction)."""
+
 _FALLBACK_IMPORTANCE_BOOST = 0.20
 """Extra score per unit of importance in zero-hit fallback ranking.
 
@@ -207,7 +210,9 @@ class DualTrackStore:
             maxlen=32768
         )
         self._inverted: dict[str, dict[str, set[str]]] = {}
-        self._df_cache: dict[tuple[str, MemoryKind | None], int] = {}
+        self._df_cache: OrderedDict[
+            tuple[str, MemoryKind | None], int
+        ] = OrderedDict()
         self._lock = threading.RLock()
         self.pattern_completions = 0
 
@@ -232,6 +237,8 @@ class DualTrackStore:
                     self._df_cache[(term, kind)] = df
                 for term in missing:
                     self._df_cache.setdefault((term, kind), 0)
+                while len(self._df_cache) > _DF_CACHE_LIMIT:
+                    self._df_cache.popitem(last=False)
                 cached = {
                     term: self._df_cache.get((term, kind), 0)
                     for term in terms
@@ -1337,7 +1344,7 @@ class DualTrackStore:
     def invalidate_term_index(self) -> None:
         with self._lock:
             self._inverted = {}
-            self._df_cache = {}
+            self._df_cache = OrderedDict()
             # Term frequency changes can flip the fallback heuristic, so a
             # term-index rebuild must also drop cached fallback results.
             self._fallback_cache.clear()

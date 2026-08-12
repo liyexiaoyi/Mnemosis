@@ -889,11 +889,11 @@ class SQLiteBackend(Backend):
                 "CREATE INDEX IF NOT EXISTS idx_terms_memory "
                 "ON terms(memory_id)"
             )
-        sync = self._conn.execute("PRAGMA synchronous").fetchone()[0]
-        if sync != 1:
+        sync_row = self._conn.execute("PRAGMA synchronous").fetchone()
+        if sync_row is not None and sync_row[0] != 1:
             self._conn.execute("PRAGMA synchronous=NORMAL")
-        cache = self._conn.execute("PRAGMA cache_size").fetchone()[0]
-        if cache != -20000:
+        cache_row = self._conn.execute("PRAGMA cache_size").fetchone()
+        if cache_row is not None and cache_row[0] != -20000:
             self._conn.execute("PRAGMA cache_size=-20000")
 
     @_locked

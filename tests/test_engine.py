@@ -1090,6 +1090,28 @@ class MemoryEngineTest(unittest.TestCase):
         self.assertNotIn(legacy_id, backend._memory_terms)
         engine.close()
 
+    def test_df_cache_is_bounded(self):
+        import mnemosis.dual_track as dual_track_module
+
+        original = dual_track_module._DF_CACHE_LIMIT
+        dual_track_module._DF_CACHE_LIMIT = 10
+        engine = MemoryEngine()
+        try:
+            source = SourceRecord(origin=SourceType.USER)
+            for index in range(5):
+                engine.remember(
+                    f"df cache {index} unique{index}",
+                    kind=MemoryKind.EPISODIC,
+                    source=source,
+                    auto_cues=False,
+                )
+            for index in range(30):
+                engine.recall(f"q{index} unique{index % 5}", top_k=1)
+            self.assertLessEqual(len(engine.store._df_cache), 10)
+        finally:
+            dual_track_module._DF_CACHE_LIMIT = original
+            engine.close()
+
     def test_remember_many_embed_failure_leaves_store_untouched(self):
         class _FailingEmbedder(Embedder):
             def embed(self, text: str) -> list[float]:
