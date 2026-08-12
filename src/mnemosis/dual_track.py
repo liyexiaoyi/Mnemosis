@@ -161,6 +161,7 @@ class DualTrackStore:
         dense_rerank_candidates: int = _DENSE_RERANK_CANDIDATES,
         zero_hit_rerank_pool: int = _MAX_ZERO_HIT_RERANK_POOL,
         embed_cache_limit: int = 100_000,
+        embed_cache_memory_limit_mb: float | None = None,
     ) -> None:
         self.backend = backend
         self.curve = curve
@@ -170,6 +171,11 @@ class DualTrackStore:
         self._term_cache: dict[tuple, frozenset[str]] = {}
         self._embed_cache: OrderedDict[tuple, list[float]] = OrderedDict()
         self.embed_cache_limit = max(1, int(embed_cache_limit))
+        if embed_cache_memory_limit_mb is not None and embed_cache_memory_limit_mb > 0:
+            self.embed_cache_memory_limit = int(embed_cache_memory_limit_mb * 1024 * 1024)
+        else:
+            self.embed_cache_memory_limit = 0  # disabled; count limit still applies
+        self._embed_cache_bytes = 0
         self._inverted: dict[str, dict[str, set[str]]] = {}
         self._df_cache: dict[tuple[str, MemoryKind | None], int] = {}
         self._lock = threading.RLock()
@@ -776,7 +782,12 @@ class DualTrackStore:
                     for item, vector in zip(rerank_items, vectors)
                 }
                 with self._lock:
-                    self._embed_cache.update(cache_updates)
+                    for key, vector in cache_updates.items():
+                        old = self._embed_cache.get(key)
+                        if old is not None:
+                            self._embed_cache_bytes -= self._vector_cache_bytes(old)
+                        self._embed_cache[key] = vector
+                        self._embed_cache_bytes += self._vector_cache_bytes(vector)
                     self._trim_embed_cache_locked()
                 vector_by_id = {
                     item.id: vector
@@ -1329,22 +1340,42 @@ class DualTrackStore:
         key = self._embed_cache_key(item, embedder)
         with self._lock:
             cached = self._embed_cache.get(key)
-            if cached is None:
-                cached = embedder.embed(self._embed_text(item))
-                self._embed_cache[key] = cached
-                self._trim_embed_cache_locked()
+        if cached is not None:
             return cached
+        # Embed outside the store lock: remote embedders can take hundreds of
+        # milliseconds, and serializing every concurrent recall behind that
+        # would defeat the cache's purpose.
+        vector = embedder.embed(self._embed_text(item))
+        with self._lock:
+            existing = self._embed_cache.get(key)
+            if existing is not None:
+                return existing
+            self._embed_cache[key] = vector
+            self._embed_cache_bytes += self._vector_cache_bytes(vector)
+            self._trim_embed_cache_locked()
+            return vector
 
     def _trim_embed_cache_locked(self) -> None:
-        """Evict oldest-inserted vectors beyond the limit.
+        """Evict oldest-inserted vectors beyond the limits.
 
         Read hits intentionally do not touch the order (a move on every hit
         would need a write lock per read); this is a capacity-bounding FIFO
-        cache, which keeps concurrent reads cheap and memory bounded.
+        cache, which keeps concurrent reads cheap and memory bounded. The
+        primary bound is an estimated byte budget (``len(vector) * 4``); the
+        entry-count limit is kept as a floor so extremely high-dimensional
+        vectors cannot blow past the byte estimate in one insert.
         """
-        evict = len(self._embed_cache) - self.embed_cache_limit
-        for _ in range(evict):
-            self._embed_cache.popitem(last=False)
+        while len(self._embed_cache) > self.embed_cache_limit or (
+            self.embed_cache_memory_limit > 0
+            and self._embed_cache_bytes > self.embed_cache_memory_limit
+        ):
+            _, vector = self._embed_cache.popitem(last=False)
+            self._embed_cache_bytes -= self._vector_cache_bytes(vector)
+
+    @staticmethod
+    def _vector_cache_bytes(vector: list[float]) -> int:
+        """Rough resident-memory estimate for one cached vector."""
+        return len(vector) * 4
 
     @staticmethod
     def _embed_text(item: MemoryItem) -> str:

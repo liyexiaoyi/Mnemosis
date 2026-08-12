@@ -74,6 +74,7 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
         dense_rerank_candidates: int = _DENSE_RERANK_CANDIDATES,
         zero_hit_rerank_pool: int = _MAX_ZERO_HIT_RERANK_POOL,
         embed_cache_limit: int = 100_000,
+        embed_cache_memory_limit_mb: float | None = 512.0,
     ) -> None:
         self.backend: Backend = make_backend(memory_file)
         if decay_rate is None:
@@ -95,6 +96,7 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
             dense_rerank_candidates=dense_rerank_candidates,
             zero_hit_rerank_pool=zero_hit_rerank_pool,
             embed_cache_limit=embed_cache_limit,
+            embed_cache_memory_limit_mb=embed_cache_memory_limit_mb,
         )
         self.associations = AssociationIndex(self.backend)
         self.event_chain = EventChainIndex(self.backend)

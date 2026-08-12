@@ -612,6 +612,85 @@ class MemoryEngineTest(unittest.TestCase):
         # topic 0 was evicted (LRU) -> must be embedded again
         self.assertGreater(counting.calls, before)
 
+    def test_embed_cache_respects_byte_limit(self):
+        class _HighDimCountingEmbedder(Embedder):
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def embed(self, text: str) -> list[float]:
+                self.calls += 1
+                return [1.0] * 128  # 512 estimated bytes per vector
+
+        counting = _HighDimCountingEmbedder()
+        engine = MemoryEngine(
+            embedder=counting,
+            embed_cache_limit=1000,  # deliberately loose count bound
+            embed_cache_memory_limit_mb=0.001,  # 1024 bytes -> ~2 vectors
+        )
+        source = SourceRecord(origin=SourceType.USER)
+        for index in range(4):
+            engine.remember(
+                f"byte topic {index} content",
+                kind=MemoryKind.EPISODIC,
+                source=source,
+                auto_cues=False,
+            )
+        for index in range(4):
+            engine.recall(f"byte topic {index}", top_k=1)
+        self.assertLessEqual(len(engine.store._embed_cache), 2)
+        self.assertLessEqual(engine.store._embed_cache_bytes, 1024)
+        before = counting.calls
+        engine.recall("byte topic 0", top_k=1)
+        # topic 0 was evicted by the byte budget -> must be embedded again
+        self.assertGreater(counting.calls, before)
+
+    def test_embed_cache_byte_accounting_deduplicates_shared_content(self):
+        class _FixedDimEmbedder(Embedder):
+            def embed(self, text: str) -> list[float]:
+                return [0.25] * 64  # 256 estimated bytes per vector
+
+        embedder = _FixedDimEmbedder()
+        engine = MemoryEngine(
+            embedder=embedder,
+            embed_cache_limit=100,
+            embed_cache_memory_limit_mb=None,
+        )
+        source = SourceRecord(origin=SourceType.USER)
+        for _ in range(3):
+            engine.remember(
+                "identical shared text",
+                kind=MemoryKind.EPISODIC,
+                source=source,
+                auto_cues=False,
+            )
+        engine.recall("identical shared text", top_k=3)
+        self.assertEqual(engine.store._embed_cache_bytes, 256)
+
+    def test_embed_cache_byte_limit_smaller_than_one_vector(self):
+        class _BigVectorEmbedder(Embedder):
+            def embed(self, text: str) -> list[float]:
+                return [1.0] * 128  # 512 estimated bytes per vector
+
+        engine = MemoryEngine(
+            embedder=_BigVectorEmbedder(),
+            embed_cache_limit=100,
+            embed_cache_memory_limit_mb=0.00005,  # ~52 bytes < one vector
+        )
+        source = SourceRecord(origin=SourceType.USER)
+        for index in range(3):
+            engine.remember(
+                f"tiny budget topic {index}",
+                kind=MemoryKind.EPISODIC,
+                source=source,
+                auto_cues=False,
+            )
+        for index in range(3):
+            engine.recall(f"tiny budget topic {index}", top_k=1)
+        # Every vector exceeds the byte budget, so each insert is evicted
+        # immediately; the cache must stay empty without looping forever.
+        self.assertEqual(len(engine.store._embed_cache), 0)
+        self.assertEqual(engine.store._embed_cache_bytes, 0)
+
     def test_remember_many_embeds_in_one_batch_call(self):
         embedder = _BatchCountingEmbedder()
         engine = MemoryEngine(
