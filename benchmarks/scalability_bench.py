@@ -21,8 +21,10 @@ import time
 from contextlib import suppress
 from ctypes import wintypes
 
-_BENCH = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.normpath(os.path.join(_BENCH, "..", "src")))
+from bench_utils import pin_local_src
+
+pin_local_src()
+
 
 from mnemosis import MemoryEngine
 from mnemosis.types import MemoryKind, SourceRecord, SourceType

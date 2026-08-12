@@ -15,14 +15,13 @@ import math
 import os
 import platform
 import statistics
-import sys
 import time
 from datetime import datetime, timezone
 
-_SRC = os.path.normpath(
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src")
-)
-sys.path.insert(0, _SRC)
+from bench_utils import pin_local_src
+
+pin_local_src()
+
 
 from mnemosis.backend import SQLiteBackend
 from mnemosis.types import (

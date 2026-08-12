@@ -21,39 +21,21 @@ import argparse
 import json
 import os
 import statistics
-import sys
 import time
 
-_BENCH = os.path.dirname(os.path.abspath(__file__))
-_SRC = os.path.normpath(os.path.join(_BENCH, "..", "src"))
-sys.path.insert(0, _BENCH)
-sys.path.insert(0, _SRC)
+from bench_utils import assert_local_mnemosis, percentile, pin_local_src
+
+pin_local_src()
 
 from build_bench import generate_records
 
 from mnemosis import MemoryEngine
-from mnemosis import __file__ as _MNEMOSIS_FILE
 
-assert _SRC in _MNEMOSIS_FILE, (
-    f"FATAL: imported mnemosis from {_MNEMOSIS_FILE!r} instead of "
-    f"local src {_SRC!r} — refusing to benchmark a stale install."
-)
+_MNEMOSIS_FILE = assert_local_mnemosis()
 
 WARM_RUNS = 100
 WARM_P99_GUARD_MS = 100.0
 ZERO_HIT_QUERY = "量子鲽鱼 火星 茶壶"  # never mentioned in the corpus
-
-
-def _percentile(values: list[float], pct: float) -> float:
-    """Linear-interpolated percentile (no nearest-rank collapse)."""
-    ordered = sorted(values)
-    if len(ordered) == 1:
-        return ordered[0]
-    position = pct * (len(ordered) - 1)
-    lower = int(position)
-    upper = min(lower + 1, len(ordered) - 1)
-    weight = position - lower
-    return ordered[lower] * (1.0 - weight) + ordered[upper] * weight
 
 
 def _timed(label: str, fn) -> float:
@@ -137,9 +119,9 @@ def main() -> int:
         "cold_start_ms": round(cold_start_ms, 2),
         "warm": {
             key: {
-                "p50_ms": round(_percentile(values, 0.50), 2),
-                "p95_ms": round(_percentile(values, 0.95), 2),
-                "p99_ms": round(_percentile(values, 0.99), 2),
+                "p50_ms": round(percentile(values, 0.50), 2),
+                "p95_ms": round(percentile(values, 0.95), 2),
+                "p99_ms": round(percentile(values, 0.99), 2),
             }
             for key, values in runs.items()
         },

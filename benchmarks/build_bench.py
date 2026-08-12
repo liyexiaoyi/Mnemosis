@@ -13,15 +13,14 @@ from __future__ import annotations
 import argparse
 import os
 import random
-import sys
 import tempfile
 import time
 import tracemalloc
 
-_SRC = os.path.normpath(
-    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src")
-)
-sys.path.insert(0, _SRC)
+from bench_utils import pin_local_src
+
+pin_local_src()
+
 
 from mnemosis.engine import MemoryEngine
 from mnemosis.types import MemoryKind, SourceRecord, SourceType

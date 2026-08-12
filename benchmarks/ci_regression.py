@@ -15,9 +15,10 @@ import sys
 import tempfile
 from collections import Counter
 
-_BENCH = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, _BENCH)
-sys.path.insert(0, os.path.normpath(os.path.join(_BENCH, "..", "src")))
+from bench_utils import BENCH, pin_local_src
+
+pin_local_src()
+
 
 import lifecycle_eval
 from full_chain_eval import run_full_chain_eval
@@ -72,7 +73,7 @@ def _run_zh_retrieval_gate(script: str, project: str) -> tuple[bool, str]:
     proc = subprocess.run(
         [
             sys.executable,
-            os.path.join(_BENCH, script),
+            os.path.join(BENCH, script),
             "--project",
             project,
             "--retrieval-only",

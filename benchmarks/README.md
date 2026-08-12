@@ -4,6 +4,14 @@
 > 并打印被测模块路径，禁止静默依赖 site-packages 里的旧安装包——否则会把
 > 旧版本误当成当前代码来测（详见下方 high_df_recall_bench 的历史说明）。
 
+## bench_utils.py
+
+统一工具：`pin_local_src()`（把 `benchmarks/` 和本地 `src/` 放进
+`sys.path`）、`assert_local_mnemosis()`（导入 `mnemosis` 并断言来自本地
+`src/`，否则抛错拒绝运行）、`percentile(values, pct)`（线性插值分位数）。
+核心基准与门禁脚本（build / scalability / sleep / ci_regression / ci_perf /
+high_df_recall）都已迁移到该工具，新基准脚本应直接复用。
+
 ## high_df_recall_bench.py
 
 High-document-frequency keyword recall at scale (run manually). Every
