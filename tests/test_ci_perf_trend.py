@@ -324,6 +324,71 @@ class TrendLogicTest(unittest.TestCase):
         short = runs_for([1.0, 1.0, 1.0])
         self.assertEqual(ci_perf._gradual_status(short, 100), "ok")
 
+    def test_gradual_level_escalates_weak(self):
+        self.assertEqual(ci_perf._gradual_level("weak", 0), ("weak", 1))
+        self.assertEqual(ci_perf._gradual_level("weak", 1), ("weak", 2))
+        self.assertEqual(ci_perf._gradual_level("weak", 2), ("warn", 3))
+        self.assertEqual(ci_perf._gradual_level("ok", 5), ("ok", 0))
+        self.assertEqual(ci_perf._gradual_level("warn", 5), ("warn", 0))
+
+    def test_previous_single_best(self):
+        runs = [
+            {
+                "ts": f"2026-08-{index:02d}T00:00:00+00:00",
+                "count": 100,
+                "best_ms": float(index),
+            }
+            for index in range(1, 4)
+        ]
+        self.assertEqual(
+            ci_perf._previous_single_best(runs, 100), 2.0
+        )
+        self.assertIsNone(
+            ci_perf._previous_single_best(runs[:1], 100)
+        )
+        self.assertIsNone(
+            ci_perf._previous_single_best(runs, 500)
+        )
+        self.assertEqual(
+            ci_perf._previous_single_best(
+                runs,
+                100,
+                current_ts="2026-08-03T00:00:00+00:00",
+            ),
+            2.0,
+        )
+        self.assertIsNone(
+            ci_perf._previous_single_best(
+                runs,
+                100,
+                current_ts="2026-08-04T00:00:00+00:00",
+            )
+        )
+
+    def test_previous_single_best_ignores_stale_or_missing_ts(self):
+        stale = [
+            {
+                "ts": "2026-08-01T00:00:00+00:00",
+                "count": 100,
+                "best_ms": 1.0,
+            },
+            {
+                "ts": "2026-08-04T00:00:00+00:00",
+                "count": 100,
+                "best_ms": 3.0,
+            },
+        ]
+        self.assertIsNone(
+            ci_perf._previous_single_best(stale, 100)
+        )
+        no_ts = [
+            {"count": 100, "best_ms": 1.0},
+            {"count": 100, "best_ms": 2.0},
+        ]
+        self.assertIsNone(
+            ci_perf._previous_single_best(no_ts, 100)
+        )
+
     def test_write_stats(self):
         fd, path = tempfile.mkstemp(suffix=".json")
         os.close(fd)

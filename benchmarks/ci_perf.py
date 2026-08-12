@@ -50,6 +50,7 @@ _GRADUAL_MIN_RUNS = 6
 _GRADUAL_WINDOW = 8
 _GRADUAL_SLOPE_MS = {100: 0.05, 500: 0.2, 2000: 1.0}
 _GRADUAL_TOTAL_MS = {100: 0.2, 500: 1.0, 2000: 4.0}
+_WEAK_ESCALATION_RUNS = 3
 _RESET_ENV = "MNEMOSIS_PERF_RESET"
 _SUMMARY_ENV = "MNEMOSIS_PERF_SUMMARY_PATH"
 _STATS_ENV = "MNEMOSIS_PERF_STATS_PATH"
@@ -78,6 +79,7 @@ def _empty_meta() -> dict:
         "run_count": 0,
         "last_reset_ts": {},
         "runner": "",
+        "weak_streaks": {},
     }
 
 
@@ -98,6 +100,7 @@ def _load_trend() -> dict:
             "run_count": 0,
             "last_reset_ts": {},
             "runner": "",
+            "weak_streaks": {},
         }
     if isinstance(data, dict):
         data.setdefault("runs", [])
@@ -107,6 +110,7 @@ def _load_trend() -> dict:
         data.setdefault("run_count", 0)
         data.setdefault("last_reset_ts", {})
         data.setdefault("runner", "")
+        data.setdefault("weak_streaks", {})
         data.pop("last_reset_run", None)
         data["runs"].sort(key=lambda entry: entry.get("ts", ""))
         return data
@@ -303,6 +307,55 @@ def _gradual_status(runs: list[dict], count: int) -> str:
     ):
         return "warn" if r2 > 0.7 else "weak"
     return "ok"
+
+
+def _gradual_level(status: str, streak: int) -> tuple[str, int]:
+    """Escalate a weak drift to a warn after consecutive weak runs."""
+    if status == "weak":
+        new_streak = streak + 1
+        level = (
+            "warn" if new_streak >= _WEAK_ESCALATION_RUNS else "weak"
+        )
+        return level, new_streak
+    return status, 0
+
+
+def _previous_single_best(
+    runs: list[dict],
+    count: int,
+    max_age_hours: float = 24.0,
+    *,
+    current_ts: str | None = None,
+) -> float | None:
+    """Best_ms of the run immediately before the current one.
+
+    ``runs`` must include the current run (main appends it before calling),
+    so the previous run is ``entries[-2]``. A previous run older than
+    ``max_age_hours`` (or with unparseable timestamps) is treated as absent,
+    because a stale reference would mislead the delta.
+    """
+    entries = [
+        entry
+        for entry in runs
+        if entry["count"] == count
+        and isinstance(entry.get("best_ms"), (int, float))
+    ]
+    if len(entries) < 2:
+        return None
+    if current_ts is not None and entries[-1].get("ts") != current_ts:
+        # The last entry is not the current run (e.g. a crashed run that
+        # never produced a valid best_ms), so the reference is ambiguous.
+        return None
+    try:
+        age_hours = (
+            datetime.fromisoformat(entries[-1].get("ts", ""))
+            - datetime.fromisoformat(entries[-2].get("ts", ""))
+        ).total_seconds() / 3600.0
+        if age_hours > max_age_hours:
+            return None
+    except (TypeError, ValueError):
+        return None
+    return entries[-2].get("best_ms")
 
 
 def _runner_label() -> str:
@@ -610,22 +663,36 @@ def main() -> int:
             )
     gradual_warns: dict[int, tuple[float, float]] = {}
     gradual_weak: dict[int, tuple[float, float]] = {}
+    resolved_levels: dict[int, str] = {}
+    escalated: dict[int, bool] = {}
     for count in _CEILINGS_MS:
         status = _gradual_status(history, count)
         slope, r2, _ = _gradual_metrics(history, count)
-        if status == "warn":
+        streak = int(meta["weak_streaks"].get(str(count), 0))
+        level, streak = _gradual_level(status, streak)
+        meta["weak_streaks"][str(count)] = streak
+        resolved_levels[count] = level
+        escalated[count] = status == "weak" and level == "warn"
+        if level == "warn":
             gradual_warns[count] = (slope, r2)
-            print(
-                f"GRADUAL WARNING: {count} ids drift "
-                f"+{slope:.2f} ms/run (R² {r2:.2f}) over the last "
-                f"{_GRADUAL_WINDOW} runs"
-            )
-        elif status == "weak":
+            if status == "warn":
+                print(
+                    f"GRADUAL WARNING: {count} ids drift "
+                    f"+{slope:.2f} ms/run (R2 {r2:.2f}) over the last "
+                    f"{_GRADUAL_WINDOW} runs"
+                )
+            else:
+                print(
+                    f"GRADUAL WARNING (escalated): {count} ids show "
+                    f"low-confidence drift for {_WEAK_ESCALATION_RUNS} "
+                    f"consecutive runs (+{slope:.2f} ms/run, R2 {r2:.2f})"
+                )
+        elif level == "weak":
             gradual_weak[count] = (slope, r2)
             print(
                 f"INFO: {count} ids show high drift "
                 f"(+{slope:.2f} ms/run) but low confidence "
-                f"(R² {r2:.2f}); monitoring without blocking"
+                f"(R2 {r2:.2f}); monitoring without blocking"
             )
     if resets:
         print(
@@ -661,6 +728,10 @@ def main() -> int:
     for count, best, p95 in _results:
         slope, r2, drift = _gradual_metrics(history, count)
         reference = _reference_value(history, count, "best_ms")
+        previous = _previous_single_best(
+            history, count, current_ts=now_iso
+        )
+        streak = int(meta["weak_streaks"].get(str(count), 0))
         stats_payload["per_count"][str(count)] = {
             "best_ms": best,
             "p95_ms": p95,
@@ -669,10 +740,15 @@ def main() -> int:
             "delta_vs_prev3_ms": (
                 round(best - reference, 4) if reference is not None else None
             ),
+            "delta_vs_last_run_ms": (
+                round(best - previous, 4) if previous is not None else None
+            ),
             "gradual_slope_ms_per_run": round(slope, 4),
             "gradual_r2": round(r2, 4),
             "gradual_total_drift_ms": round(drift, 4),
-            "gradual_status": _gradual_status(history, count),
+            "gradual_level": resolved_levels.get(count, "ok"),
+            "escalated": escalated.get(count, False),
+            "weak_streak": streak,
             "p95_warn": _p95_warning(
                 p95,
                 _reference_value(history, count, "p95_ms"),
