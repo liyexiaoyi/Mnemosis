@@ -480,6 +480,38 @@ class MemoryEngineTest(unittest.TestCase):
         # to 1 candidate, but the min pool keeps 4 (query + 4 calls).
         self.assertEqual(remote.calls, 5)
 
+    def test_rerank_flat_score_distribution_is_not_cut(self):
+        """Slowly decaying scores must not trigger the cliff cut."""
+
+        class _RemoteEmbedder(Embedder):
+            remote = True
+
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def embed(self, text: str) -> list[float]:
+                self.calls += 1
+                return [1.0, 0.0, 0.0]
+
+        remote = _RemoteEmbedder()
+        engine = MemoryEngine(
+            embedder=remote,
+            dense_rerank_candidates=20,
+            zero_hit_rerank_pool=20,
+        )
+        source = SourceRecord(origin=SourceType.USER)
+        for index in range(16):
+            engine.remember(
+                f"alpha beta shared content {index}",
+                kind=MemoryKind.EPISODIC,
+                source=source,
+                importance=0.5,
+                auto_cues=False,
+            )
+        engine.recall("alpha beta", top_k=3)
+        # Scores are nearly identical (no cliff), so all 16 are embedded.
+        self.assertEqual(remote.calls, 17)
+
     def test_remember_many_embeds_in_one_batch_call(self):
         embedder = _BatchCountingEmbedder()
         engine = MemoryEngine(

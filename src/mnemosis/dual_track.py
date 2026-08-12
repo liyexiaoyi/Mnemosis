@@ -67,19 +67,13 @@ network-backed embedders fall back to ``_DENSE_RERANK_CANDIDATES`` so a
 remote API is never called for hundreds of texts per query.
 """
 
-_RERANK_EARLY_TERMINATE_RATIO = 0.5
-"""Lexical-score floor for the dense re-rank pool.
-
-Candidates whose lexical score falls below half of the top score sit on a
-clear score cliff and carry little retrieval signal; embedding them wastes
-remote API calls, so the pool is cut off there (the zero-budget paraphrase
-rescue still applies).
-"""
+_RERANK_SCORE_GAP = 0.10
+"""Dense re-rank stops after the first adjacent score gap above this."""
 
 _RERANK_MIN_POOL = 4
 """Minimum lexical candidates embedded despite the score cliff.
 
-A relative threshold can over-cut when the top score is extreme (e.g. a
+A hard gap threshold can over-cut when the top score is extreme (e.g. a
 very strong match next to paraphrase synonyms); keeping at least this many
 candidates bounds the recall loss.
 """
@@ -713,13 +707,16 @@ class DualTrackStore:
                     16, len(scored) - len(lexical_hits)
                 )
                 # Early termination: stop embedding once the lexical score
-                # decays below a fraction of the top candidate.
+                # shows a real cliff (adjacent gap above _RERANK_SCORE_GAP).
+                # A flat/slowly-decaying distribution is left intact so a
+                # relative threshold cannot mis-cut paraphrase synonyms.
                 top_score = lexical_hits[0][0]
-                threshold = top_score * _RERANK_EARLY_TERMINATE_RATIO
-                cutoff = 0
-                for entry in lexical_hits:
-                    if entry[0] < threshold:
+                cutoff = 1
+                previous = top_score
+                for entry in lexical_hits[1:]:
+                    if previous - entry[0] > _RERANK_SCORE_GAP:
                         break
+                    previous = entry[0]
                     cutoff += 1
                 pool = lexical_hits[
                     : min(
