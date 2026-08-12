@@ -6,6 +6,7 @@ deduplicated and kept stable. Recall paths are separate per track.
 
 from __future__ import annotations
 
+import logging
 import math
 import numbers
 import re
@@ -33,6 +34,8 @@ from .types import (
     utcnow,
 )
 from .zh_nlp import expand_synonyms
+
+_LOG = logging.getLogger(__name__)
 
 _FALLBACK_RECENT = 150
 """Most recent memories loaded for a zero-hit query."""
@@ -224,10 +227,16 @@ class DualTrackStore:
             missing = [
                 term for term in terms if (term, kind) not in self._df_cache
             ]
-            cached = {
-                term: self._df_cache.get((term, kind), 0)
-                for term in terms
-            }
+            cached: dict[str, int] = {}
+            for term in terms:
+                key = (term, kind)
+                if key in self._df_cache:
+                    # LRU: a hit refreshes the entry so hot terms survive
+                    # the FIFO bound.
+                    self._df_cache.move_to_end(key)
+                    cached[term] = self._df_cache[key]
+                else:
+                    cached[term] = 0
         if missing:
             # Query outside the store lock so one recall's DB I/O does not
             # serialize every concurrent recall.
@@ -453,12 +462,6 @@ class DualTrackStore:
         idf_weights: dict[str, float] = {}
         idf_sum = 0.0
         fallback_cache_key: tuple | None = None
-        if query_terms:
-            total_active = self.backend.count(kind=kind)
-            term_df = self._cached_term_dfs(query_terms, kind)
-        else:
-            total_active = 0
-            term_df = {}
         if self.fallback_cache_ttl > 0:
             embedder_key = (
                 "none"
@@ -479,27 +482,32 @@ class DualTrackStore:
                 tuple(sorted(exclude_ids or ())),
                 embedder_key,
             )
-            if not query_terms or all(
-                df == 0 or (total_active >= 1000 and df > 5000)
-                for df in term_df.values()
-            ):
-                cached = self._fallback_cache_get(fallback_cache_key)
-                if cached is not None:
-                    rebuilt = self._rebuild_cached_fallback(
-                        cached,
-                        query_terms=query_terms,
-                        top_k=top_k,
-                        now=now,
-                        reinforce=reinforce,
-                        suppression_factor=suppression_factor,
-                        suppression_min_cues=suppression_min_cues,
-                        suppression_floor=suppression_floor,
-                    )
-                    if rebuilt is not None:
-                        return rebuilt
-                    # Entries whose items were deleted are dropped so the
-                    # next recall recomputes fresh results.
-                    self.invalidate_fallback_cache()
+            cached = self._fallback_cache_get(fallback_cache_key)
+            if cached is not None:
+                # Cache check happens before any SQL: a hit means the query
+                # was a fallback when stored, so count/df lookups (which cost
+                # ~1ms at 100k) are skipped entirely.
+                rebuilt = self._rebuild_cached_fallback(
+                    cached,
+                    query_terms=query_terms,
+                    top_k=top_k,
+                    now=now,
+                    reinforce=reinforce,
+                    suppression_factor=suppression_factor,
+                    suppression_min_cues=suppression_min_cues,
+                    suppression_floor=suppression_floor,
+                )
+                if rebuilt is not None:
+                    return rebuilt
+                # Entries whose items were deleted are dropped so the
+                # next recall recomputes fresh results.
+                self.invalidate_fallback_cache()
+        if query_terms:
+            total_active = self.backend.count(kind=kind)
+            term_df = self._cached_term_dfs(query_terms, kind)
+        else:
+            total_active = 0
+            term_df = {}
         if query_terms:
             hit_counts: dict[str, int] = {}
             term_ids: dict[str, set[str]] = {}
@@ -1068,6 +1076,7 @@ class DualTrackStore:
                     # should review it soon or answer with caution.
                     result.reasons.append("低可提取(快遗忘)")
         if reinforce:
+            updated_items: list[MemoryItem] = []
             for score, overlap, item, _, matched in scored[:top_k]:
                 if not matched:
                     continue  # failed retrieval does not strengthen (testing effect)
@@ -1088,7 +1097,16 @@ class DualTrackStore:
                     effort=effort,
                 )
                 item.retrieval_successes += 1
-                self.backend.update(item)
+                updated_items.append(item)
+            if updated_items:
+                try:
+                    self.backend.update_many(updated_items)
+                except Exception as exc:  # noqa: BLE001
+                    # Best-effort reinforcement: a write failure must not
+                    # skip miss accounting or the recall itself.
+                    _LOG.debug(
+                        "reinforcement batch update failed: %s", exc
+                    )
             self._record_misses(scored, top_k, now)
             if suppression_factor > 0:
                 matched_items = [
@@ -1770,6 +1788,7 @@ class DualTrackStore:
         for result, flag in zip(results, payload["confident"]):
             result.confident = flag
         if reinforce:
+            updated_items: list[MemoryItem] = []
             for score, overlap, item, _, matched in scored:
                 if not matched:
                     continue
@@ -1785,7 +1804,16 @@ class DualTrackStore:
                     effort=effort,
                 )
                 item.retrieval_successes += 1
-                self.backend.update(item)
+                updated_items.append(item)
+            if updated_items:
+                try:
+                    self.backend.update_many(updated_items)
+                except Exception as exc:  # noqa: BLE001
+                    # Best-effort reinforcement: a write failure must not
+                    # skip miss accounting or the recall itself.
+                    _LOG.debug(
+                        "reinforcement batch update failed: %s", exc
+                    )
             self._record_misses(scored, top_k, now)
             # Note: _record_misses only inspects scored[:top_k], and the
             # cached payload is exactly the top-k slice, so the side effect
