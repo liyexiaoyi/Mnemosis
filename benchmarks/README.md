@@ -1,5 +1,11 @@
 # Benchmarks
 
+## archive/
+
+一次性渲染/打分脚本（`render_*.py`、`score_*.py` 等 377 个）归档在此，
+不再参与日常 CI 与基准。保留的入口脚本与文档均不依赖它们；`render_memory_map.py`
+是正式工具，仍留在 `benchmarks/` 根目录。
+
 > 规范：所有 benchmark 必须 pin 本地 `src/`（`sys.path.insert(0, ../src)`）
 > 并打印被测模块路径，禁止静默依赖 site-packages 里的旧安装包——否则会把
 > 旧版本误当成当前代码来测（详见下方 high_df_recall_bench 的历史说明）。

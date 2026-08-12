@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.3.2 (unreleased)
+
+- 启动预热：`MemoryEngine.warmup()`（独立连接后台扫描主表/索引页），MCP 服务器
+  启动自动触发，缓解真实冷启动首查延迟
+- MCP 工具分级：`--expose core|advanced|experimental`（core=16 / advanced=98 /
+  experimental=130），默认 advanced 不变
+- Roadmap 重写为 1.0 收敛清单（核心承诺、实验边界、发布待办）
+- 类型检查：mypy 严格模式接入（541 个错误清零，41 个源文件 0 错误），CI 新增
+  `typecheck` job；`pyproject` 增加 `[tool.mypy]` 与 `typecheck` extra
+- 基准工程：377 个一次性渲染/打分脚本归档到 `benchmarks/archive/`
+- 质量门禁：500 单元测试、ruff 全过、CI 回归 18/18、性能门禁、并发/睡眠冒烟
+
 ## v0.3.1 - 架构收尾与端到端质量验证（2026-08-13）
 
 - 架构拆分收官：`analysis_mixin`（原 3516 行）经 12 轮拆成 12 个职责单一的能力
