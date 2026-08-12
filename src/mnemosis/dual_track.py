@@ -761,22 +761,15 @@ class DualTrackStore:
                 # Batch embed: network-backed embedders turn N per-item calls
                 # into one HTTP request via embed_many.
                 vectors = embedder.embed_many(
-                    [item.content for item in rerank_items]
+                    [self._embed_text(item) for item in rerank_items]
                 )
                 if len(vectors) != len(rerank_items):
                     raise RuntimeError(
                         f"embed_many returned {len(vectors)} vectors for "
                         f"{len(rerank_items)} items"
                     )
-                embedder_key = (
-                    f"{type(embedder).__module__}.{type(embedder).__name__}"
-                )
                 cache_updates = {
-                    (
-                        item.content_hash,
-                        embedder_key,
-                        getattr(embedder, "cache_key", ""),
-                    ): vector
+                    self._embed_cache_key(item, embedder): vector
                     for item, vector in zip(rerank_items, vectors)
                 }
                 with self._lock:
@@ -1329,17 +1322,27 @@ class DualTrackStore:
         embedders never share vectors. ``id()`` is intentionally avoided:
         object addresses can be reused after garbage collection.
         """
-        key = (
+        key = self._embed_cache_key(item, embedder)
+        with self._lock:
+            cached = self._embed_cache.get(key)
+            if cached is None:
+                cached = embedder.embed(self._embed_text(item))
+                self._embed_cache[key] = cached
+            return cached
+
+    @staticmethod
+    def _embed_text(item: MemoryItem) -> str:
+        """Text sent to the embedder — single source for single/batch paths."""
+        return item.content
+
+    def _embed_cache_key(
+        self, item: MemoryItem, embedder: Embedder
+    ) -> tuple[str, str, str]:
+        return (
             item.content_hash,
             f"{type(embedder).__module__}.{type(embedder).__name__}",
             getattr(embedder, "cache_key", ""),
         )
-        with self._lock:
-            cached = self._embed_cache.get(key)
-            if cached is None:
-                cached = embedder.embed(item.content)
-                self._embed_cache[key] = cached
-            return cached
 
     def _spread_activation(
         self,

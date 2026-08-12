@@ -120,6 +120,34 @@ class EmbedderRecallTest(unittest.TestCase):
         )
         self.assertEqual(results[0].item.id, item.id)
 
+    def test_same_type_different_cache_key_does_not_share_cache(self):
+        class _ModelEmbedder(Embedder):
+            def __init__(self, key: str, seen: list[str]) -> None:
+                self.cache_key = key
+                self.seen = seen
+
+            def embed(self, text: str) -> list[float]:
+                self.seen.append(text)
+                return [1.0, 0.0, 0.0]
+
+        first_seen: list[str] = []
+        second_seen: list[str] = []
+        engine = MemoryEngine()
+        engine.remember(
+            "bicycle content",
+            kind=MemoryKind.EPISODIC,
+            source=self.user,
+            auto_cues=False,
+        )
+        engine.recall(
+            "bicycle", top_k=1, embedder=_ModelEmbedder("model-a", first_seen)
+        )
+        engine.recall(
+            "bicycle", top_k=1, embedder=_ModelEmbedder("model-b", second_seen)
+        )
+        self.assertTrue(first_seen)
+        self.assertTrue(second_seen)  # different model -> no cache sharing
+
 
 class EmbedderFactoryTest(unittest.TestCase):
     def test_none_disables_dense(self):

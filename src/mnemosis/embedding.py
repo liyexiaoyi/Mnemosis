@@ -120,10 +120,12 @@ class CallableEmbedder(Embedder):
         fn: Callable[[str], list[float]],
         fn_many: Callable[[list[str]], list[list[float]]] | None = None,
         remote: bool = False,
+        cache_key: str = "",
     ) -> None:
         self.fn = fn
         self.fn_many = fn_many
         self.remote = remote
+        self.cache_key = cache_key
 
     def embed(self, text: str) -> list[float]:
         return self.fn(text)
@@ -225,7 +227,12 @@ def ollama_embedder(
             vectors.extend([float(x) for x in row] for row in rows)
         return vectors
 
-    return CallableEmbedder(_embed, _embed_many, remote=True)
+    return CallableEmbedder(
+        _embed,
+        _embed_many,
+        remote=True,
+        cache_key=f"ollama:{model}",
+    )
 
 
 def openai_embedder(
@@ -289,7 +296,12 @@ def openai_embedder(
             )
         return vectors
 
-    return CallableEmbedder(_embed, _embed_many, remote=True)
+    return CallableEmbedder(
+        _embed,
+        _embed_many,
+        remote=True,
+        cache_key=f"openai:{model}:{base_url}",
+    )
 
 
 def make_embedder(
