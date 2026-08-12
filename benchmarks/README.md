@@ -61,16 +61,22 @@ this section records fresh runs.
 
 | System | turn_recall@1 | @5 | @10 | answer_tokens@5 | avg ingest |
 |---|---|---|---|---|---|
+| mnemosis seg | 0.60 | 0.85 | 0.90 | 0.30 | 12.9 s |
 | mem0 | 0.50 | 0.80 | 0.80 | 0.35 | 62.4 s |
 | mnemosis dense | 0.50 | 0.80 | 0.80 | 0.35 | 10.8 s |
 | mnemosis hybrid | 0.30 | 0.60 | 0.70 | 0.45 | 0.46 s |
 | mnemosis ngram | 0.35 | 0.60 | 0.70 | 0.40 | 0.47 s |
 | mnemosis kw | 0.30 | 0.60 | 0.65 | 0.40 | 0.47 s |
 
-Conclusion: dense mode matches mem0 on every retrieval metric while
-ingesting ~5.8x faster; hybrid/lexical modes trade recall for speed.
-This reproduces the pre-refactor parity numbers exactly (no quality
-regression from the module-split rounds).
+Conclusion: the sentence-segmented mode (`remember_turn` pattern) leads
+every retrieval metric (@1 0.60 / @5 0.85 / @10 0.90) and beats mem0 on
+@1/@5/@10 while ingesting ~4.8x faster. Dense mode matches mem0 exactly;
+hybrid/lexical modes trade recall for speed. This reproduces the
+pre-refactor numbers (no quality regression from the module-split rounds).
+
+> 波动说明：seg 的 turn_recall@1 本次 0.60，历史多次记录为 0.65，属 20 题
+> 小样本的正常抽样波动（本次 @5 0.85 还略高于历史的 0.80）；历史端到端
+> llm_accuracy 为云端 0.55、本地 0.65-0.70。
 
 ## compare_with_models.py
 

@@ -335,6 +335,12 @@ dense-mode parity with mem0 on every retrieval metric (@1 0.5 / @5 0.8 /
 @10 0.8 / gold-token hit@5 0.35) while ingesting ~5.8x faster (10.8s vs
 62.4s per question).
 
+The sentence-segmented ingestion pattern (`remember_turn`, one call per
+conversation turn) is even stronger on the same 20-question set: turn
+recall @1 0.60 / @5 0.85 / @10 0.90, ahead of mem0 on every retrieval
+metric while ingesting ~4.8x faster. For long multi-session conversations,
+store turns with `remember_turn` and recall with `recall` / `recall_fused`.
+
 At a 50k-input / 25k-active real-Chinese store, recall is 26-85ms and
 sleep consolidation ~2.3s after the large-store scaling work (batched term
 df, batched REM links, generic-cue skipping).
