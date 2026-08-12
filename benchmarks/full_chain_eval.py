@@ -150,7 +150,7 @@ def _questions():
     return qs
 
 
-def _run(full: bool, seed: int) -> dict:
+def run_full_chain_eval(full: bool, seed: int) -> dict:
     engine = _build_engine()
     now = utcnow()
     rng = random.Random(seed)
@@ -238,8 +238,8 @@ def main() -> int:
     )
     args = parser.parse_args()
     report = {
-        "full": _run(True, args.seed),
-        "baseline": _run(False, args.seed),
+        "full": run_full_chain_eval(True, args.seed),
+        "baseline": run_full_chain_eval(False, args.seed),
     }
     report["all_ok"] = bool(
         report["full"]["total"] >= report["baseline"]["total"] + 5

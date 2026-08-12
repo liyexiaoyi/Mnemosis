@@ -18,6 +18,7 @@ sys.path.insert(0, _BENCH)
 sys.path.insert(0, os.path.normpath(os.path.join(_BENCH, "..", "src")))
 
 import lifecycle_eval
+from full_chain_eval import run_full_chain_eval
 from locomo_bench import (
     build_engine,
     eval_retrieval,
@@ -28,6 +29,30 @@ from mnemosis import MemoryEngine
 from mnemosis.types import MemoryKind, SourceRecord, SourceType
 
 _CHECKS: list[tuple[str, bool, str]] = []
+
+_FULL_CHAIN_KINDS = (
+    "fact", "conflict", "emotional",
+    "gist", "context", "revised",
+)
+_FULL_CHAIN_MIN_MARGIN = 5
+
+
+def _full_chain_ok(full: dict, baseline: dict) -> bool:
+    """Full mechanisms must beat baseline by a clear margin.
+
+    The eval is fully deterministic (local engine, fixed seed, no LLM),
+    so a strict per-kind comparison is stable rather than flaky.
+    """
+    if full["n"] != baseline["n"] or full["n"] == 0:
+        return False
+    return (
+        full["total"] >= baseline["total"] + _FULL_CHAIN_MIN_MARGIN
+        and all(
+            full["by_kind"].get(kind, 0)
+            >= baseline["by_kind"].get(kind, 0)
+            for kind in _FULL_CHAIN_KINDS
+        )
+    )
 
 
 def run_chunked_build_snapshot() -> dict[str, int]:
@@ -192,6 +217,17 @@ def main() -> int:
             f"max degree {snapshot['max_out_degree']} (expected 105), "
             f"term rows {snapshot['term_rows']} (expected 3729), "
             f"recall hits {snapshot['hits']} (expected 3)"
+        ),
+    )
+
+    full = run_full_chain_eval(True, seed=42)
+    baseline = run_full_chain_eval(False, seed=42)
+    check(
+        "full chain beats baseline",
+        _full_chain_ok(full, baseline),
+        (
+            f"{full['total']}/{full['n']} vs "
+            f"{baseline['total']}/{baseline['n']}"
         ),
     )
 
