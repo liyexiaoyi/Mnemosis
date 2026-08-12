@@ -292,6 +292,29 @@ class MemoryEngineTest(unittest.TestCase):
         self.assertEqual(stats["semantic"], 2)
         self.assertEqual(stats["episodic"], 1)
 
+    def test_zero_hit_recall_surfaces_old_high_importance_fact(self):
+        """Core facts must survive the recency fallback (dual pool)."""
+        engine = MemoryEngine()
+        source = SourceRecord(origin=SourceType.USER)
+        core = engine.remember(
+            "我对花生严重过敏。",
+            kind=MemoryKind.SEMANTIC,
+            source=source,
+            importance=1.0,
+            created_at=utcnow() - timedelta(days=365),
+            auto_cues=False,
+        )
+        for index in range(20):
+            engine.remember(
+                f"最近普通记录 {index}",
+                kind=MemoryKind.EPISODIC,
+                source=source,
+                importance=0.3,
+                auto_cues=False,
+            )
+        results = engine.recall("完全不相关的查询词", top_k=5)
+        self.assertIn(core.id, {result.item.id for result in results})
+
     def test_remember_many_embeds_in_one_batch_call(self):
         embedder = _BatchCountingEmbedder()
         engine = MemoryEngine(

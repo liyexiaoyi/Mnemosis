@@ -373,6 +373,27 @@ class DictBackend(Backend):
         )
 
     @_locked
+    def list_strongest(
+        self,
+        *,
+        kind: MemoryKind | None = None,
+        status: MemoryStatus = MemoryStatus.ACTIVE,
+        limit: int = 50,
+    ) -> list[MemoryItem]:
+        """Most important active memories (importance, then recency)."""
+        items = [
+            item
+            for item in self._items.values()
+            if item.status == status
+            and (kind is None or item.kind == kind)
+        ]
+        items.sort(
+            key=lambda item: item.importance,
+            reverse=True,
+        )
+        return items[:limit]
+
+    @_locked
     def add_cues(self, memory_id: str, cues: Iterable[str]) -> None:
         for cue in normalize_cues(list(cues)):
             self._cues.setdefault(cue, set()).add(memory_id)
@@ -597,6 +618,10 @@ class SQLiteBackend(Backend):
             self._conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_memories_status_seq "
                 "ON memories(status, seq)"
+            )
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_memories_status_importance "
+                "ON memories(status, importance)"
             )
 
     @_locked
@@ -996,6 +1021,29 @@ class SQLiteBackend(Backend):
             sql += " AND kind = ?"
             params.append(kind.value)
         return int(self._conn.execute(sql, params).fetchone()[0])
+
+    @_locked
+    def list_strongest(
+        self,
+        *,
+        kind: MemoryKind | None = None,
+        status: MemoryStatus = MemoryStatus.ACTIVE,
+        limit: int = 50,
+    ) -> list[MemoryItem]:
+        """Most important active memories (importance, then recency)."""
+        sql = (
+            "SELECT * FROM memories WHERE status = ? "
+            "ORDER BY importance DESC"
+        )
+        params: list = [status.value]
+        if kind is not None:
+            sql += " AND kind = ?"
+            params.append(kind.value)
+        if limit is not None:
+            sql += " LIMIT ?"
+            params.append(limit)
+        rows = self._conn.execute(sql, params).fetchall()
+        return [_row_to_item(r) for r in rows]
 
     @_locked
     def add_cues(self, memory_id: str, cues: Iterable[str]) -> None:

@@ -31,12 +31,15 @@ from .types import (
 )
 from .zh_nlp import expand_synonyms
 
-_FALLBACK_SCAN_LIMIT = 200
-"""Max memories loaded for a zero-hit query (recency fallback).
+_FALLBACK_RECENT = 150
+"""Most recent memories loaded for a zero-hit query."""
 
-Zero-hit queries return the most retrievable recent traces; the top 200 by
-insertion order approximate that (new traces have high retrievability) and
-keep the fallback cheap at 100k+ scale.
+_FALLBACK_STRONG = 50
+"""Most important memories additionally loaded for a zero-hit query.
+
+Zero-hit queries return both the recent traces and the highest-importance
+core facts, so an old but critical memory (e.g. an allergy) still surfaces
+instead of being drowned by recency.
 """
 
 _DENSE_RERANK_CANDIDATES = 64
@@ -327,6 +330,7 @@ class DualTrackStore:
     ) -> list[RecallResult]:
         now = now or utcnow()
         candidates: list[MemoryItem] = []
+        fallback_mode = False
         query_terms = set(tokenize(query))
         base_terms = set(query_terms)
         if zh_synonyms and any("\u4e00" <= ch <= "\u9fff" for ch in query):
@@ -429,14 +433,20 @@ class DualTrackStore:
                 ids = sorted(ids)
                 candidates = self.backend.get_many(ids)
         if not candidates:
-            # Zero-hit queries fall back to recency instead of scanning the
-            # whole store: with 10k+ memories a full load + score costs
-            # hundreds of ms, while the most recent slice is what the
-            # retrievability ranking would surface anyway (Ebbinghaus
-            # recency). Large stores stay fast; small stores are unaffected.
-            candidates = self.backend.list(
-                kind=kind, limit=_FALLBACK_SCAN_LIMIT
+            # Zero-hit queries fall back to a dual pool: recent traces plus
+            # the highest-importance core facts (importance -> recency), so
+            # old but critical memories can still surface. Both queries use
+            # (status, seq) / (status, importance) indexes, keeping the
+            # fallback cheap at 100k+ scale.
+            fallback_mode = True
+            recent = self.backend.list(kind=kind, limit=_FALLBACK_RECENT)
+            strong = self.backend.list_strongest(
+                kind=kind, limit=_FALLBACK_STRONG
             )
+            by_id = {item.id: item for item in recent}
+            for item in strong:
+                by_id.setdefault(item.id, item)
+            candidates = list(by_id.values())
             if exclude_ids:
                 candidates = [
                     item for item in candidates if item.id not in exclude_ids
@@ -596,6 +606,11 @@ class DualTrackStore:
                 + salience_bonus
                 + corroboration_bonus
             )
+            if fallback_mode:
+                # Zero-hit queries have no lexical signal: let core facts
+                # (high importance) compete with recent traces instead of
+                # being buried by the recency term.
+                score += 0.20 * item.importance
             if overlap > 0:
                 reasons.append(f"cue/keyword overlap {overlap:.2f}")
             if source_trust_boost and item.source.trust >= 0.95:

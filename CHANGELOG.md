@@ -20,7 +20,8 @@
   跳过 auto_cues 产生的高频线索（用户/购买等），100k 构建从 2 小时+
   降到 6.8 分钟；SQLite 读回走可信快路径（跳过逐行校验/规范化），
   命中检索 ~4ms、零命中 ~165ms → ~4ms（新增 (status, seq) 索引让兜底
-  免全排序）、睡眠 100k ~1.3s / 10k ~0.19s
+  免全排序）、零命中双路兜底（最近 150 + 最高强度 50，旧核心事实不再
+  被近因淹没）、睡眠 100k ~1.3s / 10k ~0.19s
 - 写入：`remember_many` 批量 API（10k 从 70s → 13s）、批量词索引/关联图/
   向量写入、嵌入前置失败不脏库、`rebuild_vectors` 补齐缺失向量
 - 部署与工具：MCP Streamable HTTP transport + Dockerfile（VPS/NAS）、
