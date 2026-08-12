@@ -15,6 +15,7 @@ from .affective_mixin import AffectiveMixin
 from .analysis_mixin import AnalysisMixin
 from .association import AssociationIndex
 from .backend import Backend, make_backend
+from .cognitive_mixin import CognitiveMixin
 from .consolidation import (  # noqa: F401  (public re-exports)
     ConsolidationReport,
     Consolidator,
@@ -66,6 +67,7 @@ class MemoryEngine(
     ConsolidationInsightsMixin,
     NarrativeMixin,
     AffectiveMixin,
+    CognitiveMixin,
 ):
     """The one thing most users touch.
 
