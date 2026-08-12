@@ -43,6 +43,28 @@ _LINKS_CHUNK = 50_000
 _LINKS_BULK_CHUNK = 100_000
 """Rows per transaction in add_links_many during bulk import."""
 
+_MEMORIES_INDEX_SQL = (
+    "CREATE INDEX IF NOT EXISTS idx_memories_seq ON memories(seq)",
+    "CREATE INDEX IF NOT EXISTS idx_memories_kind ON memories(kind)",
+    (
+        "CREATE INDEX IF NOT EXISTS idx_memories_status "
+        "ON memories(status)"
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS idx_memories_status_kind "
+        "ON memories(status, kind)"
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS idx_memories_status_seq "
+        "ON memories(status, seq)"
+    ),
+    (
+        "CREATE INDEX IF NOT EXISTS idx_memories_status_importance "
+        "ON memories(status, importance)"
+    ),
+)
+"""Read-side memories indexes (self-heal + bulk-mode rebuild)."""
+
 
 def _locked(method):
     """Serialize a backend method on the instance lock (reentrant)."""
@@ -659,6 +681,13 @@ class SQLiteBackend(Backend):
                 """
             )
         self._ensure_columns()
+        self._conn.execute(
+            # MAX(seq) is executed once per import chunk to allocate the
+            # next seq; without this index each call scans the whole
+            # memories table (super-linear bulk-import cost). The seq
+            # column itself is added by _ensure_columns above.
+            "CREATE INDEX IF NOT EXISTS idx_memories_seq ON memories(seq)"
+        )
 
     @_locked
     def get_setting(self, key: str, default: str | None = None) -> str | None:
@@ -942,6 +971,11 @@ class SQLiteBackend(Backend):
                 "CREATE INDEX IF NOT EXISTS idx_terms_memory "
                 "ON terms(memory_id)"
             )
+        # Self-heal every memories index: bulk mode drops the read-side
+        # ones for insert speed, and a crash before end_bulk_mode would
+        # otherwise leave them missing forever.
+        for index_sql in _MEMORIES_INDEX_SQL:
+            self._conn.execute(index_sql)
         sync_row = self._conn.execute("PRAGMA synchronous").fetchone()
         if sync_row is not None and sync_row[0] != 1:
             self._conn.execute("PRAGMA synchronous=NORMAL")
@@ -1038,13 +1072,26 @@ class SQLiteBackend(Backend):
                 "bulk mode is already active; call end_bulk_mode first"
             )
         self._conn.execute("PRAGMA synchronous=OFF")
-        self._conn.execute("PRAGMA cache_size=-80000")
+        self._conn.execute("PRAGMA cache_size=-200000")
         # TEMP staging tables would otherwise live in RAM
         # (temp_store=MEMORY is the global default); spill them to disk so
         # a 100k import stays memory-lean on NAS/VPS hosts.
         self._conn.execute("PRAGMA temp_store=FILE")
         self._conn.execute("DROP INDEX IF EXISTS idx_links_dst")
         self._conn.execute("DROP INDEX IF EXISTS idx_terms_memory")
+        # Memories inserts maintain one index per secondary column; during
+        # a large import (random-UUID PK inserts) that maintenance is the
+        # dominant cost. Keep only the PK, semantic dedupe and seq indexes
+        # (needed mid-import); the read-side indexes are rebuilt once at
+        # end_bulk_mode.
+        for index_name in (
+            "idx_memories_kind",
+            "idx_memories_status",
+            "idx_memories_status_kind",
+            "idx_memories_status_seq",
+            "idx_memories_status_importance",
+        ):
+            self._conn.execute(f"DROP INDEX IF EXISTS {index_name}")
         # Stage links/terms in temp tables during the import: no PK
         # B-tree churn, no WAL growth, and one ordered copy at the end
         # replaces dozens of per-chunk transactions.
@@ -1094,6 +1141,8 @@ class SQLiteBackend(Backend):
                     "CREATE INDEX IF NOT EXISTS idx_terms_memory "
                     "ON terms(memory_id)"
                 )
+                for index_sql in _MEMORIES_INDEX_SQL:
+                    self._conn.execute(index_sql)
             finally:
                 # Durability settings must be restored even if the index
                 # rebuild failed; a failed TRUNCATE checkpoint degrades
