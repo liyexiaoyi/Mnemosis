@@ -245,7 +245,7 @@ def _dense_results(
     embedder,
     top_k: int,
     vector_index=None,
-) -> list:
+) -> list[RecallResult]:
     """Dense-only candidate pass that bypasses the lexical gate.
 
     The built-in recall path prunes candidates to memories sharing at least
@@ -335,7 +335,7 @@ def fused_recall(
     early_stop: bool = False,
     early_stop_min_score: float = EARLY_STOP_MIN_SCORE,
     early_stop_min_lead: float = EARLY_STOP_MIN_LEAD,
-) -> list:
+) -> list[RecallResult]:
     """Fuse keyword + n-gram recalls with recency / cue / date signals."""
     from .types import tokenize
 

@@ -49,6 +49,7 @@ from .types import (
     MemoryItem,
     MemoryKind,
     MemoryStatus,
+    MnemosisError,
     RecallResult,  # noqa: F401  (public re-export)
     SourceRecord,
     SourceType,
@@ -544,7 +545,9 @@ class MemoryEngine(
             if item.kind is MemoryKind.SEMANTIC:
                 duplicate = self.backend.find_by_hash(MemoryKind.SEMANTIC, new_hash)
                 if duplicate is not None and duplicate.id != item.id:
-                    raise ValueError("update would create a semantic duplicate")
+                    raise MnemosisError(
+                        "update would create a semantic duplicate"
+                    )
             item.content = content
             item.content_hash = new_hash
             item.revision_count += 1

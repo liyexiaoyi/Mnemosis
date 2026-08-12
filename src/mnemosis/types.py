@@ -387,6 +387,7 @@ __all__ = [
     "MemoryItem",
     "MemoryKind",
     "MemoryStatus",
+    "MnemosisError",
     "RecallResult",
     "SourceRecord",
     "SourceType",
@@ -396,3 +397,11 @@ __all__ = [
     "tokenize",
     "utcnow",
 ]
+
+
+class MnemosisError(Exception):
+    """Base error for Mnemosis domain failures.
+
+    Catch this base class for any Mnemosis-specific failure; specific
+    subclasses can be added later without breaking callers.
+    """

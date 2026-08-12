@@ -9,6 +9,7 @@ from datetime import timedelta
 from mnemosis import MemoryEngine
 from mnemosis.types import (
     MemoryKind,
+    MnemosisError,
     SourceRecord,
     SourceType,
     extract_cues,
@@ -97,7 +98,7 @@ class LearningTest(unittest.TestCase):
     def test_update_rejects_semantic_duplicate(self):
         self.remember("Alpha fact one.")
         other = self.remember("Beta fact two.")
-        with self.assertRaises(ValueError):
+        with self.assertRaises(MnemosisError):
             self.engine.update(other.id, content="Alpha fact one.")
 
     def test_emotional_episode_promotes_earlier(self):

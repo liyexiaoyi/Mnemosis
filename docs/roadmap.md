@@ -34,6 +34,13 @@
 - 100 万级可用：构建约 6 分钟、主库文件约 5GB（不含可选向量副文件）、
   热查询 p99 ~1.7ms（冷启动需预热）。
 
+公开导出（1.0 锁定）：`MemoryEngine`、`fused_recall`、`MemoryItem`、
+`MemoryKind`、`MnemosisError`、`RecallResult`、`SourceRecord`、`SourceType`
+（`mnemosis.__all__`，新增导出须先改契约测试）。
+
+构造契约：`MemoryEngine(memory_file=None, ...)` 的 `memory_file` 参数名
+与 CLI `--db`、README 示例保持一致，属稳定 API（不可改名为 db_path 等）。
+
 ## 1.0 实验特性（`--expose experimental` 才可见，可随时调整/移除）
 
 - 情绪/睡眠建议、反刍、类比桥接、夜间例程、突击计划等认知侧工具；
@@ -43,7 +50,7 @@
 
 > 使用约定：默认 `--expose advanced`（代码默认值）只暴露核心 + 高级工具；`--expose core`
 > 只留 16 个日常工具；`--expose experimental` 暴露全部 130 个
-> （core=16、advanced=98、experimental=130，均为累计包含关系）；
+> （core≥16、advanced=其余、experimental≥32，1.x 工具只增不减；均为累计包含关系）；
 > 实验工具仍可调用但不承诺稳定性。
 
 ## 1.0 发布前待办
