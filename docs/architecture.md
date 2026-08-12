@@ -3,7 +3,7 @@
 Mnemosis 是一个零依赖的 Python 记忆层：公开入口是 `mnemosis.MemoryEngine`，
 其余都是可替换的组件。核心规则是 `stdlib`-only（不引入第三方运行时依赖）。
 
-核心业务模块共 **37 个**（另有 `__init__.py` / `__main__.py` 两个入口文件），
+核心业务模块共 **39 个**（另有 `__init__.py` / `__main__.py` 两个入口文件），
 按职责分组如下。
 
 ## 模块一览
@@ -14,7 +14,9 @@ Mnemosis 是一个零依赖的 Python 记忆层：公开入口是 `mnemosis.Memo
 |---|---|
 | `engine.py` | `MemoryEngine` 门面：把各 Mixin 和存储组件接在一起，提供 `remember` / `recall` / `sleep` / `update` / `export/import` 等 |
 | `cli.py` | `argparse` 命令行：`remember` / `recall` / `memory-map` / `mcp` 等子命令 |
-| `mcp_server.py` | 纯 stdlib 的 stdio MCP 服务器（JSON-RPC 2.0），用 `@_tool` 注册表把引擎暴露成 100+ 工具 |
+| `mcp_server.py` | 纯 stdlib 的 stdio/HTTP MCP 服务器（JSON-RPC 2.0）：协议处理、传输与工具分发 |
+| `mcp_handlers.py` | MCP 工具处理器：130 个 `@_tool` 方法组成的 `MCPHandlersMixin` |
+| `mcp_registry.py` | MCP 工具注册表：`@_tool` 装饰器与名字→方法映射 |
 | `mcp_tools.py` | MCP 工具清单（纯数据）：130 个工具的 name/description/inputSchema 与实验工具集合 |
 
 ### 记忆模型与编码
