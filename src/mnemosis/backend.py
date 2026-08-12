@@ -380,7 +380,12 @@ class DictBackend(Backend):
         status: MemoryStatus = MemoryStatus.ACTIVE,
         limit: int = 50,
     ) -> list[MemoryItem]:
-        """Most important active memories (importance, then recency)."""
+        """Most important active memories.
+
+        Ordered by importance only (no secondary recency sort) so the query
+        stays a pure index scan on (status, importance); equal-importance
+        ordering is arbitrary and fine for a fallback pool.
+        """
         items = [
             item
             for item in self._items.values()

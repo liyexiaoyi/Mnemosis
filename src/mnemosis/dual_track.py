@@ -42,6 +42,14 @@ core facts, so an old but critical memory (e.g. an allergy) still surfaces
 instead of being drowned by recency.
 """
 
+_FALLBACK_IMPORTANCE_BOOST = 0.20
+"""Extra score per unit of importance in zero-hit fallback ranking.
+
+Zero-hit scores are dominated by the recency term; this boost lets a
+high-importance core fact (importance ~1.0) overtake recent low-importance
+traces without letting mid-importance facts (<0.5) dominate.
+"""
+
 _DENSE_RERANK_CANDIDATES = 64
 """Max candidates embedded per query.
 
@@ -610,7 +618,7 @@ class DualTrackStore:
                 # Zero-hit queries have no lexical signal: let core facts
                 # (high importance) compete with recent traces instead of
                 # being buried by the recency term.
-                score += 0.20 * item.importance
+                score += _FALLBACK_IMPORTANCE_BOOST * item.importance
             if overlap > 0:
                 reasons.append(f"cue/keyword overlap {overlap:.2f}")
             if source_trust_boost and item.source.trust >= 0.95:
