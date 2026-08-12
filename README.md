@@ -8,6 +8,10 @@ and recall by similarity. Mnemosis instead treats memory as a **lifecycle** —
 remembering, reinforcing, consolidating, forgetting, and reconciling — the way
 human memory actually works.
 
+> 🍼 New here? Start with the
+> [**奶龙级入门教程——基本功能介绍版**](奶龙级入门教程——基本功能介绍版.md) —
+> a teacher-style, zero-background tour of every feature (Chinese).
+
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/liyexiaoyi/Mnemosis/actions/workflows/ci.yml/badge.svg)](https://github.com/liyexiaoyi/Mnemosis/actions/workflows/ci.yml)
 [![Open in GitHub Codespaces](https://img.shields.io/badge/Codespaces-一键打开-181717?logo=github)](https://codespaces.new/liyexiaoyi/Mnemosis)
