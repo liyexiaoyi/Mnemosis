@@ -47,6 +47,28 @@ class CliTest(unittest.TestCase):
         sleep = self.run_cli("sleep")
         self.assertIn("promoted", sleep)
 
+    def test_memory_map_command(self):
+        self.run_cli("remember", "The user likes purple.", "--cues", "color")
+        self.run_cli("remember", "The user likes green.", "--cues", "color")
+
+        raw = self.run_cli("memory-map", "--json")
+        self.assertIn('"sampled": 2', raw)
+        self.assertIn('"topics"', raw)
+        self.assertIn('"strength"', raw)
+
+        human = self.run_cli("memory-map", "--limit", "5")
+        self.assertIn("已采样 2 条记忆", human)
+        self.assertIn("color: 2条", human)
+
+    def test_memory_map_topic_min(self):
+        self.run_cli("remember", "alpha one.", "--cues", "shared")
+        self.run_cli("remember", "alpha two.", "--cues", "shared")
+        self.run_cli("remember", "solo fact.", "--cues", "solo")
+
+        out = self.run_cli("memory-map", "--topic-min", "2")
+        self.assertIn("shared: 2条", out)
+        self.assertNotIn("solo:", out)
+
     def test_update_and_recycle_via_cli(self):
         saved = self.run_cli("remember", "The deadline is Friday.")
         memory_id = saved.split()[1]

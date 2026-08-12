@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 from collections.abc import Sequence
 
 from .embedding import Embedder, NGramEmbedder, make_embedder
@@ -104,6 +105,18 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("working-set", help="recently used memories")
     p.add_argument("--limit", type=int, default=8)
 
+    p = sub.add_parser(
+        "memory-map",
+        help="summarize topics and memory strength",
+    )
+    p.add_argument("--limit", type=int, default=200)
+    p.add_argument("--topic-min", type=int, default=1)
+    p.add_argument(
+        "--json",
+        action="store_true",
+        help="print the full JSON payload instead of a human table",
+    )
+
     p = sub.add_parser("review-due", help="list memories due for spaced review")
     p.add_argument("--limit", type=int, default=10)
     p = sub.add_parser("review", help="record a spaced-repetition outcome")
@@ -161,6 +174,26 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif args.command == "stats":
             for key, value in engine.stats().items():
                 print(f"{key}: {value}")
+        elif args.command == "memory-map":
+            data = engine.memory_map(
+                limit=args.limit, topic_min=args.topic_min
+            )
+            if args.json:
+                print(json.dumps(data, ensure_ascii=False, indent=2))
+            else:
+                print(f"已采样 {data['sampled']} 条记忆")
+                strength = data["strength"]
+                print(
+                    "强度分布: "
+                    f"弱 {strength['weak']} / "
+                    f"中 {strength['ok']} / "
+                    f"强 {strength['strong']}"
+                )
+                for topic in data["topics"][:10]:
+                    print(
+                        f"{topic['topic']}: {topic['count']}条, "
+                        f"可提取度 {topic['avg_retrievability']:.2f}"
+                    )
         elif args.command == "check":
             embedder = _cli_embedder(args)
             check = engine.check(args.query, top_k=args.top_k, embedder=embedder)
