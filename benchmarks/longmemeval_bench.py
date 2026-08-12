@@ -142,6 +142,7 @@ def judge_local(question: str, gold: str, candidate: str) -> bool:
 
 def judge_local_strict(question: str, gold: str, candidate: str) -> bool:
     """Strict local judge: 'unknown' is wrong when the gold has an answer."""
+    candidate = _extract_final_answer(candidate)
     prompt = (
         "You are a STRICT evaluator. The ground-truth answer is definitive. "
         "If the model answer is 'unknown' or says it cannot answer, but the "
@@ -164,11 +165,18 @@ def judge_local_strict(question: str, gold: str, candidate: str) -> bool:
 
 def keyword_correct(question: str, gold: str, candidate: str) -> bool:
     """Rule-based fallback: all gold tokens appear in the candidate."""
+    candidate = _extract_final_answer(candidate)
     gold_tokens = _tokens(gold)
     if not gold_tokens:
         return False
     candidate_tokens = set(_tokens(candidate))
     return all(token in candidate_tokens for token in gold_tokens)
+
+
+def _extract_final_answer(text: str) -> str:
+    """Pull the ANSWER: line out of a reasoning-chain response."""
+    match = re.search(r"ANSWER:\s*(.+)", text, flags=re.IGNORECASE)
+    return match.group(1).strip() if match else text.strip()
 
 
 def make_nomic_embedder(cache_path: str | None = None):
@@ -233,6 +241,7 @@ def _local_with_retry(
 
 
 def judge_answer(question: str, gold: str, candidate: str) -> bool:
+    candidate = _extract_final_answer(candidate)
     gold_lower = gold.lower().strip()
     abstain = any(
         keyword in gold_lower
@@ -264,11 +273,7 @@ def judge_answer(question: str, gold: str, candidate: str) -> bool:
 
 def answer_prompt(contents: list[str], question: str) -> str:
     context = "\n".join(f"- {c}" for c in contents)
-    return (
-        "Answer using ONLY the memory context below. If the context does not "
-        "contain the answer, answer exactly 'unknown'.\n\n"
-        f"Context:\n{context}\n\nQuestion: {question}"
-    )
+    return _temporal_reasoning_prompt(context, question, "")
 
 
 def answer_prompt_local(
@@ -277,11 +282,33 @@ def answer_prompt_local(
     """Local-friendly prompt: explicit instructions, optional question date."""
     context = "\n".join(f"- {c}" for c in contents)
     date_line = f"\nToday's date: {question_date}" if question_date else ""
+    return _temporal_reasoning_prompt(context, question, date_line)
+
+
+def _temporal_reasoning_prompt(
+    context: str, question: str, date_line: str
+) -> str:
+    """Structured temporal-reasoning chain for long multi-session context.
+
+    Bad-case analysis (30 LongMemEval questions, cloud Qwen judging) showed
+    errors concentrate on multi-session aggregation, temporal reasoning and
+    knowledge updates. This prompt forces the model to (1) build a
+    chronological timeline, (2) aggregate when asked for totals, (3) prefer
+    the most recent fact on conflict, and (4) emit one final ANSWER line so
+    judges are not confused by the reasoning.
+    """
     return (
-        "Answer using ONLY the memory context below. "
-        "If the context does not contain the answer, answer exactly "
-        "'unknown'. If different memories show different values on "
-        "different dates, prefer the value from the most recent date.\n\n"
+        "Answer using ONLY the memory context below. Reason step by step:\n"
+        "1) Build a timeline: list every dated fact in chronological order "
+        "as 'date -> fact'.\n"
+        "2) If the question asks for a total / sum / how much in total, "
+        "identify all relevant amounts and add them up.\n"
+        "3) If different facts conflict, the one with the most recent date "
+        "wins; older values are superseded (knowledge updates).\n"
+        "4) If the context does not contain the answer, answer exactly "
+        "'unknown'.\n"
+        "Then output your FINAL ANSWER on its own line prefixed with "
+        "'ANSWER:' (and nothing else on that line).\n\n"
         f"Context:\n{context}\n"
         f"{date_line}\n"
         f"Question: {question}"

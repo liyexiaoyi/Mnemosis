@@ -237,6 +237,15 @@ Then tell your agent in its system prompt:
 memories with automatic cues, so agents do not need to hand-write
 `remember` calls for each fact.
 
+For temporal and multi-session questions ("how much did I spend in total",
+"what changed since last month"), LongMemEval bad-case analysis shows the
+biggest accuracy gains come from prompting, not retrieval: ask the agent to
+build a chronological timeline of the recalled memories, sum amounts when
+the question asks for a total, and treat the most recently dated fact as
+authoritative when facts conflict (knowledge updates). Mnemosis returns
+recalled items with dates and confidence, so the agent can apply exactly
+those rules.
+
 ### Batch ingestion (importing large histories)
 
 `remember_many` imports a batch of memories with the same per-item
