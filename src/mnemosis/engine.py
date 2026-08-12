@@ -83,6 +83,9 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
         embed_cache_memory_limit_mb: float | None = 512.0,
         fallback_cache_ttl: float = 15.0,
         fallback_cache_size: int = 32,
+        fallback_cache_max_size: int = 256,
+        fallback_cache_auto_grow: bool = True,
+        fallback_cache_grow_cooldown_seconds: float = 300.0,
     ) -> None:
         self.backend: Backend = make_backend(memory_file)
         if decay_rate is None:
@@ -107,6 +110,11 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
             embed_cache_memory_limit_mb=embed_cache_memory_limit_mb,
             fallback_cache_ttl=fallback_cache_ttl,
             fallback_cache_size=fallback_cache_size,
+            fallback_cache_max_size=fallback_cache_max_size,
+            fallback_cache_auto_grow=fallback_cache_auto_grow,
+            fallback_cache_grow_cooldown_seconds=(
+                fallback_cache_grow_cooldown_seconds
+            ),
         )
         self.associations = AssociationIndex(self.backend)
         self.event_chain = EventChainIndex(self.backend)

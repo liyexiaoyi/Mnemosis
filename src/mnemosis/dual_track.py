@@ -166,6 +166,9 @@ class DualTrackStore:
         embed_cache_memory_limit_mb: float | None = None,
         fallback_cache_ttl: float = 15.0,
         fallback_cache_size: int = 32,
+        fallback_cache_max_size: int = 256,
+        fallback_cache_auto_grow: bool = True,
+        fallback_cache_grow_cooldown_seconds: float = 300.0,
     ) -> None:
         self.backend = backend
         self.curve = curve
@@ -182,12 +185,21 @@ class DualTrackStore:
         self._embed_cache_bytes = 0
         self.fallback_cache_ttl = max(0.0, float(fallback_cache_ttl))
         self.fallback_cache_size = max(1, int(fallback_cache_size))
+        self.fallback_cache_max_size = max(
+            self.fallback_cache_size, int(fallback_cache_max_size)
+        )
+        self.fallback_cache_auto_grow = bool(fallback_cache_auto_grow)
+        self.fallback_cache_grow_cooldown = max(
+            0.0, float(fallback_cache_grow_cooldown_seconds)
+        )
+        self._last_grow_time = float("-inf")
         self._fallback_cache: OrderedDict[
             tuple, tuple[float, dict]
         ] = OrderedDict()
         self.fallback_cache_hits = 0
         self.fallback_cache_misses = 0
         self.fallback_cache_evictions = 0
+        self.fallback_cache_growths = 0
         self._fallback_cache_eviction_times: deque[float] = deque(
             maxlen=32768
         )
@@ -1630,6 +1642,29 @@ class DualTrackStore:
                 self._fallback_cache.popitem(last=False)
                 self.fallback_cache_evictions += 1
                 self._fallback_cache_eviction_times.append(time.monotonic())
+            if (
+                self.fallback_cache_auto_grow
+                and self.fallback_cache_size < self.fallback_cache_max_size
+                and (
+                    time.monotonic() - self._last_grow_time
+                    >= self.fallback_cache_grow_cooldown
+                )
+            ):
+                cutoff = time.monotonic() - 60.0
+                while (
+                    self._fallback_cache_eviction_times
+                    and self._fallback_cache_eviction_times[0] < cutoff
+                ):
+                    self._fallback_cache_eviction_times.popleft()
+                if len(self._fallback_cache_eviction_times) >= max(
+                    2, self.fallback_cache_size
+                ):
+                    self.fallback_cache_size = min(
+                        self.fallback_cache_size * 2,
+                        self.fallback_cache_max_size,
+                    )
+                    self.fallback_cache_growths += 1
+                    self._last_grow_time = time.monotonic()
 
     def invalidate_fallback_cache(self) -> None:
         """Drop cached fallback results after any memory mutation."""
@@ -1656,8 +1691,12 @@ class DualTrackStore:
                 "hit_rate": round(hit_rate, 4),
                 "evictions": self.fallback_cache_evictions,
                 "evictions_last_60s": evictions_last_60s,
+                "growths": self.fallback_cache_growths,
                 "entries": len(self._fallback_cache),
                 "size_limit": self.fallback_cache_size,
+                "max_size": self.fallback_cache_max_size,
+                "auto_grow": self.fallback_cache_auto_grow,
+                "grow_cooldown_seconds": self.fallback_cache_grow_cooldown,
                 "ttl_seconds": self.fallback_cache_ttl,
             }
 

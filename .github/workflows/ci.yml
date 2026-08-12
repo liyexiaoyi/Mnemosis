@@ -26,6 +26,10 @@ jobs:
         run: python benchmarks/ci_regression.py
         env:
           PYTHONPATH: src
+      - name: get_many performance gate
+        run: python benchmarks/ci_perf.py
+        env:
+          PYTHONPATH: src
 
   benchmark-smoke:
     runs-on: ubuntu-latest

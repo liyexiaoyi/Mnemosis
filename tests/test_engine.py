@@ -525,6 +525,49 @@ class MemoryEngineTest(unittest.TestCase):
             tiny.stats()["fallback_cache"]["evictions_last_60s"], 1
         )
 
+    def test_fallback_cache_auto_grows_under_thrashing(self):
+        engine = MemoryEngine(
+            fallback_cache_ttl=60,
+            fallback_cache_size=1,
+            fallback_cache_max_size=4,
+            fallback_cache_auto_grow=True,
+            fallback_cache_grow_cooldown_seconds=0.0,
+        )
+        source = SourceRecord(origin=SourceType.USER)
+        for index in range(5):
+            engine.remember(
+                f"grow record {index}",
+                kind=MemoryKind.EPISODIC,
+                source=source,
+                auto_cues=False,
+            )
+        for index in range(8):
+            engine.recall(f"zx{index} qy{index} nz{index}", top_k=3)
+        stats = engine.stats()["fallback_cache"]
+        self.assertEqual(stats["size_limit"], 4)
+        self.assertGreaterEqual(stats["growths"], 2)
+
+        fixed = MemoryEngine(
+            fallback_cache_ttl=60,
+            fallback_cache_size=1,
+            fallback_cache_max_size=4,
+            fallback_cache_auto_grow=False,
+            fallback_cache_grow_cooldown_seconds=0.0,
+        )
+        source2 = SourceRecord(origin=SourceType.USER)
+        for index in range(3):
+            fixed.remember(
+                f"fixed record {index}",
+                kind=MemoryKind.EPISODIC,
+                source=source2,
+                auto_cues=False,
+            )
+        for index in range(6):
+            fixed.recall(f"fx{index} fy{index} fz{index}", top_k=3)
+        self.assertEqual(
+            fixed.stats()["fallback_cache"]["size_limit"], 1
+        )
+
     def test_rerank_pool_params_are_configurable(self):
         class _CountingEmbedder(Embedder):
             def __init__(self) -> None:
