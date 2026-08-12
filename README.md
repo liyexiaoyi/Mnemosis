@@ -341,6 +341,13 @@ recall @1 0.60 / @5 0.85 / @10 0.90, ahead of mem0 on every retrieval
 metric while ingesting ~4.8x faster. For long multi-session conversations,
 store turns with `remember_turn` and recall with `recall` / `recall_fused`.
 
+Cloud-judged end-to-end (qwen3.7-plus answers + judging, same 20 questions)
+confirms the pattern: mnemosis seg answer accuracy 0.65 vs mem0 0.45, with
+retrieval also ahead and ingestion ~5x faster. (The benchmark initially
+capped answer generation at 300 tokens, truncating the mandated
+timeline + ANSWER line for seg contexts; raising it to 1200 removed that
+artifact.)
+
 At a 50k-input / 25k-active real-Chinese store, recall is 26-85ms and
 sleep consolidation ~2.3s after the large-store scaling work (batched term
 df, batched REM links, generic-cue skipping).

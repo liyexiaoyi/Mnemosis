@@ -94,8 +94,12 @@ def _answer_hit(content: str, expected: list[str]) -> bool:
 
 
 def local_generate(
-    prompt: str, model: str = LOCAL_MODEL, max_tokens: int = 300
+    prompt: str,
+    model: str = LOCAL_MODEL,
+    max_tokens: int = 1200,
 ) -> str:
+    # 1200 so the mandated timeline + ANSWER: line fit; judges pass 10
+    # explicitly, so this default only affects answer generation.
     payload = {
         "model": model,
         "messages": [{"role": "user", "content": prompt}],
@@ -790,7 +794,10 @@ def main() -> int:
                 rows[name][-1]["context"] = answer_ctx
                 if args.cloud_answers:
                     prompt = answer_prompt(answer_ctx, q)
-                    cloud_ans = _cloud_with_retry(prompt, max_tokens=300)
+                    # The prompt requires a full timeline before the
+                    # ANSWER: line; 300 tokens truncates seg contexts and
+                    # the ANSWER line never appears (15/20 in one run).
+                    cloud_ans = _cloud_with_retry(prompt, max_tokens=1200)
                     llm_correct = judge_answer(q, gold, cloud_ans)
                     rows[name][-1]["llm_answer"] = cloud_ans
                     rows[name][-1]["llm_correct"] = llm_correct

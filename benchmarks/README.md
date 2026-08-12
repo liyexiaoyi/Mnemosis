@@ -78,6 +78,22 @@ pre-refactor numbers (no quality regression from the module-split rounds).
 > 小样本的正常抽样波动（本次 @5 0.85 还略高于历史的 0.80）；历史端到端
 > llm_accuracy 为云端 0.55、本地 0.65-0.70。
 
+### Cloud-judged end-to-end (2026-08-13, 20 questions, seed 42)
+
+| System | turn_recall@1 | @5 | @10 | llm_accuracy | avg ingest |
+|---|---|---|---|---|---|
+| mnemosis seg | 0.60 | 0.85 | 0.90 | 0.65 | 12.3 s |
+| mem0 | 0.50 | 0.80 | 0.80 | 0.45 | 62.4 s |
+
+Answers/judging by qwen3.7-plus. The seg pipeline leads every metric,
+including end-to-end answer accuracy (+20 points over mem0) while
+ingesting ~5x faster.
+
+> 评测修复：答案生成原先只给 `max_tokens=300`，而 prompt 要求先列时间线
+> 再输出 `ANSWER:` 行——seg 上下文条目多，300 token 常被时间线吃光，
+> 导致 20 题里 15 题缺 `ANSWER:` 行、被判 0.25（假低分）。上限提到 1200
+> 后同一批题升到 0.65；mem0 上下文条目少，不受影响（0.45 不变）。
+
 ## compare_with_models.py
 
 Compares Mnemosis against local LLMs (via Ollama) on a small memory
