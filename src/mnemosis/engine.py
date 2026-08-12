@@ -17,7 +17,11 @@ from .consolidation import (  # noqa: F401  (public re-exports)
     ConsolidationReport,
     Consolidator,
 )
-from .dual_track import DualTrackStore
+from .dual_track import (
+    _DENSE_RERANK_CANDIDATES,
+    _MAX_ZERO_HIT_RERANK_POOL,
+    DualTrackStore,
+)
 from .embedding import Embedder
 from .forgetting import ForgettingCurve, ReviewScheduler
 from .importance import ImportanceScorer
@@ -67,8 +71,8 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
         embedder: Embedder | None = None,
         vector_index=None,
         index_embedder: Embedder | None = None,
-        dense_rerank_candidates: int = 64,
-        zero_hit_rerank_pool: int = 200,
+        dense_rerank_candidates: int = _DENSE_RERANK_CANDIDATES,
+        zero_hit_rerank_pool: int = _MAX_ZERO_HIT_RERANK_POOL,
     ) -> None:
         self.backend: Backend = make_backend(memory_file)
         if decay_rate is None:
