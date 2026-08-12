@@ -59,6 +59,12 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
     engine.sleep()
     engine.check(...)
     ```
+
+    The embedding cache is bounded by ``embed_cache_memory_limit_mb``
+    (default 512 MB). The estimate counts Python list floats at ~32 bytes
+    each, and compact arrays (``numpy.ndarray``/``array.array``) by their
+    real ``nbytes``, so the memory cap reflects what the process actually
+    holds rather than a theoretical float32 size.
     """
 
     def __init__(

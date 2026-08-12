@@ -72,6 +72,24 @@ python examples/demo.py
 > - 下载 `examples/Mnemosis_demo.ipynb`，用本地 Jupyter 或百度 AI Studio 打开
 > - 最稳的方式：本地 `pip install` 后直接跑 `python examples/demo.py`
 
+## 语义嵌入（可选）
+
+默认检索是纯关键词 + n-gram，零依赖；接入向量模型后可获得语义召回：
+
+```bash
+# 本地 Ollama
+mnemosis-mcp --db memory.db --embedder ollama
+
+# 任意 OpenAI 兼容接口（DashScope、OpenAI 等）
+export MNEMOSIS_EMBEDDING_API_KEY=sk-...
+mnemosis-mcp --db memory.db --embedder openai --embedding-model text-embedding-v3
+```
+
+向量会做内存缓存，默认按约 512MB 的估算内存上限淘汰
+（`embed_cache_memory_limit_mb` 可调）：Python 列表按每元素约 32 字节估算，
+紧凑数组（`numpy.ndarray`/`array.array`）按真实 `nbytes` 计算，避免高维向量
+悄悄把内存吃满；10 万条的条数上限保留，作为极端高维时的兜底。
+
 ## 命令行
 
 ```bash

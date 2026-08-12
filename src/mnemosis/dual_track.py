@@ -7,6 +7,7 @@ deduplicated and kept stable. Recall paths are separate per track.
 from __future__ import annotations
 
 import math
+import numbers
 import re
 import threading
 from collections import OrderedDict
@@ -1361,9 +1362,10 @@ class DualTrackStore:
         Read hits intentionally do not touch the order (a move on every hit
         would need a write lock per read); this is a capacity-bounding FIFO
         cache, which keeps concurrent reads cheap and memory bounded. The
-        primary bound is an estimated byte budget (``len(vector) * 4``); the
-        entry-count limit is kept as a floor so extremely high-dimensional
-        vectors cannot blow past the byte estimate in one insert.
+        primary bound is an estimated byte budget (see
+        ``_vector_cache_bytes``); the entry-count limit is kept as a floor so
+        extremely high-dimensional vectors cannot blow past the byte estimate
+        in one insert.
         """
         while len(self._embed_cache) > self.embed_cache_limit or (
             self.embed_cache_memory_limit > 0
@@ -1374,8 +1376,20 @@ class DualTrackStore:
 
     @staticmethod
     def _vector_cache_bytes(vector: list[float]) -> int:
-        """Rough resident-memory estimate for one cached vector."""
-        return len(vector) * 4
+        """Estimated resident memory for one cached vector.
+
+        Embedders normally return Python ``list[float]`` objects: each float
+        is a separate ~24-byte object behind an 8-byte pointer, so the honest
+        estimate is ~32 bytes per element plus list overhead. Compact arrays
+        (``numpy.ndarray``, ``array.array``) expose their real ``nbytes`` and
+        are measured directly. The estimate is still approximate, but it keeps
+        the default 512 MB budget from silently allowing 6-8x more real memory
+        than intended.
+        """
+        nbytes = getattr(vector, "nbytes", None)
+        if isinstance(nbytes, numbers.Integral) and nbytes > 0:
+            return int(nbytes)
+        return len(vector) * 32 + 64
 
     @staticmethod
     def _embed_text(item: MemoryItem) -> str:

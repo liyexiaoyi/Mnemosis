@@ -198,6 +198,13 @@ mnemosis-mcp --db memory.db --embedder openai --embedding-model text-embedding-v
 Vectors are cached next to the DB (`memory.db.cache`) and indexed in
 `memory.db.vec`, so repeated recalls skip embedding calls.
 
+The in-memory embedding cache is bounded by an estimated memory budget
+(default 512 MB, configurable via `embed_cache_memory_limit_mb`): Python
+lists of floats count ~32 bytes per element and compact arrays
+(`numpy.ndarray`/`array.array`) count by their real `nbytes`, so the cap
+reflects actual process memory. An entry-count floor (100k) remains as a
+guard for extreme vector dimensions.
+
 For the strongest retrieval quality, enable a dense embedder (Ollama or any
 OpenAI-compatible endpoint): on the independent LongMemEval benchmark this
 mode reaches parity with mem0 on turn recall while keeping ingestion ~13x

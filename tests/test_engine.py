@@ -1,3 +1,4 @@
+import numbers
 import unittest
 from datetime import timedelta
 
@@ -625,7 +626,9 @@ class MemoryEngineTest(unittest.TestCase):
         engine = MemoryEngine(
             embedder=counting,
             embed_cache_limit=1000,  # deliberately loose count bound
-            embed_cache_memory_limit_mb=0.001,  # 1024 bytes -> ~2 vectors
+            # 128-dim list[float] estimates to 128*32+64 = 4160 bytes each;
+            # 0.008 MB ≈ 8388 bytes fits exactly two vectors.
+            embed_cache_memory_limit_mb=0.008,
         )
         source = SourceRecord(origin=SourceType.USER)
         for index in range(4):
@@ -638,7 +641,7 @@ class MemoryEngineTest(unittest.TestCase):
         for index in range(4):
             engine.recall(f"byte topic {index}", top_k=1)
         self.assertLessEqual(len(engine.store._embed_cache), 2)
-        self.assertLessEqual(engine.store._embed_cache_bytes, 1024)
+        self.assertLessEqual(engine.store._embed_cache_bytes, 8389)
         before = counting.calls
         engine.recall("byte topic 0", top_k=1)
         # topic 0 was evicted by the byte budget -> must be embedded again
@@ -647,7 +650,7 @@ class MemoryEngineTest(unittest.TestCase):
     def test_embed_cache_byte_accounting_deduplicates_shared_content(self):
         class _FixedDimEmbedder(Embedder):
             def embed(self, text: str) -> list[float]:
-                return [0.25] * 64  # 256 estimated bytes per vector
+                return [0.25] * 64  # 64*32+64 = 2112 estimated bytes
 
         embedder = _FixedDimEmbedder()
         engine = MemoryEngine(
@@ -664,12 +667,75 @@ class MemoryEngineTest(unittest.TestCase):
                 auto_cues=False,
             )
         engine.recall("identical shared text", top_k=3)
-        self.assertEqual(engine.store._embed_cache_bytes, 256)
+        self.assertEqual(engine.store._embed_cache_bytes, 2112)
+
+    def test_embed_cache_byte_estimate_uses_nbytes_for_compact_arrays(self):
+        class _NumpyLikeInt:
+            """Simulates numpy.int64: not a subclass of builtin int."""
+
+            def __init__(self, value: int) -> None:
+                self.value = value
+
+            def __int__(self) -> int:
+                return self.value
+
+            def __gt__(self, other) -> bool:
+                return self.value > other
+
+        numbers.Integral.register(_NumpyLikeInt)
+
+        class _CompactVector:
+            def __init__(self, size: int, nbytes_value=None) -> None:
+                self._data = [0.0] * size
+                self.nbytes = (
+                    nbytes_value if nbytes_value is not None else size * 4
+                )
+
+            def __len__(self) -> int:
+                return len(self._data)
+
+            def __iter__(self):
+                return iter(self._data)
+
+        class _ArrayEmbedder(Embedder):
+            def embed(self, text: str) -> _CompactVector:
+                return _CompactVector(128)
+
+        engine = MemoryEngine(
+            embedder=_ArrayEmbedder(),
+            embed_cache_limit=100,
+            embed_cache_memory_limit_mb=None,
+        )
+        source = SourceRecord(origin=SourceType.USER)
+        engine.remember(
+            "compact array vector",
+            kind=MemoryKind.EPISODIC,
+            source=source,
+            auto_cues=False,
+        )
+        engine.recall("compact array vector", top_k=1)
+        # Compact arrays are measured by nbytes (128*4), not len*32.
+        self.assertEqual(engine.store._embed_cache_bytes, 512)
+
+        numpy_like = MemoryEngine(
+            embedder=_ArrayEmbedder(),
+            embed_cache_limit=100,
+            embed_cache_memory_limit_mb=None,
+        )
+        numpy_like.store._embed_cache_bytes = 0
+        numpy_like.store._embed_cache.clear()
+        vector = _CompactVector(128, _NumpyLikeInt(1024))
+        numpy_like.store._embed_cache["k"] = vector  # type: ignore[index]
+        numpy_like.store._embed_cache_bytes += (
+            numpy_like.store._vector_cache_bytes(vector)
+        )
+        # numpy-like ints (not builtin int) must still be recognized.
+        self.assertEqual(numpy_like.store._embed_cache_bytes, 1024)
 
     def test_embed_cache_byte_limit_smaller_than_one_vector(self):
         class _BigVectorEmbedder(Embedder):
             def embed(self, text: str) -> list[float]:
-                return [1.0] * 128  # 512 estimated bytes per vector
+                return [1.0] * 128  # 4160 estimated bytes per vector
 
         engine = MemoryEngine(
             embedder=_BigVectorEmbedder(),
