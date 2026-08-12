@@ -976,17 +976,7 @@ class ReviewMixin:
     def _schedule_post_sleep_warmup(self) -> None:
         """Warm caches/pages after sleep so the first user query is not a
         cold miss (sleep can evict OS page cache and SQLite buffers)."""
-        try:
-            recent = self.store.recent(limit=20)
-        except Exception:  # noqa: BLE001
-            return
-        cues: list[str] = []
-        seen: set[str] = set()
-        for item in recent:
-            for cue in item.cues:
-                if cue not in seen:
-                    seen.add(cue)
-                    cues.append(cue)
+        cues = self._warmup_cues()
         if not cues:
             return
         threading.Thread(
@@ -995,6 +985,37 @@ class ReviewMixin:
             name="mnemosis-warmup",
             daemon=True,
         ).start()
+
+    def _warmup_cues(self, now: datetime | None = None) -> list[str]:
+        """Pick warmup cues from recent + strongest memories, weighted by
+        importance and forgetting pressure (low retrievability)."""
+        try:
+            recent = self.store.recent(limit=10)
+            strong = self.store.backend.list_strongest(limit=10)
+        except Exception:  # noqa: BLE001
+            return []
+        by_id = {item.id: item for item in recent}
+        for item in strong:
+            by_id.setdefault(item.id, item)
+        now = now or utcnow()
+
+        def score(item: MemoryItem) -> float:
+            retrievability = min(
+                1.0, self.curve.retrievability(item, now)
+            )
+            return 0.6 * item.importance + 0.4 * (1.0 - retrievability)
+
+        candidates = sorted(
+            by_id.values(), key=score, reverse=True
+        )[:8]
+        cues: list[str] = []
+        seen: set[str] = set()
+        for item in candidates:
+            for cue in item.cues:
+                if cue not in seen:
+                    seen.add(cue)
+                    cues.append(cue)
+        return cues
 
     def _post_sleep_warmup(self, cues: list[str]) -> None:
         for cue in cues[:8]:

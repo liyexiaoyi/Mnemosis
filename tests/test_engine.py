@@ -687,6 +687,32 @@ class MemoryEngineTest(unittest.TestCase):
         finally:
             engine.close()
 
+    def test_warmup_cues_prefer_important_about_to_fade(self):
+        engine = MemoryEngine()
+        try:
+            source = SourceRecord(origin=SourceType.USER)
+            engine.remember(
+                "vital old fact alpha",
+                kind=MemoryKind.SEMANTIC,
+                source=source,
+                cues=["vital-cue"],
+                importance=1.0,
+                created_at=utcnow() - timedelta(days=365),
+                auto_cues=False,
+            )
+            engine.remember(
+                "fresh recent beta",
+                kind=MemoryKind.EPISODIC,
+                source=source,
+                cues=["fresh-cue"],
+                importance=0.1,
+                auto_cues=False,
+            )
+            cues = engine._warmup_cues()
+            self.assertIn("vital-cue", cues)
+        finally:
+            engine.close()
+
     def test_rerank_pool_params_are_configurable(self):
         class _CountingEmbedder(Embedder):
             def __init__(self) -> None:
