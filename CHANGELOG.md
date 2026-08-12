@@ -18,7 +18,8 @@
   27s → 2.3s
 - 100k 扩展性：批量语义 upsert（3 万次独立事务 → 一次批量）、批量建链
   跳过 auto_cues 产生的高频线索（用户/购买等），100k 构建从 2 小时+
-  降到 6.8 分钟；命中检索 ~77ms、零命中 ~350ms、睡眠 ~6.5s
+  降到 6.8 分钟；SQLite 读回走可信快路径（跳过重复校验/解析），
+  命中检索 ~6ms、零命中 ~165ms、睡眠 ~1.7s
 - 写入：`remember_many` 批量 API（10k 从 70s → 13s）、批量词索引/关联图/
   向量写入、嵌入前置失败不脏库、`rebuild_vectors` 补齐缺失向量
 - 部署与工具：MCP Streamable HTTP transport + Dockerfile（VPS/NAS）、

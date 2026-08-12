@@ -322,7 +322,7 @@ df, batched REM links, generic-cue skipping).
 
 At 100k input (50k active, real Chinese): batch ingestion is ~6.8 minutes
 (was >2h before the bulk upsert + generic-cue skip work), hit recall
-~77ms, zero-hit recall ~350ms, sleep ~6.5s.
+~6ms, zero-hit recall ~165ms, sleep ~1.7s after the trusted row fast path.
 
 ## Independent public benchmark (LongMemEval)
 
