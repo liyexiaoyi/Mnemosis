@@ -8,11 +8,12 @@ import sys
 import tempfile
 import unittest
 import uuid
+from dataclasses import fields
 from datetime import datetime, timezone
 
 from mnemosis import MemoryEngine
-from mnemosis.backend import SQLiteBackend
-from mnemosis.types import MemoryKind, SourceRecord, SourceType
+from mnemosis.backend import SQLiteBackend, _row_to_item
+from mnemosis.types import MemoryItem, MemoryKind, SourceRecord, SourceType
 
 
 class SQLiteBackendTest(unittest.TestCase):
@@ -136,6 +137,17 @@ class SQLiteBackendTest(unittest.TestCase):
         self.assertEqual(self.engine.backend.term_df("rareword", None), 1)
         self.engine.forget(item.id)
         self.assertEqual(self.engine.backend.term_df("rareword", None), 0)
+
+    def test_row_fast_path_fields_match_dataclass(self):
+        """Every MemoryItem field must be populated by the trusted fast path."""
+        self.remember("fast path field check")
+        row = self.engine.backend._conn.execute(
+            "SELECT * FROM memories LIMIT 1"
+        ).fetchone()
+        item = _row_to_item(row)
+        for field in fields(MemoryItem):
+            self.assertTrue(hasattr(item, field.name), field.name)
+        self.assertEqual(item.content, "fast path field check")
 
     def test_persistence_across_reopen(self):
         self.remember("The password hint is 'blue whale'.", cues=["password"])

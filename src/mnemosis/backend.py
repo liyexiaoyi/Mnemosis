@@ -1324,9 +1324,10 @@ def _row_to_item(row: sqlite3.Row | None) -> MemoryItem | None:
     if row is None:
         return None
     # Trusted fast path: rows were written through MemoryItem, so every
-    # value is already normalized/clamped. Skipping __post_init__ validation
-    # and json re-parsing of cues makes 100k-scale loads several times
-    # faster without changing any value.
+    # value is already normalized/clamped. Skipping __post_init__
+    # validation (normalize_cues, clamps, enum re-parsing) makes 100k-scale
+    # loads several times faster. IMPORTANT: keep this field list in sync
+    # with MemoryItem; test_row_fast_path_fields covers the invariant.
     item = MemoryItem.__new__(MemoryItem)
     item.id = row["id"]
     item.kind = MemoryKind(row["kind"])
