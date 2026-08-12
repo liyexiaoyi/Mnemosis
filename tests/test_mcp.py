@@ -37,6 +37,29 @@ class MCPTest(unittest.TestCase):
         self.assertIsNotNone(result)
         return json.loads(result["result"]["content"][0]["text"])
 
+    def test_tool_manifest_matches_handlers(self):
+        # expose="experimental" keeps the FULL manifest (no filtering).
+        server = MCPServer(MemoryEngine(), expose="experimental")
+        handler_names = set(server._tool_handlers)
+        manifest_names = {tool["name"] for tool in server._tools}
+        self.assertEqual(handler_names, manifest_names)
+        self.assertEqual(
+            len(manifest_names),
+            len(server._tools),
+            "duplicate entries in _tools manifest",
+        )
+        for name, handler in server._tool_handlers.items():
+            self.assertTrue(callable(handler), f"handler not callable: {name}")
+        required_fields = {"name", "description", "inputSchema"}
+        for tool in server._tools:
+            self.assertTrue(
+                required_fields.issubset(tool.keys()),
+                f"tool {tool.get('name', '?')} missing "
+                f"{required_fields - tool.keys()}",
+            )
+            self.assertIsInstance(tool["name"], str)
+            self.assertTrue(tool["name"])
+
     def test_initialize(self):
         response = self.send(
             {"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}}
