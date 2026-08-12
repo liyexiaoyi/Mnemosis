@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import random
 import sys
 import tempfile
 import time
@@ -29,6 +30,12 @@ from mnemosis.engine import MemoryEngine
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--count", type=int, default=20_000)
+    parser.add_argument(
+        "--tail-queries",
+        type=int,
+        default=100,
+        help="recalls right after sleep to measure wake-up tail latency",
+    )
     args = parser.parse_args()
     db_path = os.path.join(tempfile.gettempdir(), "mnemosis_sleep_bench.db")
     if os.path.exists(db_path):
@@ -40,6 +47,21 @@ def main() -> int:
     report = engine.sleep()
     elapsed = time.perf_counter() - start
     print(f"sleep {elapsed:.2f}s -> {report.summary()}")
+    if args.tail_queries > 0:
+        times = []
+        for _ in range(args.tail_queries):
+            query = f"用户{random.randint(1, 10_000)} 投影仪"
+            t0 = time.perf_counter()
+            engine.recall(query, top_k=3)
+            times.append((time.perf_counter() - t0) * 1000)
+        times.sort()
+        p50 = times[len(times) // 2]
+        p95 = times[max(0, int(len(times) * 0.95) - 1)]
+        p99 = times[max(0, int(len(times) * 0.99) - 1)]
+        print(
+            f"post-sleep recall ms (n={len(times)}): "
+            f"p50={p50:.2f} p95={p95:.2f} p99={p99:.2f}"
+        )
     engine.close()
     return 0
 

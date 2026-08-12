@@ -440,9 +440,10 @@ class Consolidator:
                 for cue in item.cues:
                     cue_freq[cue] = cue_freq.get(cue, 0) + 1
             cue_map: dict[str, list[MemoryItem]] = {}
+            cue_freq_get = cue_freq.get
             for item in episodes:
                 for cue in item.cues:
-                    if cue_freq.get(cue, 0) > _REM_CUE_BUCKET_LIMIT:
+                    if cue_freq_get(cue, 0) > _REM_CUE_BUCKET_LIMIT:
                         continue
                     bucket = cue_map.get(cue)
                     if bucket is None:
@@ -452,16 +453,22 @@ class Consolidator:
             order = {item.id: index for index, item in enumerate(episodes)}
             for a in episodes:
                 counts: dict[str, int] = {}
+                counts_get = counts.get
+                a_id = a.id
+                a_order = order[a_id]
                 for cue in a.cues:
-                    for b in cue_map.get(cue, ()):
-                        if b.id == a.id:
+                    bucket = cue_map.get(cue)
+                    if bucket is None:
+                        continue
+                    for b in bucket:
+                        if b.id == a_id:
                             continue
-                        counts[b.id] = counts.get(b.id, 0) + 1
+                        counts[b.id] = counts_get(b.id, 0) + 1
                 for b_id, shared in counts.items():
-                    if shared < 2 or order.get(b_id, -1) <= order[a.id]:
+                    if shared < 2 or order.get(b_id, -1) <= a_order:
                         continue
                     pending_links.append(
-                        (a.id, b.id, 0.8 + 0.1 * shared)
+                        (a_id, b_id, 0.8 + 0.1 * shared)
                     )
                     links += 1
         if pending_links:
