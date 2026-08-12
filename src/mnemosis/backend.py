@@ -782,17 +782,16 @@ class SQLiteBackend(Backend):
                 # parameter: no giant SQL string to parse, same PK-index
                 # lookup, and no per-chunk VALUES bloat for very large lists
                 # (1000 UUIDs serialize to ~40KB, far below SQLite limits).
-                # A plain WHERE status would make the planner scan the
-                # (status, importance) index, so the PK is forced explicitly
-                # and status is filtered as a post-predicate.
-                # NOTE: sqlite_autoindex_memories_1 is the auto-generated
-                # TEXT-PK index name; if the schema ever renames the PK,
-                # audit_query_plans + test_core_query_plans_use_indexes are
-                # the CI contract that forces a deliberate update here.
+                # A plain JOIN + WHERE status makes the planner scan the
+                # (status, importance) index (70 ids -> ~324ms at 50k rows).
+                # CROSS JOIN pins json_each as the driving table, so memories
+                # is resolved by primary key and status is a post-predicate.
+                # audit_query_plans still asserts the PK index name in the
+                # EXPLAIN output, catching schema-level PK renames and any
+                # well-meaning "simplification" back to a plain JOIN.
                 rows = self._conn.execute(
-                    "SELECT m.* FROM memories m "
-                    "INDEXED BY sqlite_autoindex_memories_1 "
-                    "JOIN json_each(?) AS j ON m.id = j.value "
+                    "SELECT m.* FROM json_each(?) AS j "
+                    "CROSS JOIN memories m ON m.id = j.value "
                     "WHERE m.status = ?",
                     (
                         json.dumps(chunk, default=str),
@@ -1273,9 +1272,8 @@ class SQLiteBackend(Backend):
                 tuple(f"id{i}" for i in range(50)) + ("active",),
             ),
             "get_many_json": self.query_plan(
-                "SELECT m.* FROM memories m "
-                "INDEXED BY sqlite_autoindex_memories_1 "
-                "JOIN json_each(?) AS j ON m.id = j.value "
+                "SELECT m.* FROM json_each(?) AS j "
+                "CROSS JOIN memories m ON m.id = j.value "
                 "WHERE m.status = ?",
                 ("[]", "active"),
             ),
