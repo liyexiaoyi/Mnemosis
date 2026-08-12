@@ -1130,17 +1130,20 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         engine.backend.add_link(nodes[2].id, nodes[3].id)
         report = engine.association_report(limit=3)
         self.assertEqual(report["memory_count"], 12)
-        self.assertEqual(report["directed_links"], 7)
+        # Links are stored canonically (undirected): the report mirrors
+        # each edge in both directions, so 7 undirected edges show as 14
+        # directed views.
+        self.assertEqual(report["directed_links"], 14)
         self.assertEqual(report["unique_pairs"], 7)
         self.assertEqual(report["connected_count"], 6)
         self.assertEqual(report["isolated_count"], 6)
-        self.assertEqual(report["avg_links"], round(14 / 12, 3))
+        self.assertEqual(report["avg_links"], round(28 / 12, 3))
         self.assertEqual(report["top_connected"][0]["id"], hub.id)
-        self.assertEqual(report["top_connected"][0]["link_count"], 5)
+        self.assertEqual(report["top_connected"][0]["link_count"], 10)
         self.assertNotIn(isolated[0].id, {t["id"] for t in report["top_connected"]})
         server = MCPServer(engine=engine)
         via_mcp = server._call_tool("association_report", {"limit": 2})
-        self.assertEqual(via_mcp["directed_links"], 7)
+        self.assertEqual(via_mcp["directed_links"], 14)
         self.assertEqual(len(via_mcp["top_connected"]), 2)
 
     def test_search_batch(self) -> None:

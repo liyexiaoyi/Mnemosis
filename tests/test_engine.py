@@ -1423,7 +1423,7 @@ class MemoryEngineTest(unittest.TestCase):
             rows = engine.backend._conn.execute(
                 "SELECT COUNT(*) FROM links"
             ).fetchone()[0]
-            self.assertEqual(rows, 14304)
+            self.assertEqual(rows, 7152)
         finally:
             engine.close()
             for suffix in ("", "-wal", "-shm"):

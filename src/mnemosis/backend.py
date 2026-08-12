@@ -478,6 +478,8 @@ class DictBackend(Backend):
     def add_link(self, src: str, dst: str, weight: float = 1.0) -> None:
         if src == dst:
             return
+        if src > dst:
+            src, dst = dst, src
         self._links[(src, dst)] = max(self._links.get((src, dst), 0.0), weight)
         self._adj.setdefault(src, set()).add(dst)
         self._adj.setdefault(dst, set()).add(src)
@@ -491,11 +493,17 @@ class DictBackend(Backend):
 
     @_locked
     def link_weight(self, src: str, dst: str) -> float:
+        if src > dst:
+            src, dst = dst, src
         return self._links.get((src, dst), 0.0)
 
     @_locked
     def all_links(self) -> list[tuple[str, str, float]]:
-        return [(a, b, w) for (a, b), w in self._links.items()]
+        out: list[tuple[str, str, float]] = []
+        for (a, b), w in self._links.items():
+            out.append((a, b, w))
+            out.append((b, a, w))
+        return out
 
     @_locked
     def related(
@@ -552,6 +560,7 @@ class SQLiteBackend(Backend):
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._create_schema()
         self._ensure_runtime_state()
+        self._canonicalize_links_if_needed()
         self._json_each_ok = self._json_each_probe()
 
     def _create_schema(self) -> None:
@@ -928,6 +937,65 @@ class SQLiteBackend(Backend):
         cache_row = self._conn.execute("PRAGMA cache_size").fetchone()
         if cache_row is not None and cache_row[0] != -20000:
             self._conn.execute("PRAGMA cache_size=-20000")
+
+    def _canonicalize_links_if_needed(self) -> None:
+        """One-time migration of the links table to canonical edges.
+
+        Older databases stored every undirected edge twice ((a,b) and
+        (b,a)). New databases store one (min, max) row. On the first open
+        of an old database, both directions are merged with the stronger
+        weight and rewritten canonically; the ``links_canonical`` setting
+        makes the migration run exactly once.
+        """
+        # Commit any implicit transaction left by schema setup so the
+        # explicit BEGIN IMMEDIATE below cannot fail with "cannot start a
+        # transaction within a transaction".
+        self._conn.commit()
+        # BEGIN IMMEDIATE serializes concurrent opens of an old database
+        # (multi-process starts would otherwise race on the rewrite).
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            row = self._conn.execute(
+                "SELECT value FROM settings WHERE key = ?",
+                ("links_canonical",),
+            ).fetchone()
+            if row is not None:
+                self._conn.commit()
+                return
+            count = self._conn.execute(
+                "SELECT COUNT(*) FROM links"
+            ).fetchone()[0]
+            if count:
+                self._conn.execute(
+                    """
+                    CREATE TEMP TABLE links_old AS
+                    SELECT src, dst, weight FROM links
+                    """
+                )
+                self._conn.execute("DELETE FROM links")
+                self._conn.execute(
+                    """
+                    INSERT INTO links (src, dst, weight)
+                    SELECT
+                        CASE WHEN src < dst THEN src ELSE dst END,
+                        CASE WHEN src > dst THEN src ELSE dst END,
+                        MAX(weight)
+                    FROM links_old
+                    WHERE src != dst
+                    GROUP BY
+                        CASE WHEN src < dst THEN src ELSE dst END,
+                        CASE WHEN src > dst THEN src ELSE dst END
+                    """
+                )
+                self._conn.execute("DROP TABLE links_old")
+            self._conn.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                ("links_canonical", "1"),
+            )
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+            raise
 
     @_locked
     def begin_bulk_mode(self) -> None:
@@ -1382,6 +1450,10 @@ class SQLiteBackend(Backend):
     def add_link(self, src: str, dst: str, weight: float = 1.0) -> None:
         if src == dst:
             return
+        # Undirected edge: store one canonical (min, max) row so the
+        # links table is half the size of the old two-direction format.
+        if src > dst:
+            src, dst = dst, src
         with self._conn:
             self._conn.execute(
                 """
@@ -1396,11 +1468,15 @@ class SQLiteBackend(Backend):
         self, pairs: Iterable[tuple[str, str, float]]
     ) -> None:
         """Insert many directed links in chunked transactions."""
-        rows = (
-            (src, dst, weight)
-            for src, dst, weight in pairs
-            if src != dst
-        )
+        def _canonical_rows():
+            for src, dst, weight in pairs:
+                if src == dst:
+                    continue
+                if src > dst:
+                    src, dst = dst, src
+                yield src, dst, weight
+
+        rows = _canonical_rows()
         # Bulk mode (deferred term index, big page cache, synchronous=OFF)
         # is single-process import only: a 100k-row transaction adds only
         # ~10-20MB of WAL and rolls back cheaply, but halves the number of
@@ -1430,6 +1506,8 @@ class SQLiteBackend(Backend):
 
     @_locked
     def link_weight(self, src: str, dst: str) -> float:
+        if src > dst:
+            src, dst = dst, src
         row = self._conn.execute(
             "SELECT weight FROM links WHERE src = ? AND dst = ?",
             (src, dst),
@@ -1439,9 +1517,15 @@ class SQLiteBackend(Backend):
     @_locked
     def all_links(self) -> list[tuple[str, str, float]]:
         rows = self._conn.execute(
-            "SELECT src, dst, weight FROM links"
+            "SELECT src, dst, weight FROM links "
+            "UNION ALL SELECT dst, src, weight FROM links"
         ).fetchall()
-        return [(r["src"], r["dst"], float(r["weight"])) for r in rows]
+        # The canonical row is mirrored in SQL so graph consumers see the
+        # same undirected edge from both sides as the old format.
+        return [
+            (row["src"], row["dst"], float(row["weight"]))
+            for row in rows
+        ]
 
     @_locked
     def related(

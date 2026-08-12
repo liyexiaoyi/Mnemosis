@@ -501,6 +501,60 @@ class SQLiteBackendTest(unittest.TestCase):
         finally:
             backend.close()
 
+    def test_links_canonical_migration_merges_directed_rows(self):
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        if os.path.exists(path):
+            os.remove(path)
+        conn = sqlite3.connect(path)
+        conn.execute(
+            """
+            CREATE TABLE links (
+                src    TEXT NOT NULL,
+                dst    TEXT NOT NULL,
+                weight REAL NOT NULL DEFAULT 1.0,
+                PRIMARY KEY (src, dst)
+            )
+            """
+        )
+        conn.execute(
+            "CREATE TABLE settings ("
+            "key TEXT PRIMARY KEY, value TEXT NOT NULL)"
+        )
+        conn.execute(
+            "INSERT INTO links VALUES (?, ?, ?)", ("a", "b", 0.8)
+        )
+        conn.execute(
+            "INSERT INTO links VALUES (?, ?, ?)", ("b", "a", 1.2)
+        )
+        conn.commit()
+        conn.close()
+
+        backend = SQLiteBackend(path)
+        try:
+            rows = backend._conn.execute(
+                "SELECT src, dst, weight FROM links"
+            ).fetchall()
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["weight"], 1.2)
+            self.assertEqual(backend.link_weight("a", "b"), 1.2)
+            self.assertEqual(backend.link_weight("b", "a"), 1.2)
+            links = backend.all_links()
+            self.assertEqual(
+                set(links), {("a", "b", 1.2), ("b", "a", 1.2)}
+            )
+            flag = backend._conn.execute(
+                "SELECT value FROM settings WHERE key = ?",
+                ("links_canonical",),
+            ).fetchone()
+            self.assertEqual(flag["value"], "1")
+        finally:
+            backend.close()
+            for suffix in ("", "-wal", "-shm"):
+                extra = path + suffix
+                if os.path.exists(extra):
+                    os.remove(extra)
+
 
 if __name__ == "__main__":
     unittest.main()
