@@ -330,6 +330,11 @@ scored 0.6 answer accuracy, so the accuracy range across samples is
 ~0.43-0.60 (50 combined questions ≈ 0.5), consistent with mem0-tier
 retrieval and answer quality.
 
+A 2026-08-13 retrieval-only rerun (20 questions, seed 42) confirms exact
+dense-mode parity with mem0 on every retrieval metric (@1 0.5 / @5 0.8 /
+@10 0.8 / gold-token hit@5 0.35) while ingesting ~5.8x faster (10.8s vs
+62.4s per question).
+
 At a 50k-input / 25k-active real-Chinese store, recall is 26-85ms and
 sleep consolidation ~2.3s after the large-store scaling work (batched term
 df, batched REM links, generic-cue skipping).

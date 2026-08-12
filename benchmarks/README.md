@@ -51,6 +51,27 @@ site-packages and reported ~1.8-2.3s per high-df query on a 100k store.
 That number was an artifact of measuring a stale installed release; the
 same queries on the local source are sub-ms to ~30ms warm.
 
+## longmemeval_bench.py
+
+Official LongMemEval-S comparison vs the `mem0` package (Ollama
+embeddings + Chroma). See the script docstring for the exact protocol;
+this section records fresh runs.
+
+### Results (2026-08-13, 20 questions, retrieval-only, seed 42)
+
+| System | turn_recall@1 | @5 | @10 | answer_tokens@5 | avg ingest |
+|---|---|---|---|---|---|
+| mem0 | 0.50 | 0.80 | 0.80 | 0.35 | 62.4 s |
+| mnemosis dense | 0.50 | 0.80 | 0.80 | 0.35 | 10.8 s |
+| mnemosis hybrid | 0.30 | 0.60 | 0.70 | 0.45 | 0.46 s |
+| mnemosis ngram | 0.35 | 0.60 | 0.70 | 0.40 | 0.47 s |
+| mnemosis kw | 0.30 | 0.60 | 0.65 | 0.40 | 0.47 s |
+
+Conclusion: dense mode matches mem0 on every retrieval metric while
+ingesting ~5.8x faster; hybrid/lexical modes trade recall for speed.
+This reproduces the pre-refactor parity numbers exactly (no quality
+regression from the module-split rounds).
+
 ## compare_with_models.py
 
 Compares Mnemosis against local LLMs (via Ollama) on a small memory
