@@ -774,11 +774,19 @@ class SQLiteBackend(Backend):
             chunk = ids[start : start + 500]
             placeholders = ",".join("?" for _ in chunk)
             rows = self._conn.execute(
-                f"SELECT * FROM memories WHERE status = 'active' "
-                f"AND id IN ({placeholders})",
+                # id is the primary key; adding a status filter here makes
+                # SQLite pick the (status, importance) index and scan every
+                # active row (~30ms at 50k instead of ~0.02ms). Filter in
+                # Python instead, keeping the exact active-only contract.
+                f"SELECT * FROM memories WHERE id IN ({placeholders})",
                 tuple(chunk),
             ).fetchall()
-            items.extend(_row_to_item(row) for row in rows)
+            items.extend(
+                item
+                for row in rows
+                if (item := _row_to_item(row)).status
+                == MemoryStatus.ACTIVE
+            )
         items.sort(key=lambda item: item.seq, reverse=True)
         return items
 

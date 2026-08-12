@@ -964,10 +964,12 @@ class ReviewMixin:
         now: datetime | None = None,
         summarizer=None,
     ) -> ConsolidationReport:
+        self.store.invalidate_fallback_cache()
         return self.consolidator.sleep(now, summarizer=summarizer)
     def reflect(self, summarizer=None, now: datetime | None = None) -> list[MemoryItem]:
         """Rewrite evidence-backed semantic facts as an abstraction of their
         supporting episodes (reflection; Park et al., 2023)."""
+        self.store.invalidate_fallback_cache()
         return self.consolidator.reflect(summarizer, now)
     def review_due(
         self,
@@ -1013,6 +1015,7 @@ class ReviewMixin:
         if item is None:
             return None
         now = now or utcnow()
+        self.store.invalidate_fallback_cache()
         self.scheduler.record_outcome(item, success=success, now=now)
         if success:
             self.curve.reinforce_review(item, delta=0.1, now=now)
@@ -1108,6 +1111,7 @@ class ReviewMixin:
         history is consolidated into a semantic "历史成功率" summary.
         """
         _ACTION_PREFIXES = "订买卖打包收拾请找定学搬选入"
+        self.store.invalidate_fallback_cache()
         steps: dict[str, list[int]] = {}
         replayed = 0
         for item in self.backend.list(kind=MemoryKind.EPISODIC):

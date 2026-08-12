@@ -10,6 +10,7 @@ import math
 import numbers
 import re
 import threading
+import time
 from collections import OrderedDict
 from datetime import datetime
 
@@ -163,6 +164,8 @@ class DualTrackStore:
         zero_hit_rerank_pool: int = _MAX_ZERO_HIT_RERANK_POOL,
         embed_cache_limit: int = 100_000,
         embed_cache_memory_limit_mb: float | None = None,
+        fallback_cache_ttl: float = 15.0,
+        fallback_cache_size: int = 32,
     ) -> None:
         self.backend = backend
         self.curve = curve
@@ -177,6 +180,11 @@ class DualTrackStore:
         else:
             self.embed_cache_memory_limit = 0  # disabled; count limit still applies
         self._embed_cache_bytes = 0
+        self.fallback_cache_ttl = max(0.0, float(fallback_cache_ttl))
+        self.fallback_cache_size = max(1, int(fallback_cache_size))
+        self._fallback_cache: OrderedDict[
+            tuple, tuple[float, dict]
+        ] = OrderedDict()
         self._inverted: dict[str, dict[str, set[str]]] = {}
         self._df_cache: dict[tuple[str, MemoryKind | None], int] = {}
         self._lock = threading.RLock()
@@ -413,11 +421,57 @@ class DualTrackStore:
         )
         idf_weights: dict[str, float] = {}
         idf_sum = 0.0
+        fallback_cache_key: tuple | None = None
+        if query_terms:
+            total_active = self.backend.count(kind=kind)
+            term_df = self._cached_term_dfs(query_terms, kind)
+        else:
+            total_active = 0
+            term_df = {}
+        if self.fallback_cache_ttl > 0:
+            embedder_key = (
+                "none"
+                if embedder is None
+                else (
+                    f"{type(embedder).__module__}."
+                    f"{type(embedder).__name__}:"
+                    # Without a stable cache_key, isolate by instance id so
+                    # two embedders of the same class never share results.
+                    f"{getattr(embedder, 'cache_key', None) or id(embedder)}"
+                )
+            )
+            fallback_cache_key = (
+                query,
+                top_k,
+                kind,
+                context,
+                tuple(sorted(exclude_ids or ())),
+                embedder_key,
+            )
+            if not query_terms or all(
+                df == 0 or (total_active >= 1000 and df > 5000)
+                for df in term_df.values()
+            ):
+                cached = self._fallback_cache_get(fallback_cache_key)
+                if cached is not None:
+                    rebuilt = self._rebuild_cached_fallback(
+                        cached,
+                        query_terms=query_terms,
+                        top_k=top_k,
+                        now=now,
+                        reinforce=reinforce,
+                        suppression_factor=suppression_factor,
+                        suppression_min_cues=suppression_min_cues,
+                        suppression_floor=suppression_floor,
+                    )
+                    if rebuilt is not None:
+                        return rebuilt
+                    # Entries whose items were deleted are dropped so the
+                    # next recall recomputes fresh results.
+                    self.invalidate_fallback_cache()
         if query_terms:
             hit_counts: dict[str, int] = {}
             term_ids: dict[str, set[str]] = {}
-            total_active = self.backend.count(kind=kind)
-            term_df = self._cached_term_dfs(query_terms, kind)
             for term in query_terms:
                 df = term_df.get(term, 0)
                 if (
@@ -1019,6 +1073,22 @@ class DualTrackStore:
                     query_terms,
                     fallback_mode=fallback_mode,
                 )
+        if fallback_mode and fallback_cache_key is not None:
+            # Generic/zero-hit queries repeat constantly in agent loops; the
+            # cached payload stores only ids+scores+reasons, so a later hit
+            # re-fetches live MemoryItems before returning them.
+            self._fallback_cache_store(
+                fallback_cache_key,
+                {
+                    "scored": [
+                        (score, overlap, item.id, list(reasons), matched)
+                        for score, overlap, item, reasons, matched in (
+                            scored[:top_k]
+                        )
+                    ],
+                    "confident": [result.confident for result in results],
+                },
+            )
         return results
 
     @staticmethod
@@ -1244,6 +1314,9 @@ class DualTrackStore:
         with self._lock:
             self._inverted = {}
             self._df_cache = {}
+            # Term frequency changes can flip the fallback heuristic, so a
+            # term-index rebuild must also drop cached fallback results.
+            self._fallback_cache.clear()
 
     def _follow_event_chain(
         self,
@@ -1525,6 +1598,114 @@ class DualTrackStore:
                 suppressed.add(linked.id)
                 if len(suppressed) >= max_suppressed:
                     return
+
+    def _fallback_cache_get(self, key: tuple) -> dict | None:
+        """Return a live fallback payload, or None on miss/expiry."""
+        with self._lock:
+            entry = self._fallback_cache.get(key)
+            if entry is None:
+                return None
+            expires_at, payload = entry
+            if expires_at <= time.monotonic():
+                del self._fallback_cache[key]
+                return None
+            return payload
+
+    def _fallback_cache_store(self, key: tuple, payload: dict) -> None:
+        with self._lock:
+            self._fallback_cache[key] = (
+                time.monotonic() + self.fallback_cache_ttl,
+                payload,
+            )
+            while len(self._fallback_cache) > self.fallback_cache_size:
+                self._fallback_cache.popitem(last=False)
+
+    def invalidate_fallback_cache(self) -> None:
+        """Drop cached fallback results after any memory mutation."""
+        with self._lock:
+            self._fallback_cache.clear()
+
+    def _rebuild_cached_fallback(
+        self,
+        payload: dict,
+        *,
+        query_terms: set[str],
+        top_k: int,
+        now: datetime,
+        reinforce: bool,
+        suppression_factor: float,
+        suppression_min_cues: int,
+        suppression_floor: float,
+    ) -> list[RecallResult] | None:
+        """Turn a cached fallback payload into fresh, live results.
+
+        Item objects are re-fetched so content/strength are current even
+        though the ranking was computed up to ``fallback_cache_ttl`` ago.
+        The retrieval side effects (reinforcement, miss accounting, rival
+        suppression) still run so repeated generic queries keep the same
+        learning behaviour as an uncached recall.
+        """
+        scored_payload = payload["scored"]
+        item_ids = [entry[2] for entry in scored_payload]
+        items = {
+            item.id: item for item in self.backend.get_many(item_ids)
+        }
+        if any(item_id not in items for item_id in item_ids):
+            return None
+        scored = [
+            (
+                score,
+                overlap,
+                items[item_id],
+                list(reasons),
+                matched,
+            )
+            for score, overlap, item_id, reasons, matched in scored_payload
+        ]
+        results = [
+            RecallResult(item=entry[2], score=entry[0], reasons=entry[3])
+            for entry in scored
+        ]
+        for result, flag in zip(results, payload["confident"]):
+            result.confident = flag
+        if reinforce:
+            for score, overlap, item, _, matched in scored:
+                if not matched:
+                    continue
+                retrievability = min(
+                    1.0, self.curve.retrievability(item, now)
+                )
+                effort = 1.0 - retrievability
+                delta = 0.05 + 0.15 * overlap
+                self.curve.reinforce_review(
+                    item,
+                    delta=delta,
+                    now=now,
+                    effort=effort,
+                )
+                item.retrieval_successes += 1
+                self.backend.update(item)
+            self._record_misses(scored, top_k, now)
+            # Note: _record_misses only inspects scored[:top_k], and the
+            # cached payload is exactly the top-k slice, so the side effect
+            # is identical to the uncached path.
+            if suppression_factor > 0:
+                matched_items = [
+                    item
+                    for _, _, item, _, matched in scored
+                    if matched
+                ]
+                # Cached fallback results come only from zero-hit queries,
+                # which must not trigger wide retrieval-induced forgetting.
+                self._suppress_linked_rivals(
+                    matched_items,
+                    suppression_factor,
+                    suppression_min_cues,
+                    suppression_floor,
+                    query_terms,
+                    fallback_mode=True,
+                )
+        return results
 
     def recent(
         self, kind: MemoryKind | None = None, limit: int = 10

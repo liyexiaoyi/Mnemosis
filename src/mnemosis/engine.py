@@ -81,6 +81,8 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
         zero_hit_rerank_pool: int = _MAX_ZERO_HIT_RERANK_POOL,
         embed_cache_limit: int = 100_000,
         embed_cache_memory_limit_mb: float | None = 512.0,
+        fallback_cache_ttl: float = 15.0,
+        fallback_cache_size: int = 32,
     ) -> None:
         self.backend: Backend = make_backend(memory_file)
         if decay_rate is None:
@@ -103,6 +105,8 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
             zero_hit_rerank_pool=zero_hit_rerank_pool,
             embed_cache_limit=embed_cache_limit,
             embed_cache_memory_limit_mb=embed_cache_memory_limit_mb,
+            fallback_cache_ttl=fallback_cache_ttl,
+            fallback_cache_size=fallback_cache_size,
         )
         self.associations = AssociationIndex(self.backend)
         self.event_chain = EventChainIndex(self.backend)
@@ -388,6 +392,7 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
             self.backend.add_cues(item.id, item.cues)
         self.backend.update(item)
         self.store.reindex_terms(item)
+        self.store.invalidate_fallback_cache()
         return item
 
 
@@ -596,6 +601,8 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
                 if memory_id not in self._suppressed_ids:
                     self._suppressed_ids[memory_id] = now.isoformat()
                     suppressed += 1
+        if suppressed:
+            self.store.invalidate_fallback_cache()
         return {"suppressed": suppressed}
 
     def unsuppress_memories(self, memory_ids: list[str]) -> dict:
@@ -606,6 +613,8 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
                 if memory_id in self._suppressed_ids:
                     del self._suppressed_ids[memory_id]
                     unsuppressed += 1
+        if unsuppressed:
+            self.store.invalidate_fallback_cache()
         return {"unsuppressed": unsuppressed}
 
     def suppressed_report(self) -> dict:
@@ -842,15 +851,22 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
     # -- active forgetting ----------------------------------------------------
 
     def forget(self, memory_id: str) -> bool:
-        return self.recycle.trash(memory_id)
+        result = self.recycle.trash(memory_id)
+        if result:
+            self.store.invalidate_fallback_cache()
+        return result
 
     def restore(self, memory_id: str) -> bool:
-        return self.recycle.restore(memory_id)
+        result = self.recycle.restore(memory_id)
+        if result:
+            self.store.invalidate_fallback_cache()
+        return result
 
     def purge(self, before: datetime | None = None, limit: int = 1000) -> int:
         count = self.recycle.purge(before=before, limit=limit)
         if count:
             self.store.invalidate_term_index()
+            self.store.invalidate_fallback_cache()
         return count
 
 

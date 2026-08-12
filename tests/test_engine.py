@@ -1,4 +1,5 @@
 import numbers
+import time
 import unittest
 from datetime import timedelta
 
@@ -370,6 +371,114 @@ class MemoryEngineTest(unittest.TestCase):
             )
         engine.recall("zzzz no hits", top_k=5)
         self.assertLessEqual(remote.calls, 65)  # query + capped re-rank pool
+
+    def test_fallback_cache_reuses_results_and_skips_embedding(self):
+        class _CountingEmbedder(Embedder):
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def embed(self, text: str) -> list[float]:
+                self.calls += 1
+                return [1.0, 0.0, 0.0]
+
+        counting = _CountingEmbedder()
+        engine = MemoryEngine(embedder=counting, fallback_cache_ttl=60)
+        source = SourceRecord(origin=SourceType.USER)
+        for index in range(30):
+            engine.remember(
+                f"unrelated cache record {index}",
+                kind=MemoryKind.EPISODIC,
+                source=source,
+                auto_cues=False,
+            )
+        first = engine.recall("zzzz no hits", top_k=3)
+        calls_after_first = counting.calls
+        second = engine.recall("zzzz no hits", top_k=3)
+        self.assertEqual(
+            [result.item.id for result in first],
+            [result.item.id for result in second],
+        )
+        self.assertEqual(counting.calls, calls_after_first)
+
+    def test_fallback_cache_invalidated_on_remember(self):
+        class _CountingEmbedder(Embedder):
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def embed(self, text: str) -> list[float]:
+                self.calls += 1
+                return [1.0, 0.0, 0.0]
+
+        counting = _CountingEmbedder()
+        engine = MemoryEngine(embedder=counting, fallback_cache_ttl=60)
+        source = SourceRecord(origin=SourceType.USER)
+        for index in range(20):
+            engine.remember(
+                f"cache invalidate record {index}",
+                kind=MemoryKind.EPISODIC,
+                source=source,
+                auto_cues=False,
+            )
+        engine.recall("zzzz no hits", top_k=3)
+        calls_after_first = counting.calls
+        engine.remember(
+            "brand new marker record",
+            kind=MemoryKind.EPISODIC,
+            source=source,
+            auto_cues=False,
+        )
+        engine.recall("zzzz no hits", top_k=3)
+        self.assertGreater(counting.calls, calls_after_first)
+
+    def test_fallback_cache_expires_after_ttl(self):
+        class _CountingEmbedder(Embedder):
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def embed(self, text: str) -> list[float]:
+                self.calls += 1
+                return [1.0, 0.0, 0.0]
+
+        counting = _CountingEmbedder()
+        engine = MemoryEngine(embedder=counting, fallback_cache_ttl=0.05)
+        source = SourceRecord(origin=SourceType.USER)
+        for index in range(10):
+            engine.remember(
+                f"ttl cache record {index}",
+                kind=MemoryKind.EPISODIC,
+                source=source,
+                auto_cues=False,
+            )
+        engine.recall("zzzz no hits", top_k=3)
+        calls_after_first = counting.calls
+        time.sleep(0.08)
+        engine.recall("zzzz no hits", top_k=3)
+        self.assertGreater(counting.calls, calls_after_first)
+
+    def test_non_fallback_queries_are_not_cached(self):
+        class _CountingEmbedder(Embedder):
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def embed(self, text: str) -> list[float]:
+                self.calls += 1
+                return [1.0, 0.0, 0.0]
+
+        counting = _CountingEmbedder()
+        engine = MemoryEngine(embedder=counting, fallback_cache_ttl=60)
+        source = SourceRecord(origin=SourceType.USER)
+        for index in range(10):
+            engine.remember(
+                f"alpha cache record {index}",
+                kind=MemoryKind.EPISODIC,
+                source=source,
+                auto_cues=False,
+            )
+        engine.recall("alpha", top_k=3)
+        calls_after_first = counting.calls
+        engine.recall("alpha", top_k=3)
+        # Lexical-hit queries are never served from the fallback cache.
+        self.assertGreater(counting.calls, calls_after_first)
 
     def test_rerank_pool_params_are_configurable(self):
         class _CountingEmbedder(Embedder):
