@@ -65,6 +65,11 @@ _MEMORIES_INDEX_SQL = (
 )
 """Read-side memories indexes (self-heal + bulk-mode rebuild)."""
 
+_CUES_INDEX_SQL = (
+    "CREATE INDEX IF NOT EXISTS idx_cues_memory ON cues(memory_id)",
+)
+"""Cues reverse index (deletes/removals by memory_id)."""
+
 
 def _locked(method):
     """Serialize a backend method on the instance lock (reentrant)."""
@@ -660,6 +665,10 @@ class SQLiteBackend(Backend):
                 """
             )
             self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_cues_memory "
+                "ON cues(memory_id)"
+            )
+            self._conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS terms (
                     term      TEXT NOT NULL,
@@ -976,6 +985,8 @@ class SQLiteBackend(Backend):
         # otherwise leave them missing forever.
         for index_sql in _MEMORIES_INDEX_SQL:
             self._conn.execute(index_sql)
+        for index_sql in _CUES_INDEX_SQL:
+            self._conn.execute(index_sql)
         sync_row = self._conn.execute("PRAGMA synchronous").fetchone()
         if sync_row is not None and sync_row[0] != 1:
             self._conn.execute("PRAGMA synchronous=NORMAL")
@@ -1090,6 +1101,7 @@ class SQLiteBackend(Backend):
             "idx_memories_status_kind",
             "idx_memories_status_seq",
             "idx_memories_status_importance",
+            "idx_cues_memory",
         ):
             self._conn.execute(f"DROP INDEX IF EXISTS {index_name}")
         # Stage links/terms in temp tables during the import: no PK
@@ -1142,6 +1154,8 @@ class SQLiteBackend(Backend):
                     "ON terms(memory_id)"
                 )
                 for index_sql in _MEMORIES_INDEX_SQL:
+                    self._conn.execute(index_sql)
+                for index_sql in _CUES_INDEX_SQL:
                     self._conn.execute(index_sql)
             finally:
                 # Durability settings must be restored even if the index
