@@ -33,6 +33,7 @@ from .recycle import RecycleBin
 from .retrieval_mixin import RetrievalMixin
 from .review_mixin import ReviewMixin
 from .schema import EventChainIndex
+from .snapshot_mixin import SnapshotMixin
 from .types import (
     MemoryItem,
     MemoryKind,
@@ -56,6 +57,7 @@ class MemoryEngine(
     ReviewMixin,
     AnalysisMixin,
     LearningSessionMixin,
+    SnapshotMixin,
 ):
     """The one thing most users touch.
 
