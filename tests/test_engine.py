@@ -585,6 +585,33 @@ class MemoryEngineTest(unittest.TestCase):
         self.assertEqual(embedder.batch_sizes, [16])
         self.assertLessEqual(embedder.embed_calls, 16)  # query + cache misses
 
+    def test_embed_cache_respects_lru_limit(self):
+        class _CountingEmbedder(Embedder):
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def embed(self, text: str) -> list[float]:
+                self.calls += 1
+                return [1.0, 0.0, 0.0]
+
+        counting = _CountingEmbedder()
+        engine = MemoryEngine(embedder=counting, embed_cache_limit=2)
+        source = SourceRecord(origin=SourceType.USER)
+        for index in range(4):
+            engine.remember(
+                f"topic {index} content",
+                kind=MemoryKind.EPISODIC,
+                source=source,
+                auto_cues=False,
+            )
+        for index in range(4):
+            engine.recall(f"topic {index}", top_k=1)
+        self.assertLessEqual(len(engine.store._embed_cache), 2)
+        before = counting.calls
+        engine.recall("topic 0", top_k=1)
+        # topic 0 was evicted (LRU) -> must be embedded again
+        self.assertGreater(counting.calls, before)
+
     def test_remember_many_embeds_in_one_batch_call(self):
         embedder = _BatchCountingEmbedder()
         engine = MemoryEngine(

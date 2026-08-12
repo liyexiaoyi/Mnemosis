@@ -9,6 +9,7 @@ from __future__ import annotations
 import math
 import re
 import threading
+from collections import OrderedDict
 from datetime import datetime
 
 from .backend import Backend
@@ -159,6 +160,7 @@ class DualTrackStore:
         *,
         dense_rerank_candidates: int = _DENSE_RERANK_CANDIDATES,
         zero_hit_rerank_pool: int = _MAX_ZERO_HIT_RERANK_POOL,
+        embed_cache_limit: int = 100_000,
     ) -> None:
         self.backend = backend
         self.curve = curve
@@ -166,7 +168,8 @@ class DualTrackStore:
         self.dense_rerank_candidates = max(1, int(dense_rerank_candidates))
         self.zero_hit_rerank_pool = max(1, int(zero_hit_rerank_pool))
         self._term_cache: dict[tuple, frozenset[str]] = {}
-        self._embed_cache: dict[str, list[float]] = {}
+        self._embed_cache: OrderedDict[tuple, list[float]] = OrderedDict()
+        self.embed_cache_limit = max(1, int(embed_cache_limit))
         self._inverted: dict[str, dict[str, set[str]]] = {}
         self._df_cache: dict[tuple[str, MemoryKind | None], int] = {}
         self._lock = threading.RLock()
@@ -774,6 +777,7 @@ class DualTrackStore:
                 }
                 with self._lock:
                     self._embed_cache.update(cache_updates)
+                    self._trim_embed_cache_locked()
                 vector_by_id = {
                     item.id: vector
                     for item, vector in zip(rerank_items, vectors)
@@ -1328,7 +1332,15 @@ class DualTrackStore:
             if cached is None:
                 cached = embedder.embed(self._embed_text(item))
                 self._embed_cache[key] = cached
+                self._trim_embed_cache_locked()
+            else:
+                self._embed_cache.move_to_end(key)
             return cached
+
+    def _trim_embed_cache_locked(self) -> None:
+        """Evict the least-recently-used vectors beyond the limit."""
+        while len(self._embed_cache) > self.embed_cache_limit:
+            self._embed_cache.popitem(last=False)
 
     @staticmethod
     def _embed_text(item: MemoryItem) -> str:
