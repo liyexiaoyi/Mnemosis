@@ -18,6 +18,7 @@ from .consolidation import (  # noqa: F401  (public re-exports)
     ConsolidationReport,
     Consolidator,
 )
+from .consolidation_insights_mixin import ConsolidationInsightsMixin
 from .dual_track import (
     _DENSE_RERANK_CANDIDATES,
     _MAX_ZERO_HIT_RERANK_POOL,
@@ -60,6 +61,7 @@ class MemoryEngine(
     LearningSessionMixin,
     SnapshotMixin,
     PracticeMixin,
+    ConsolidationInsightsMixin,
 ):
     """The one thing most users touch.
 
