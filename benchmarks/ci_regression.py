@@ -7,8 +7,10 @@ build. All datasets are generated locally with fixed seeds.
 
 from __future__ import annotations
 
+import json
 import os
 import random
+import subprocess
 import sys
 import tempfile
 from collections import Counter
@@ -275,6 +277,46 @@ def main() -> int:
             f"on 小波@{on_x} 阿丽@{on_a}; "
             f"off 小波@{off_x} 阿丽@{off_a}"
         ),
+    )
+
+    proc = subprocess.run(
+        [
+            sys.executable,
+            os.path.join(_BENCH, "process_zh_bench.py"),
+            "--project",
+            "mnemosis_steps",
+            "--retrieval-only",
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=180,
+        check=False,
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
+    )
+    zh_stats: dict = {}
+    lines = proc.stdout.splitlines()
+    start = next(
+        (index for index, line in enumerate(lines) if line.strip() == "{"),
+        None,
+    )
+    if start is not None:
+        try:
+            zh_stats = json.loads(
+                "\n".join(lines[start:])
+            ).get("stats", {})
+        except json.JSONDecodeError:
+            pass
+    check(
+        "zh process: recall_steps covers and orders all steps",
+        (
+            proc.returncode == 0
+            and bool(zh_stats)
+            and zh_stats.get("n", 0) > 0
+            and zh_stats.get("ordered", 0) == zh_stats.get("n", 0)
+            and zh_stats.get("coverage", 0) >= zh_stats.get("n", 0)
+        ),
+        str(zh_stats),
     )
 
     failed = [name for name, ok, _ in _CHECKS if not ok]
