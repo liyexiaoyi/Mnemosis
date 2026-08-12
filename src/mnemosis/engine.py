@@ -238,7 +238,9 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
                 if auto_context and record.get("context") is None:
                     record["context"] = self._extract_context(content)
                 if auto_cues:
-                    record["cues"] = normalize_cues(
+                    # MemoryItem.__post_init__ normalizes cues later;
+                    # here we only merge the extracted ones.
+                    record["cues"] = (
                         list(record.get("cues") or [])
                         + extract_cues(content)
                     )
@@ -291,7 +293,7 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
         self,
         memories: list[dict],
         *,
-        chunk_size: int = 2000,
+        chunk_size: int = 5000,
         auto_cues: bool = True,
         auto_context: bool = True,
         max_links: int | None = None,
@@ -324,7 +326,7 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
                     if auto_context and record.get("context") is None:
                         record["context"] = self._extract_context(content)
                     if auto_cues:
-                        record["cues"] = normalize_cues(
+                        record["cues"] = (
                             list(record.get("cues") or [])
                             + extract_cues(content)
                         )

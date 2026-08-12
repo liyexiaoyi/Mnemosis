@@ -535,6 +535,7 @@ class SQLiteBackend(Backend):
         self._conn = sqlite3.connect(path, check_same_thread=False)
         self._term_pending = 0
         self._bulk_terms_index_deferred = False
+        self._bulk_write_batch = _WRITE_BATCH
         self._lock = threading.RLock()
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
@@ -711,8 +712,9 @@ class SQLiteBackend(Backend):
         """
         if not items:
             return
-        for start in range(0, len(items), _WRITE_BATCH):
-            chunk = items[start : start + _WRITE_BATCH]
+        batch = self._bulk_write_batch
+        for start in range(0, len(items), batch):
+            chunk = items[start : start + batch]
             self._begin_immediate()
             try:
                 row = self._conn.execute(
@@ -725,9 +727,10 @@ class SQLiteBackend(Backend):
                     seq += 1
                     item.seq = seq
                     rows.append(_item_row(item))
+                    # MemoryItem.__post_init__ already normalized cues.
                     cue_rows.extend(
                         (cue, item.id)
-                        for cue in normalize_cues(item.cues)
+                        for cue in item.cues
                     )
                 self._conn.executemany(_INSERT_SQL, rows)
                 if cue_rows:
@@ -937,6 +940,7 @@ class SQLiteBackend(Backend):
         self._conn.execute("DROP INDEX IF EXISTS idx_links_dst")
         self._conn.execute("DROP INDEX IF EXISTS idx_terms_memory")
         self._bulk_terms_index_deferred = True
+        self._bulk_write_batch = 5_000
 
     @_locked
     def end_bulk_mode(self) -> None:
@@ -952,6 +956,7 @@ class SQLiteBackend(Backend):
         self._conn.execute("PRAGMA cache_size=-20000")
         self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
         self._bulk_terms_index_deferred = False
+        self._bulk_write_batch = _WRITE_BATCH
 
     @_locked
     def update(self, item: MemoryItem) -> None:
@@ -1122,8 +1127,13 @@ class SQLiteBackend(Backend):
                     self._conn.execute("DROP INDEX idx_terms_memory")
         # Sorting by (term, memory_id) makes the PK B-tree append-ordered:
         # 2M random-order rows churn pages, ordered rows stream in.
-        entries.sort(key=lambda row: (row[0], row[1]))
-        for offset in range(0, len(entries), 200_000):
+        # Tuples already compare by (term, memory_id, kind); sorting
+        # without key= avoids materialising 2M extra key tuples.
+        entries.sort()
+        insert_batch = (
+            300_000 if self._bulk_terms_index_deferred else 200_000
+        )
+        for offset in range(0, len(entries), insert_batch):
             with self._conn:
                 self._conn.executemany(
                     # OR IGNORE is cheaper than REPLACE and equivalent here:
@@ -1131,7 +1141,7 @@ class SQLiteBackend(Backend):
                     # kind never changes.
                     "INSERT OR IGNORE INTO terms (term, memory_id, kind) "
                     "VALUES (?, ?, ?)",
-                    entries[offset : offset + 200_000],
+                    entries[offset : offset + insert_batch],
                 )
 
     @_locked
@@ -1306,12 +1316,13 @@ class SQLiteBackend(Backend):
         ]
         if not rows:
             return
-        for start in range(0, len(rows), _WRITE_BATCH):
+        batch = self._bulk_write_batch
+        for start in range(0, len(rows), batch):
             with self._conn:
                 self._conn.executemany(
                     "INSERT OR IGNORE INTO cues (cue, memory_id) "
                     "VALUES (?, ?)",
-                    rows[start : start + _WRITE_BATCH],
+                    rows[start : start + batch],
                 )
 
     @_locked
@@ -1382,6 +1393,10 @@ class SQLiteBackend(Backend):
             chunk = list(islice(rows, 50_000))
             if not chunk:
                 return
+            # Sort by the PK (src, dst) so B-tree inserts stream in page
+            # order instead of churning random pages per row. Keying on
+            # (src, dst) keeps weights (possibly NaN) out of the sort.
+            chunk.sort(key=lambda row: (row[0], row[1]))
             with self._conn:
                 self._conn.executemany(
                     """

@@ -341,7 +341,9 @@ class DualTrackStore:
                     content=content,
                     kind=kind,
                     source=source,
-                    cues=normalize_cues(record.get("cues") or []),
+                    # __post_init__ normalizes cues; skip the duplicate
+                    # pass here (bulk ingestion calls this per record).
+                    cues=list(record.get("cues") or []),
                     created_at=record.get("created_at") or utcnow(),
                     importance=importance,
                     confidence=record.get("confidence", 1.0),

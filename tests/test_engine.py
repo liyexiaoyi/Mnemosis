@@ -1280,6 +1280,38 @@ class MemoryEngineTest(unittest.TestCase):
                 if os.path.exists(extra):
                     os.remove(extra)
 
+    def test_remember_many_chunked_persists_cues_for_every_item(self):
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        if os.path.exists(path):
+            os.remove(path)
+        engine = MemoryEngine(path)
+        try:
+            source = SourceRecord(origin=SourceType.USER)
+            records = [
+                {
+                    "content": f"alpha item {i}",
+                    "kind": MemoryKind.EPISODIC,
+                    "source": source,
+                    "cues": [f"cue-{i}"],
+                    "importance": 0.5,
+                }
+                for i in range(6)
+            ]
+            engine.remember_many_chunked(
+                records, chunk_size=2, auto_cues=False
+            )
+            rows = engine.backend._conn.execute(
+                "SELECT COUNT(*) FROM cues"
+            ).fetchone()[0]
+            self.assertEqual(rows, 6)
+        finally:
+            engine.close()
+            for suffix in ("", "-wal", "-shm"):
+                extra = path + suffix
+                if os.path.exists(extra):
+                    os.remove(extra)
+
     def test_term_cache_is_bounded(self):
         import mnemosis.dual_track as dual_track_module
 
