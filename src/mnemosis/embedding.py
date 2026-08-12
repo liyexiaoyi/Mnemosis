@@ -32,6 +32,8 @@ class Embedder:
     """Protocol-ish base: `embed(text) -> list[float]` + cosine."""
 
     cache_key: str = ""
+    remote: bool = False
+    """True for network-backed embedders (per-call latency/cost)."""
 
     def embed(self, text: str) -> list[float]:
         raise NotImplementedError
@@ -117,9 +119,11 @@ class CallableEmbedder(Embedder):
         self,
         fn: Callable[[str], list[float]],
         fn_many: Callable[[list[str]], list[list[float]]] | None = None,
+        remote: bool = False,
     ) -> None:
         self.fn = fn
         self.fn_many = fn_many
+        self.remote = remote
 
     def embed(self, text: str) -> list[float]:
         return self.fn(text)
@@ -221,7 +225,7 @@ def ollama_embedder(
             vectors.extend([float(x) for x in row] for row in rows)
         return vectors
 
-    return CallableEmbedder(_embed, _embed_many)
+    return CallableEmbedder(_embed, _embed_many, remote=True)
 
 
 def openai_embedder(
@@ -285,7 +289,7 @@ def openai_embedder(
             )
         return vectors
 
-    return CallableEmbedder(_embed, _embed_many)
+    return CallableEmbedder(_embed, _embed_many, remote=True)
 
 
 def make_embedder(

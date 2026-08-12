@@ -59,6 +59,14 @@ and only this many are embedded for the semantic re-rank; with 10k memories
 this takes ngram recall from ~200ms to tens of ms.
 """
 
+_MAX_ZERO_HIT_RERANK_POOL = 200
+"""Hard cap for the zero-hit semantic re-rank pool.
+
+Local embedders (NGram, Ollama) can re-rank the whole fallback pool cheaply;
+network-backed embedders fall back to ``_DENSE_RERANK_CANDIDATES`` so a
+remote API is never called for hundreds of texts per query.
+"""
+
 _EN_SYNONYMS: dict[str, tuple[str, ...]] = {
     "spent": ("cost", "paid", "bought", "spending"),
     "money": ("cost", "amount", "price", "payment"),
@@ -695,7 +703,13 @@ class DualTrackStore:
                 # Zero-hit: re-rank the WHOLE fallback pool semantically so
                 # a relevant memory is not skipped just because its lexical
                 # score ranked it beyond the first 64.
-                pool = scored
+                pool = scored[
+                    : (
+                        _MAX_ZERO_HIT_RERANK_POOL
+                        if not getattr(embedder, "remote", False)
+                        else _DENSE_RERANK_CANDIDATES
+                    )
+                ]
             rerank_ids = {entry[2].id for entry in pool}
             for index, (score, overlap, item, reasons, matched) in enumerate(
                 scored
