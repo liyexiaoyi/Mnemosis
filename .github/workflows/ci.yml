@@ -32,27 +32,13 @@ jobs:
         run: python benchmarks/ci_regression.py
         env:
           PYTHONPATH: src
-      - name: Restore get_many trend cache
-        # Trend history is cached across runs so slow ("frog in boiling
-        # water") regressions show up as median drift, not only ceiling hits.
-        # The key must change every run (run_id) or the cache save is
-        # skipped and the trend never updates; matrix.python-version keeps
-        # the three Python jobs from fighting over one file.
-        uses: actions/cache@v4
-        with:
-          path: benchmarks/results/get_many_trend.json
-          key: get-many-trend-v1-${{ matrix.python-version }}-${{ github.run_id }}
-          restore-keys: |
-            get-many-trend-v1-${{ matrix.python-version }}-
-      - name: get_many performance gate (run)
-        run: python benchmarks/ci_perf.py
-        env:
-          PYTHONPATH: src
-          MNEMOSIS_PERF_RESET: ${{ github.event.inputs.perf_baseline_reset || '' }}
 
   benchmark-smoke:
     runs-on: ubuntu-latest
     needs: test
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -122,6 +108,70 @@ jobs:
           --out /tmp/plan_effort_smoke.json
         env:
           PYTHONPATH: src
+      - name: Restore get_many trend cache
+        # Trend history is cached across runs so slow ("frog in boiling
+        # water") regressions show up as median drift, not only ceiling hits.
+        # The key must change every run (run_id) or the cache save is
+        # skipped and the trend never updates.
+        uses: actions/cache@v4
+        with:
+          path: benchmarks/results/get_many_trend.json
+          key: get-many-trend-v1-${{ github.run_id }}
+          restore-keys: |
+            get-many-trend-v1-
+      - name: get_many performance gate (run)
+        run: python benchmarks/ci_perf.py
+        env:
+          PYTHONPATH: src
+          MNEMOSIS_PERF_RESET: ${{ github.event.inputs.perf_baseline_reset || '' }}
+          MNEMOSIS_PERF_SUMMARY_PATH: /tmp/get_many_perf.md
+      - name: Post get_many perf summary to PR
+        # always(): even a failed gate should post the (possibly fallback)
+        # summary so reviewers see the failure reason on the PR.
+        if: always() && github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require("fs");
+            let body;
+            try {
+              body = fs.readFileSync(
+                process.env.MNEMOSIS_PERF_SUMMARY_PATH,
+                "utf8"
+              );
+            } catch (error) {
+              body =
+                "⚠️ get_many performance gate script crashed before " +
+                "generating a summary.";
+            }
+            const marker = "<!-- mnemosis-perf-gate -->";
+            const tagged = body + "\n" + marker;
+            const comments = await github.paginate(
+              github.rest.issues.listComments,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+              }
+            );
+            const existing = comments.find((c) =>
+              c.body.includes(marker)
+            );
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: tagged,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: tagged,
+              });
+            }
 
   package:
     runs-on: ubuntu-latest

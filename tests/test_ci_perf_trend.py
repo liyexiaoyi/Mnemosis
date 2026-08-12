@@ -28,6 +28,8 @@ def _meta_with_streak(streak: int, baseline: float) -> dict:
         "baselines": {"100": baseline},
         "warn_streaks": {"100": streak},
         "reset_history": [],
+        "run_count": 30,
+        "last_reset_run": {},
     }
 
 
@@ -110,6 +112,27 @@ class TrendLogicTest(unittest.TestCase):
         ]
         trimmed = ci_perf._trim_runs(meta)
         self.assertEqual(len(trimmed["reset_history"]), 50)
+
+    def test_auto_reset_blocked_by_cooldown(self):
+        meta = _meta_with_streak(5, 0.2)
+        meta["last_reset_run"] = {"100": 25}  # 5 runs ago, cooldown is 20
+        updated, resets, _, baselines = ci_perf._update_trend(
+            meta, {100: 10.0}, now_iso="2026-08-10T00:00:00+00:00"
+        )
+        self.assertEqual(resets, [])
+        self.assertEqual(updated["warn_streaks"]["100"], 6)
+        self.assertEqual(baselines[100], 0.2)
+
+    def test_auto_reset_allowed_after_cooldown(self):
+        meta = _meta_with_streak(5, 0.2)
+        meta["run_count"] = 40
+        meta["last_reset_run"] = {"100": 20}  # exactly 20 runs ago
+        updated, resets, _, _ = ci_perf._update_trend(
+            meta, {100: 10.0}, now_iso="2026-08-10T00:00:00+00:00"
+        )
+        self.assertIn(100, resets)
+        self.assertEqual(updated["warn_streaks"]["100"], 0)
+        self.assertEqual(updated["last_reset_run"]["100"], 40)
 
 
 if __name__ == "__main__":

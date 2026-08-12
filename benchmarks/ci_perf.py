@@ -38,9 +38,11 @@ _HISTORY_KEEP = 100
 _BASELINE_MIN = 3
 _BASELINE_MAX = 10
 _AUTO_RESET_STREAK = 5
+_RESET_COOLDOWN_RUNS = 20
 _WARN_RATIO = 2.5
 _MIN_WARN_MS = {100: 5.0, 500: 20.0, 2000: 80.0}
 _RESET_ENV = "MNEMOSIS_PERF_RESET"
+_SUMMARY_ENV = "MNEMOSIS_PERF_SUMMARY_PATH"
 _TREND_PATH = os.path.normpath(
     os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
@@ -56,6 +58,8 @@ def _empty_meta() -> dict:
         "baselines": {},
         "warn_streaks": {},
         "reset_history": [],
+        "run_count": 0,
+        "last_reset_run": {},
     }
 
 
@@ -73,12 +77,16 @@ def _load_trend() -> dict:
             "baselines": {},
             "warn_streaks": {},
             "reset_history": [],
+            "run_count": 0,
+            "last_reset_run": {},
         }
     if isinstance(data, dict):
         data.setdefault("runs", [])
         data.setdefault("baselines", {})
         data.setdefault("warn_streaks", {})
         data.setdefault("reset_history", [])
+        data.setdefault("run_count", 0)
+        data.setdefault("last_reset_run", {})
         data["runs"].sort(key=lambda entry: entry.get("ts", ""))
         return data
     return _empty_meta()
@@ -170,19 +178,60 @@ def _update_trend(
         if streak >= _AUTO_RESET_STREAK:
             recent = _recent_median_ms(history, count)
             if recent is not None:
-                meta["baselines"][str(count)] = recent
-                meta["warn_streaks"][str(count)] = 0
-                baselines[count] = recent
-                resets.append(count)
-                meta.setdefault("reset_history", []).append(
-                    {
-                        "ts": now_iso,
-                        "count": count,
-                        "old_ms": baseline_ms,
-                        "new_ms": recent,
-                    }
+                run_count = int(meta.get("run_count", 0))
+                last_reset_run = int(
+                    meta.get("last_reset_run", {}).get(
+                        str(count), -_RESET_COOLDOWN_RUNS
+                    )
                 )
+                if run_count - last_reset_run >= _RESET_COOLDOWN_RUNS:
+                    meta["baselines"][str(count)] = recent
+                    meta["warn_streaks"][str(count)] = 0
+                    baselines[count] = recent
+                    resets.append(count)
+                    meta.setdefault("reset_history", []).append(
+                        {
+                            "ts": now_iso,
+                            "count": count,
+                            "old_ms": baseline_ms,
+                            "new_ms": recent,
+                        }
+                    )
+                    meta.setdefault("last_reset_run", {})[
+                        str(count)
+                    ] = run_count
     return meta, resets, medians, baselines
+
+
+def _summary_markdown(
+    results: list[tuple[int, float]],
+    medians: dict[int, float],
+    baselines: dict[int, float],
+    resets: list[int],
+) -> str:
+    lines = [
+        "## get_many performance gate",
+        "",
+        "| ids | best ms | median ms | baseline ms | ceiling ms |",
+        "|---|---|---|---|---|",
+    ]
+    for count, best in results:
+        median_ms = f"{medians[count]:.2f}" if count in medians else "-"
+        baseline_ms = (
+            f"{baselines[count]:.2f}" if count in baselines else "-"
+        )
+        lines.append(
+            f"| {count} | {best:.2f} | {median_ms} | "
+            f"{baseline_ms} | {_CEILINGS_MS[count]:.0f} |"
+        )
+    if resets:
+        lines.append("")
+        lines.append(
+            "**Baseline auto-reset**: "
+            + ", ".join(str(count) for count in resets)
+            + " ids"
+        )
+    return "\n".join(lines) + "\n"
 
 
 def _build_backend() -> SQLiteBackend:
@@ -227,6 +276,7 @@ def main() -> int:
     ):
         meta = _empty_meta()
         print("BASELINE RESET: trend history cleared (env requested)")
+    meta["run_count"] = int(meta.get("run_count", 0)) + 1
     history = meta["runs"]
     if not history:
         print(
@@ -301,28 +351,22 @@ def main() -> int:
             "NOTE: fixed baseline not established yet "
             "(need >= 3 recorded runs per id-count)."
         )
-    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
-    if summary_path:
-        with open(summary_path, "a", encoding="utf-8") as handle:
-            handle.write(
-                "## get_many performance gate\n\n"
-                "| ids | best ms | median ms | baseline ms | ceiling ms |\n"
-                "|---|---|---|---|---|\n"
-            )
-            for count, best in _results:
-                median_ms = (
-                    f"{medians[count]:.2f}" if count in medians else "-"
-                )
-                baseline_ms = (
-                    f"{baselines[count]:.2f}"
-                    if count in baselines
-                    else "-"
-                )
-                handle.write(
-                    f"| {count} | {best:.2f} | {median_ms} | "
-                    f"{baseline_ms} | "
-                    f"{_CEILINGS_MS[count]:.0f} |\n"
-                )
+    summary = _summary_markdown(
+        _results, medians, baselines, resets
+    )
+    step_summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if step_summary_path:
+        with open(step_summary_path, "a", encoding="utf-8") as handle:
+            handle.write(summary)
+    perf_summary_path = os.environ.get(_SUMMARY_ENV)
+    if perf_summary_path:
+        # Overwrite (not append) so local/Self-hosted reruns never stack
+        # duplicate summaries; GITHUB_STEP_SUMMARY above still appends.
+        os.makedirs(
+            os.path.dirname(perf_summary_path) or ".", exist_ok=True
+        )
+        with open(perf_summary_path, "w", encoding="utf-8") as handle:
+            handle.write(summary)
     if failures:
         print("PERF GATE FAILED:", "; ".join(failures))
         return 1
