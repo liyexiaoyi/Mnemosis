@@ -69,6 +69,7 @@
 - [ ] **架构图与原理文档**：README 已链接存储/架构/入门文档；1.0 前补一张
       Mermaid 架构图与 MCP 多客户端配置示例（Claude / Cursor / Codex / Cherry）。
 - [ ] **CHANGELOG 收口**：1.0 时把 v0.3.x 的实验行为写清楚，明确稳定边界。
+- [x] **Release Notes 草稿**：[docs/release-notes-1.0.md](release-notes-1.0.md)
 - [ ] **废弃接口清理**：对 v0.x 遗留的废弃方法强制标记
       `DeprecationWarning` 或移除，确保 1.0 的“API 冻结”没有隐藏破坏。
 - [x] **干净环境安装验证**：在全新 venv / Docker 中端到端验证
