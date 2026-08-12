@@ -505,6 +505,7 @@ class Consolidator:
         )
         replay_window_seconds = self.replay_recency_days * 86400.0
         replayed = 0
+        updated: list[MemoryItem] = []
         for item in episodes:
             age_seconds = max(0.0, (now - item.created_at).total_seconds())
             if age_seconds > replay_window_seconds:
@@ -516,8 +517,18 @@ class Consolidator:
             item.storage_strength = min(2.0, item.storage_strength + gain)
             item.strength = min(1.0, item.strength + gain)
             item.touch(now)
-            self.backend.update(item)
+            updated.append(item)
             replayed += 1
+        if updated:
+            # In-memory values were already applied above; the DB write is
+            # the durable tail of an eventually-consistent replay (a failure
+            # here only means the next sleep re-applies the same gains).
+            try:
+                self.backend.update_many(updated)
+            except Exception as exc:  # noqa: BLE001
+                _LOG.warning(
+                    "sleep replay batch update failed: %s", exc
+                )
         return replayed
 
     def reflect(
