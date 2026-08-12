@@ -11,12 +11,15 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import gc
 import json
 import os
 import random
 import sys
 import tempfile
 import time
+from contextlib import suppress
+from ctypes import wintypes
 
 _BENCH = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.normpath(os.path.join(_BENCH, "..", "src")))
@@ -25,47 +28,65 @@ from mnemosis import MemoryEngine
 from mnemosis.types import MemoryKind, SourceRecord, SourceType
 
 
-def _peak_rss_mb() -> float:
-    """Windows process peak working set (MB); 0.0 if unavailable."""
-    try:
-        psapi = ctypes.WinDLL("psapi")
-        kernel32 = ctypes.WinDLL("kernel32")
+def _peak_memory_mb() -> tuple[float, float]:
+    """Peak (working set MB, commit MB); (0.0, 0.0) if unavailable."""
+    if sys.platform == "win32":
+        try:
+            kernel32 = ctypes.WinDLL("kernel32")
+            try:
+                get_mem_info = kernel32.K32GetProcessMemoryInfo
+            except AttributeError:
+                psapi = ctypes.WinDLL("psapi")
+                get_mem_info = psapi.GetProcessMemoryInfo
 
-        class _Counters(ctypes.Structure):
-            _fields_ = [
-                ("cb", ctypes.c_ulong),
-                ("page_fault_count", ctypes.c_ulong),
-                ("peak_working_set", ctypes.c_size_t),
-                ("working_set", ctypes.c_size_t),
-                ("quota_peak_paged", ctypes.c_size_t),
-                ("quota_paged", ctypes.c_size_t),
-                ("quota_peak_nonpaged", ctypes.c_size_t),
-                ("quota_nonpaged", ctypes.c_size_t),
-                ("pagefile_usage", ctypes.c_size_t),
-                ("peak_pagefile_usage", ctypes.c_size_t),
+            class _Counters(ctypes.Structure):
+                _fields_ = [
+                    ("cb", wintypes.DWORD),
+                    ("page_fault_count", wintypes.DWORD),
+                    ("peak_working_set", ctypes.c_size_t),
+                    ("working_set", ctypes.c_size_t),
+                    ("quota_peak_paged", ctypes.c_size_t),
+                    ("quota_paged", ctypes.c_size_t),
+                    ("quota_peak_nonpaged", ctypes.c_size_t),
+                    ("quota_nonpaged", ctypes.c_size_t),
+                    ("pagefile_usage", ctypes.c_size_t),
+                    ("peak_pagefile_usage", ctypes.c_size_t),
+                ]
+
+            get_mem_info.argtypes = [
+                wintypes.HANDLE,
+                ctypes.POINTER(_Counters),
+                wintypes.DWORD,
             ]
+            get_mem_info.restype = wintypes.BOOL
+            kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+            kernel32.GetCurrentProcess.argtypes = []
+            counters = _Counters()
+            counters.cb = ctypes.sizeof(counters)
+            if counters.cb not in (40, 72):
+                return 0.0, 0.0
+            ok = get_mem_info(
+                kernel32.GetCurrentProcess(),
+                ctypes.byref(counters),
+                counters.cb,
+            )
+            if ok:
+                return (
+                    counters.peak_working_set / (1024 * 1024),
+                    counters.peak_pagefile_usage / (1024 * 1024),
+                )
+            return 0.0, 0.0
+        except Exception:  # noqa: BLE001
+            return 0.0, 0.0
+    try:
+        import resource
 
-        psapi.GetProcessMemoryInfo.argtypes = [
-            ctypes.c_void_p,
-            ctypes.POINTER(_Counters),
-            ctypes.c_ulong,
-        ]
-        psapi.GetProcessMemoryInfo.restype = ctypes.c_int
-        kernel32.GetCurrentProcess.restype = ctypes.c_void_p
-        counters = _Counters()
-        counters.cb = ctypes.sizeof(counters)
-        ok = psapi.GetProcessMemoryInfo(
-            kernel32.GetCurrentProcess(),
-            ctypes.byref(counters),
-            counters.cb,
-        )
-        return (
-            counters.peak_working_set / (1024 * 1024)
-            if ok
-            else 0.0
-        )
+        # Linux ru_maxrss is KiB; macOS reports bytes.
+        maxrss = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+        divisor = 1024 * 1024 if sys.platform == "darwin" else 1024
+        return maxrss / divisor, 0.0
     except Exception:  # noqa: BLE001
-        return 0.0
+        return 0.0, 0.0
 
 
 def _generate_records(count: int) -> list[dict]:
@@ -96,6 +117,9 @@ def _generate_records(count: int) -> list[dict]:
 
 
 def main() -> int:
+    if hasattr(sys.stdout, "reconfigure"):
+        with suppress(Exception):
+            sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--count", type=int, default=100_000)
     parser.add_argument("--chunk", type=int, default=5_000)
@@ -104,66 +128,102 @@ def main() -> int:
     db = os.path.join(
         tempfile.gettempdir(), f"mnemosis_scalability_{args.count}.db"
     )
-    if os.path.exists(db):
-        os.remove(db)
-    records = _generate_records(args.count)
+    try:
+        if os.path.exists(db):
+            os.remove(db)
+        records = _generate_records(args.count)
+        base_mb, _ = _peak_memory_mb()
 
-    t0 = time.perf_counter()
-    engine = MemoryEngine(db)
-    engine.remember_many_chunked(records, chunk_size=args.chunk)
-    build_s = time.perf_counter() - t0
-    peak_mb = _peak_rss_mb()
-
-    memories = engine.store.backend.count()
-    links = engine.backend._conn.execute(
-        "SELECT COUNT(*) FROM links"
-    ).fetchone()[0]
-    terms = engine.backend._conn.execute(
-        "SELECT COUNT(*) FROM terms"
-    ).fetchone()[0]
-    db_size_mb = os.path.getsize(db) / (1024 * 1024)
-    engine.close()
-
-    # Cold query: fresh engine, first recall (logical cold start).
-    engine = MemoryEngine(db)
-    t0 = time.perf_counter()
-    engine.recall("投影仪", top_k=3)
-    cold_ms = (time.perf_counter() - t0) * 1000
-    engine.close()
-
-    # Warm queries: re-open and sample after warmup.
-    engine = MemoryEngine(db)
-    warm_queries = ["投影仪 空调", "手机 冰箱", "洗衣机 耳机"]
-    for query in warm_queries:
-        engine.recall(query, top_k=3)
-    runs = []
-    for query in warm_queries + ["空调 投影仪"]:
         t0 = time.perf_counter()
-        engine.recall(query, top_k=3)
-        runs.append((time.perf_counter() - t0) * 1000)
-    runs.sort()
-    engine.close()
+        cpu0 = time.process_time()
+        engine = MemoryEngine(db)
+        engine.remember_many_chunked(records, chunk_size=args.chunk)
+        build_s = time.perf_counter() - t0
+        build_cpu_s = time.process_time() - cpu0
+        peak_mb, peak_commit_mb = _peak_memory_mb()
 
-    result = {
-        "count": args.count,
-        "chunk": args.chunk,
-        "build_s": round(build_s, 2),
-        "memories": memories,
-        "links_rows": links,
-        "terms_rows": terms,
-        "db_size_mb": round(db_size_mb, 1),
-        "peak_rss_mb": round(peak_mb, 1),
-        "cold_query_ms": round(cold_ms, 2),
-        "warm_query_median_ms": round(runs[len(runs) // 2], 2),
-    }
-    print(json.dumps(result, ensure_ascii=False, indent=2))
-    print(
-        f"build {result['build_s']}s, db {result['db_size_mb']}MB, "
-        f"peak rss {result['peak_rss_mb']}MB, "
-        f"cold {result['cold_query_ms']}ms, "
-        f"warm {result['warm_query_median_ms']}ms"
-    )
-    return 0
+        memories = engine.store.backend.count()
+        links = engine.backend.count_links()
+        terms = engine.backend.count_terms()
+        db_size_mb = os.path.getsize(db) / (1024 * 1024)
+        engine.close()
+
+        # Cold query: fresh engine, first recall (first-touch latency,
+        # looped three times but only the first sample is reported). This
+        # is an application-level cold start; the OS page cache may still
+        # be warm from the build.
+        gc.collect()
+        app_cold_ms = 0.0
+        for _ in range(3):
+            engine = MemoryEngine(db)
+            t0 = time.perf_counter()
+            engine.recall("投影仪", top_k=3)
+            sample = (time.perf_counter() - t0) * 1000
+            app_cold_ms = sample if _ == 0 else app_cold_ms
+            engine.close()
+            gc.collect()
+
+        # Warm queries: re-open and sample after warmup.
+        engine = MemoryEngine(db)
+        warm_queries = ["投影仪 空调", "手机 冰箱", "洗衣机 耳机"]
+        for _ in range(10):
+            for query in warm_queries:
+                engine.recall(query, top_k=3)
+        runs = []
+        gc.disable()
+        try:
+            for index in range(200):
+                query = warm_queries[index % len(warm_queries)]
+                t0 = time.perf_counter()
+                engine.recall(query, top_k=3)
+                runs.append((time.perf_counter() - t0) * 1000)
+        finally:
+            gc.enable()
+        runs.sort()
+        engine.close()
+        qps = 200 / (sum(runs) / 1000)
+
+        result = {
+            "count": args.count,
+            "chunk": args.chunk,
+            "build_s": round(build_s, 2),
+            "build_cpu_s": round(build_cpu_s, 2),
+            "build_cpu_utilization": round(
+                build_cpu_s / build_s, 2
+            ),
+            "memories": memories,
+            "links_rows": links,
+            "terms_rows": terms,
+            "db_size_mb": round(db_size_mb, 1),
+            "base_rss_mb": round(base_mb, 1),
+            "peak_rss_mb": round(peak_mb, 1),
+            "rss_delta_mb": round(peak_mb - base_mb, 1),
+            "peak_commit_mb": round(peak_commit_mb, 1),
+            "app_cold_query_ms": round(app_cold_ms, 2),
+            "warm_query_p50_ms": round(runs[99], 2),
+            "warm_query_p95_ms": round(runs[189], 2),
+            "warm_query_p99_ms": round(runs[197], 2),
+            "warm_query_qps": round(qps, 1),
+        }
+        print(json.dumps(result, ensure_ascii=True, indent=2))
+        print(
+            f"build {result['build_s']}s "
+            f"(cpu {result['build_cpu_s']}s, "
+            f"util {result['build_cpu_utilization']}), "
+            f"db {result['db_size_mb']}MB, "
+            f"rss {result['base_rss_mb']}->{result['peak_rss_mb']}MB "
+            f"(delta {result['rss_delta_mb']}MB), "
+            f"app-cold {result['app_cold_query_ms']}ms, "
+            f"warm p50 {result['warm_query_p50_ms']}ms / "
+            f"p95 {result['warm_query_p95_ms']}ms / "
+            f"p99 {result['warm_query_p99_ms']}ms / "
+            f"{result['warm_query_qps']} qps"
+        )
+        return 0
+    finally:
+        if os.path.exists(db):
+            with suppress(Exception):
+                os.remove(db)
 
 
 if __name__ == "__main__":

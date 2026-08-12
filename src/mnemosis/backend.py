@@ -540,6 +540,16 @@ class DictBackend(Backend):
             "avg_strength": round(sum(i.strength for i in active) / max(1, len(active)), 3),
         }
 
+    @_locked
+    def count_links(self) -> int:
+        """Number of canonical (undirected) link rows."""
+        return len(self._links)
+
+    @_locked
+    def count_terms(self) -> int:
+        """Number of term-index rows."""
+        return sum(len(ids) for ids in self._terms_index.values())
+
 
 class SQLiteBackend(Backend):
     """Durable SQLite backend (WAL mode). Pass ``":memory:"`` for tests."""
@@ -1426,6 +1436,20 @@ class SQLiteBackend(Backend):
             sql += " AND kind = ?"
             params.append(kind.value)
         return int(self._conn.execute(sql, params).fetchone()[0])
+
+    @_locked
+    def count_links(self) -> int:
+        """Number of canonical (undirected) link rows."""
+        return int(
+            self._conn.execute("SELECT COUNT(*) FROM links").fetchone()[0]
+        )
+
+    @_locked
+    def count_terms(self) -> int:
+        """Number of term-index rows."""
+        return int(
+            self._conn.execute("SELECT COUNT(*) FROM terms").fetchone()[0]
+        )
 
     @_locked
     def list_strongest(
