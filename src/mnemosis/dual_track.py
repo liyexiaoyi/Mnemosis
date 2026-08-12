@@ -382,8 +382,8 @@ class DualTrackStore:
                 (
                     item.id,
                     (
-                        record.get("_tokens") | frozenset(item.cues)
-                        if record.get("_tokens") is not None
+                        cached_tokens | frozenset(item.cues)
+                        if (cached_tokens := record.get("_tokens")) is not None
                         else self._terms(item, cache=False)
                     ),
                     item.kind,
@@ -605,8 +605,8 @@ class DualTrackStore:
                             key=lambda row: -row[1],
                         )[:100]
                     }
-                ids = sorted(ids)
-                candidates = self.backend.get_many(ids)
+                ids_list = sorted(ids)
+                candidates = self.backend.get_many(ids_list)
         if not candidates:
             # Zero-hit queries fall back to a dual pool: recent traces plus
             # the highest-importance core facts (importance -> recency), so
@@ -895,6 +895,7 @@ class DualTrackStore:
             if rerank_items:
                 # Batch embed: network-backed embedders turn N per-item calls
                 # into one HTTP request via embed_many.
+                assert embedder is not None
                 vectors = embedder.embed_many(
                     [self._embed_text(item) for item in rerank_items]
                 )
@@ -1485,19 +1486,21 @@ class DualTrackStore:
         reason = "\u6a21\u5f0f\u8865\u5168(\u90e8\u5206\u7ebf\u7d22)"
         applied = 0
         for index, (score, overlap, item, reasons, matched) in enumerate(scored):
-            boost = boosts.get(item.id)
-            if boost is None or boost <= score:
+            item_boost = boosts.get(item.id)
+            if item_boost is None or item_boost <= score:
                 continue
-            scored[index] = (boost, overlap, item, reasons + [reason], matched)
+            scored[index] = (
+                item_boost, overlap, item, reasons + [reason], matched
+            )
             applied += 1
         appended = 0
         for linked_id, boost in boosts.items():
             if linked_id in existing_ids or appended >= max_appended:
                 continue
-            linked = self.backend.get(linked_id)
-            if linked is None:
+            linked_item = self.backend.get(linked_id)
+            if linked_item is None:
                 continue
-            scored.append((boost, 0.0, linked, [reason], False))
+            scored.append((boost, 0.0, linked_item, [reason], False))
             existing_ids.add(linked_id)
             appended += 1
         if applied or appended:
@@ -1691,7 +1694,7 @@ class DualTrackStore:
         than intended.
         """
         nbytes = getattr(vector, "nbytes", None)
-        if isinstance(nbytes, numbers.Integral) and nbytes > 0:
+        if isinstance(nbytes, numbers.Integral) and int(nbytes) > 0:
             return int(nbytes)
         return len(vector) * 32 + 64
 
@@ -1766,15 +1769,15 @@ class DualTrackStore:
         for linked_id, (boost, root) in activated.items():
             if linked_id in existing_ids:
                 continue
-            linked = self.backend.get(linked_id)
-            if linked is None:
+            linked_item = self.backend.get(linked_id)
+            if linked_item is None:
                 continue
             existing_ids.add(linked_id)
             scored.append(
                 (
                     boost,
                     0.0,
-                    linked,
+                    linked_item,
                     [f"linked to '{root.content[:40]}'"],
                     False,
                 )

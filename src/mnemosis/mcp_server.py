@@ -241,7 +241,9 @@ def run_stdio(
 ) -> None:
     for stream in (sys.stdin, sys.stdout, sys.stderr):
         try:
-            stream.reconfigure(encoding="utf-8")
+            reconfigure = getattr(stream, "reconfigure", None)
+            if reconfigure is not None:
+                reconfigure(encoding="utf-8")
         except (AttributeError, ValueError):
             pass
     engine = _build_engine(

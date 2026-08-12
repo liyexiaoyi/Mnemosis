@@ -216,18 +216,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             for item, label, value in check.items:
                 print(f"{label.value} ({value}) {item.content}")
         elif args.command == "update":
-            item = engine.update(
+            updated = engine.update(
                 args.memory_id,
                 content=args.content,
                 importance=args.importance,
                 confidence=args.confidence,
             )
-            if item is None:
+            if updated is None:
                 print("not found")
             else:
                 print(
-                    f"updated {item.id} (revisions={item.revision_count}) "
-                    f"{item.content}"
+                    f"updated {updated.id} "
+                    f"(revisions={updated.revision_count}) "
+                    f"{updated.content}"
                 )
         elif args.command == "forget":
             print("forgot" if engine.forget(args.memory_id) else "not found")
@@ -246,14 +247,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                     f"{item.content}"
                 )
         elif args.command == "review":
-            item = engine.review(args.memory_id, success=not args.fail)
-            if item is None:
+            reviewed = engine.review(args.memory_id, success=not args.fail)
+            if reviewed is None:
                 print("memory not found")
             else:
                 print(
-                    f"reviewed: streak={item.review_streak} "
-                    f"successes={item.retrieval_successes} "
-                    f"failures={item.retrieval_failures}"
+                    f"reviewed: streak={reviewed.review_streak} "
+                    f"successes={reviewed.retrieval_successes} "
+                    f"failures={reviewed.retrieval_failures}"
                 )
     finally:
         engine.close()

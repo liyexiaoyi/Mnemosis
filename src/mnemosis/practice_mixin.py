@@ -1,4 +1,5 @@
 """Practice mixin: mastery estimation and retrieval-practice generation."""
+# mypy: disable-error-code="attr-defined"
 
 from __future__ import annotations
 

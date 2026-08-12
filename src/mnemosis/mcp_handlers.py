@@ -22,6 +22,7 @@ def _kind(value: Any) -> MemoryKind | None:
 
 def _bounded(args: dict[str, Any], key: str, default: int, lo: int, hi: int) -> int:
     """Read an int arg clamped to [lo, hi]; malformed/absent -> default."""
+# mypy: disable-error-code="attr-defined"
     try:
         value = int(args.get(key, default))
     except (TypeError, ValueError):

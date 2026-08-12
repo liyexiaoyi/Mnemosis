@@ -128,9 +128,9 @@ def apply_time_cell_reasoning(
     for item in candidates:
         if item.id not in meta:
             continue
-        person, event_date = meta[item.id]
-        if person in persons and event_date == anchor:
-            anchor_persons.add(person)
+        meta_person, meta_date = meta[item.id]
+        if meta_person in persons and meta_date == anchor:
+            anchor_persons.add(meta_person)
 
     # per-person temporal targets: nearest future / nearest past, and the
     # second future event for transitive two-hop questions
@@ -141,27 +141,27 @@ def apply_time_cell_reasoning(
     for item in candidates:
         if item.id not in meta:
             continue
-        person, event_date = meta[item.id]
-        if person not in persons or event_date is None:
+        loop_person, event_date = meta[item.id]
+        if loop_person not in persons or event_date is None:
             continue
         if event_date == anchor:
-            anchor_items.setdefault(person, item)
+            anchor_items.setdefault(loop_person, item)
         if kind == "after" and event_date > anchor:
             delta = (event_date - anchor).days
-            current = nearest_future.get(person)
+            current = nearest_future.get(loop_person)
             if current is None or delta < current[0]:
                 if current is not None:
-                    second_future[person] = current
-                nearest_future[person] = (delta, item)
+                    second_future[loop_person] = current
+                nearest_future[loop_person] = (delta, item)
             else:
-                second = second_future.get(person)
+                second = second_future.get(loop_person)
                 if second is None or delta < second[0]:
-                    second_future[person] = (delta, item)
+                    second_future[loop_person] = (delta, item)
         elif kind == "before" and event_date < anchor:
             delta = (anchor - event_date).days
-            current = nearest_past.get(person)
+            current = nearest_past.get(loop_person)
             if current is None or delta < current[0]:
-                nearest_past[person] = (delta, item)
+                nearest_past[loop_person] = (delta, item)
 
     decisive: dict[str, float] = {}
     conservative: dict[str, float] = {}
@@ -207,8 +207,8 @@ def apply_time_cell_reasoning(
     for item in candidates:
         if item.id not in meta:
             continue
-        person, event_date = meta[item.id]
-        if person not in persons or event_date is None:
+        loop_person, event_date = meta[item.id]
+        if loop_person not in persons or event_date is None:
             continue
         if item.id in decisive or item.id in conservative:
             continue
@@ -255,9 +255,9 @@ def apply_time_cell_reasoning(
                     matched,
                 )
         else:
-            item = by_item.get(memory_id)
-            if item is not None:
-                scored.append((boost, 0.0, item, [reason], False))
+            candidate = by_item.get(memory_id)
+            if candidate is not None:
+                scored.append((boost, 0.0, candidate, [reason], False))
 
     if kind == "after":
         future_reason = (

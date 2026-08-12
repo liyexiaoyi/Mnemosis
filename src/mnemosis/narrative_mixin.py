@@ -1,4 +1,5 @@
 """Narrative mixin: timeline, recognition, conflict and life-story reports."""
+# mypy: disable-error-code="attr-defined"
 
 from __future__ import annotations
 
@@ -194,7 +195,7 @@ class NarrativeMixin:
         for item in self.store.all_active():
             for cue in item.cues:
                 cue_members[cue].append(item)
-        clusters = []
+        clusters: list[dict] = []
         for cue, members in cue_members.items():
             if len(members) < max(2, int(shared_cue_min)):
                 continue

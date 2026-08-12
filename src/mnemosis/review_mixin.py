@@ -1,4 +1,5 @@
 """Review mixin: spaced practice, sleep consolidation and workload."""
+# mypy: disable-error-code="attr-defined"
 
 from __future__ import annotations
 
@@ -60,10 +61,14 @@ def _cue_hits_query(cue: str, query: str) -> bool:
         return cue in query
     if mode == "raw":
         return cue.lower() in query.lower()
+    if isinstance(mode, str):
+        return False
     return mode.search(query) is not None
 
 
 class ReviewMixin:
+    _warmup_at: float | None = None
+
     def spacing_plan(
         self,
         *,
@@ -332,7 +337,7 @@ class ReviewMixin:
         rows.sort(
             key=lambda row: (-row["charge"], row["persistence_days"])
         )
-        counts = defaultdict(int)
+        counts: defaultdict[str, int] = defaultdict(int)
         for row in rows:
             counts[row["status"]] += 1
         persistent = [row for row in rows if row["status"] == "persistent"]
@@ -533,7 +538,7 @@ class ReviewMixin:
             items = items[:limit]
         if interleave and len(items) > 1:
             items = self._interleave(items)
-        out = []
+        out: list[dict] = []
         for item in items:
             if vary_cues and len(item.cues) >= 3:
                 total_reviews = (
@@ -810,11 +815,10 @@ class ReviewMixin:
         """
         now = now or utcnow()
         stats = self.backend.stats()
-        due = sum(
-            1
-            for item in self.store.all_active()
-            if self.scheduler.is_due(item, now)
-        )
+        due = 0
+        for item in self.store.all_active():
+            if self.scheduler.is_due(item, now):
+                due += 1
         conflicts = len(self.consolidator.detect_conflicts())
         return {
             "stats": stats,
@@ -923,6 +927,10 @@ class ReviewMixin:
         recycled = len(
             self.backend.list(status=MemoryStatus.RECYCLED)
         )
+        due_now = 0
+        for item in items:
+            if self.scheduler.is_due(item, now):
+                due_now += 1
         return {
             "active": len(items),
             "recycled": recycled,
@@ -931,9 +939,7 @@ class ReviewMixin:
             "revised": sum(1 for i in items if i.revision_count > 0),
             "emotional": sum(1 for i in items if i.affect),
             "conflicts": len(self.consolidator.detect_conflicts()),
-            "due_now": sum(
-                1 for item in items if self.scheduler.is_due(item, now)
-            ),
+            "due_now": due_now,
             "avg_retrievability": round(
                 sum(retrievabilities) / len(retrievabilities), 3
             ) if retrievabilities else 0.0,
@@ -1249,7 +1255,7 @@ class ReviewMixin:
         for item in items:
             topic = item.cues[0] if item.cues else item.content[:10]
             topic_chunks[topic].append(item.id)
-        chunks = [
+        chunks: list[dict] = [
             {
                 "topic": topic,
                 "count": len(memory_ids),

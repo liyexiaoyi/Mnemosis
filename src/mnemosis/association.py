@@ -61,17 +61,19 @@ class AssociationIndex:
         related = [
             self.backend.get(rid) for rid in related_ids
         ]
-        related = [other for other in related if other is not None]
-        related.sort(
+        related_clean: list[MemoryItem] = [
+            other for other in related if other is not None
+        ]
+        related_clean.sort(
             # seq is globally unique per store, so the content tie-break
             # is dead code; an int key is much cheaper to build/compare.
             key=attrgetter("seq"),
             reverse=True,
         )
-        for other in related[:max_links]:
-            self.backend.add_link(item.id, other.id, weight)
-            self.backend.add_link(other.id, item.id, weight)
-        return related[:max_links]
+        for neighbor in related_clean[:max_links]:
+            self.backend.add_link(item.id, neighbor.id, weight)
+            self.backend.add_link(neighbor.id, item.id, weight)
+        return related_clean[:max_links]
 
     def link_related_batch(
         self,
@@ -111,14 +113,14 @@ class AssociationIndex:
         for item in items:
             related_ids: set[str] = set()
             for cue in item.cues:
-                bucket = cue_map.get(cue)
-                if not bucket:
+                bucket_items = cue_map.get(cue)
+                if not bucket_items:
                     continue
                 # A candidate ranked k-th in a seq-sorted bucket is
                 # dominated by k higher-seq candidates from the same
                 # bucket. The item itself occupies one of those slots
                 # and is skipped below, so take max_links+1 entries.
-                for other in bucket[-(max_links + 1) :]:
+                for other in bucket_items[-(max_links + 1) :]:
                     if other.id != item.id:
                         related_ids.add(other.id)
             related = [
@@ -232,16 +234,16 @@ class AssociationIndex:
                     bucket.append(item)
             candidates: dict[str, MemoryItem] = {}
             for cue in item.cues:
-                bucket = self._batch_cue_map.get(cue)
-                if not bucket:
+                bucket_items = self._batch_cue_map.get(cue)
+                if not bucket_items:
                     continue
                 # Same tail argument as link_related_batch: candidates
                 # outside the tail are dominated within their own bucket;
                 # the +1 covers the slot taken by the item itself.
                 scan = (
-                    bucket[-(max_links + 1) :]
+                    bucket_items[-(max_links + 1) :]
                     if chunk_seq_sorted
-                    else bucket
+                    else bucket_items
                 )
                 for other in scan:
                     if other.id != item.id:

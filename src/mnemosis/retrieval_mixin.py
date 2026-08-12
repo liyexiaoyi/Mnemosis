@@ -1,4 +1,5 @@
 """Retrieval mixin: multi-pass recall, anchors and temporal hints."""
+# mypy: disable-error-code="attr-defined"
 
 from __future__ import annotations
 
@@ -44,7 +45,7 @@ memories share it, the pass cannot pick a specific record anyway and the
 scan cost would be unbounded, so the anchor is skipped.
 """
 
-_TEMPORAL_ACTION_SYNONYMS: tuple[tuple[str, str], ...] = (
+_TEMPORAL_ACTION_SYNONYMS: tuple[tuple[str, ...], ...] = (
     ("复习", "备考"),
     ("复查", "复诊"),
     ("维修", "检测"),
@@ -112,6 +113,12 @@ _STORAGE_WORD_RE = re.compile(r"存放|放入|存了|装了|收纳|放进|搁置
 
 
 class RetrievalMixin:
+    _ENTITY_QUESTION_RE: re.Pattern[str] | None = None
+    _ENTITY_RECORD_RE: re.Pattern[str] | None = None
+    _VALUE_QUESTION_RE: re.Pattern[str] | None = None
+    _VALUE_PATTERN_RE: re.Pattern[str] | None = None
+    _TIME_RANGE_RE: re.Pattern[str] | None = None
+
     def recall(
         self,
         query: str,
@@ -540,7 +547,7 @@ class RetrievalMixin:
         per_chunk: list[dict] = []
         for chunk in chunks:
             terms = self._concept_terms(chunk)
-            candidates = [
+            candidates: list[dict[str, float | str]] = [
                 {
                     "id": item.id,
                     "preview": item.content[:50],
@@ -556,7 +563,7 @@ class RetrievalMixin:
             ]
             covered = any(
                 candidate["id"] in final_ids
-                and candidate["score"] >= 0.35
+                and float(candidate["score"]) >= 0.35
                 for candidate in candidates
             )
             per_chunk.append(
@@ -627,6 +634,8 @@ class RetrievalMixin:
                 r"[\s:：\-]*"
                 r"([A-Za-z]{1,8}[-]?\d{2,}|\d{3,})"
             )
+        assert self._ENTITY_QUESTION_RE is not None
+        assert self._ENTITY_RECORD_RE is not None
         if not self._ENTITY_QUESTION_RE.search(query) or not results:
             return results
         seen = {result.item.id for result in results}
@@ -707,6 +716,9 @@ class RetrievalMixin:
                 r"(?:\d{1,2}\s*分)?\s*[-—~至到]\s*"
                 r"(?:早|上午|下午|晚|晚上)?\s*\d{1,2}\s*点"
             )
+        assert self._VALUE_QUESTION_RE is not None
+        assert self._VALUE_PATTERN_RE is not None
+        assert self._TIME_RANGE_RE is not None
         if not self._VALUE_QUESTION_RE.search(query) or not results:
             return results
         seen = {result.item.id for result in results}
@@ -743,13 +755,18 @@ class RetrievalMixin:
             # carries an amount (元/块/万), not any dated value record
             # like "日销 80 碗" (number-line units; Dehaene & Brannon,
             # 2011: the unit is part of the quantity).
-            if money_marker and _MONEY_PAT_RE.search(item.content):
+            money_match = (
+                _MONEY_PAT_RE.search(item.content) if money_marker else None
+            )
+            if money_match is not None:
                 # Prefer the record whose amount is the price of the
                 # queried item (价格/费用/花了), not a related payment
                 # like 年费/续费/充值 that merely sits on the same topic.
                 near = any(
                     term in item.content
-                    and abs(item.content.find(term) - _MONEY_PAT_RE.search(item.content).start()) <= 15
+                    and abs(
+                        item.content.find(term) - money_match.start()
+                    ) <= 15
                     for term in query_terms
                 )
                 score = (
@@ -979,7 +996,7 @@ class RetrievalMixin:
         want_earliest = bool(
             re.search(r"第一次|首次|头一回", query)
         )
-        candidates: list[tuple[float, MemoryItem]] = []
+        date_candidates: list[tuple[float, tuple, MemoryItem]] = []
         for item in self._anchor_items(candidate_terms, kind, exclude_ids):
             if item.id in seen:
                 continue
@@ -1063,10 +1080,10 @@ class RetrievalMixin:
                 if full_side and target == extreme
                 else 0.60
             )
-            candidates.append((score, target, item))
-        if not candidates:
+            date_candidates.append((score, target, item))
+        if not date_candidates:
             return results
-        candidates.sort(
+        date_candidates.sort(
             key=lambda pair: (
                 tuple(-d for d in pair[1])
                 if want_past and not want_earliest
@@ -1075,7 +1092,7 @@ class RetrievalMixin:
                 pair[2].id,
             )
         )
-        score, target, candidate = candidates[0]
+        score, target, candidate = date_candidates[0]
         candidate_terms = set(
             tokenize(candidate.content + " " + " ".join(candidate.cues))
         )

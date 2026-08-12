@@ -1,4 +1,5 @@
 """Overview mixin: memory health, map, KG export, learner profile, context pack, encoding quality."""
+# mypy: disable-error-code="attr-defined"
 
 from __future__ import annotations
 
@@ -243,7 +244,7 @@ class OverviewMixin:
         ranked = sorted(
             best.items(), key=lambda kv: kv[1][0], reverse=True
         )
-        packed = []
+        packed: list[dict] = []
         used = 0
         truncated = 0
         for memory_id, (score, content) in ranked:

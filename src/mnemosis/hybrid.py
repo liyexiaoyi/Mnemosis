@@ -348,7 +348,7 @@ def fused_recall(
     hints = temporal_intent(query)
 
     passes = []
-    by_id: dict[str, object] = {}
+    by_id: dict[str, RecallResult] = {}
     all_results = []
     if kw_weight > 0:
         kw_results = engine.recall(

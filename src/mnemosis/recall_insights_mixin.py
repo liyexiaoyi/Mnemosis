@@ -1,4 +1,5 @@
 """Recall insights mixin: reasoning pack, step retrieval, review consistency, similarity and association reports."""
+# mypy: disable-error-code="attr-defined"
 
 from __future__ import annotations
 

@@ -1,4 +1,5 @@
 """Explanation mixin: explain, compare, summarize, multi-hop, cramming, session reports."""
+# mypy: disable-error-code="attr-defined"
 
 from __future__ import annotations
 
@@ -26,11 +27,10 @@ class ExplanationMixin:
         item = self.backend.get(memory_id)
         if item is None:
             return None
-        linked_count = sum(
-            1
-            for src, dst, _weight in self.backend.all_links()
-            if src == memory_id or dst == memory_id
-        )
+        linked_count = 0
+        for src, dst, _weight in self.backend.all_links():
+            if src == memory_id or dst == memory_id:
+                linked_count += 1
         return {
             "memory_id": memory_id,
             "content": item.content,
@@ -242,12 +242,12 @@ class ExplanationMixin:
             chunk = picked[start:start + size]
             if not chunk:
                 break
-            start = target_at - timedelta(
+            session_start = target_at - timedelta(
                 minutes=max(1, int(session_minutes)) * (n_sessions - i)
             )
             sessions.append(
                 {
-                    "start_at": start.isoformat(),
+                    "start_at": session_start.isoformat(),
                     "duration_minutes": max(1, int(session_minutes)),
                     "memory_ids": [item.id for _need, item in chunk],
                     "count": len(chunk),
@@ -288,11 +288,14 @@ class ExplanationMixin:
             {"id": item.id, "preview": item.content[:40]}
             for item in items if item.kind is MemoryKind.EPISODIC
         ]
-        conflicts = []
-        duplicates = []
+        conflicts: list[dict] = []
+        duplicates: list[dict] = []
         compare_items = items[: max(2, int(compare_limit))]
         for a, b in combinations(compare_items, 2):
-            verdict = self.compare_memories(a.id, b.id)["verdict"]
+            comparison = self.compare_memories(a.id, b.id)
+            if comparison is None:
+                continue
+            verdict = comparison["verdict"]
             if verdict == "conflict" and len(conflicts) < 5:
                 conflicts.append(
                     {"id_a": a.id, "id_b": b.id,

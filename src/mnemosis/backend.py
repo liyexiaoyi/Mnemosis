@@ -7,6 +7,7 @@ checkpoint TRUNCATE); Python 3.9+ ships with a recent enough build.
 
 from __future__ import annotations
 
+import builtins
 import json
 import logging
 import sqlite3
@@ -104,7 +105,7 @@ class Backend(ABC):
     def get(self, memory_id: str) -> MemoryItem | None: ...
 
     @abstractmethod
-    def get_many(self, memory_ids: Iterable[str]) -> list[MemoryItem]: ...
+    def get_many(self, memory_ids: Iterable[str]) -> builtins.list[MemoryItem]: ...
 
     @abstractmethod
     def update(self, item: MemoryItem) -> None: ...
@@ -118,7 +119,7 @@ class Backend(ABC):
     @abstractmethod
     def recycled_ids(
         self, *, limit: int = 1000, after_seq: int = -1
-    ) -> list[tuple[int, str]]: ...
+    ) -> builtins.list[tuple[int, str]]: ...
 
     @abstractmethod
     def index_terms(
@@ -143,7 +144,34 @@ class Backend(ABC):
         kind: MemoryKind | None = None,
         status: MemoryStatus = MemoryStatus.ACTIVE,
         limit: int | None = None,
-    ) -> list[MemoryItem]: ...
+    ) -> builtins.list[MemoryItem]: ...
+
+    @abstractmethod
+    def count(
+        self,
+        *,
+        kind: MemoryKind | None = None,
+        status: MemoryStatus = MemoryStatus.ACTIVE,
+    ) -> int: ...
+
+    @abstractmethod
+    def list_strongest(
+        self,
+        *,
+        kind: MemoryKind | None = None,
+        status: MemoryStatus = MemoryStatus.ACTIVE,
+        limit: int = 50,
+    ) -> builtins.list[MemoryItem]: ...
+
+    @abstractmethod
+    def add_links_many(
+        self, pairs: Iterable[tuple[str, str, float]]
+    ) -> None: ...
+
+    @abstractmethod
+    def term_dfs(
+        self, terms: Iterable[str], kind: MemoryKind | None
+    ) -> dict[str, int]: ...
 
     @abstractmethod
     def add_cues(self, memory_id: str, cues: Iterable[str]) -> None: ...
@@ -152,7 +180,7 @@ class Backend(ABC):
     def remove_cues(self, memory_id: str, cues: Iterable[str]) -> None: ...
 
     @abstractmethod
-    def find_by_cue(self, cue: str) -> list[MemoryItem]: ...
+    def find_by_cue(self, cue: str) -> builtins.list[MemoryItem]: ...
 
     @abstractmethod
     def add_link(self, src: str, dst: str, weight: float = 1.0) -> None: ...
@@ -162,13 +190,13 @@ class Backend(ABC):
         """Return the weight of the src->dst link (0.0 if absent)."""
 
     @abstractmethod
-    def all_links(self) -> list[tuple[str, str, float]]:
+    def all_links(self) -> builtins.list[tuple[str, str, float]]:
         """Return every directed link as (src, dst, weight)."""
 
     @abstractmethod
     def related(
         self, memory_id: str, depth: int = 1, max_nodes: int = 20
-    ) -> list[MemoryItem]: ...
+    ) -> builtins.list[MemoryItem]: ...
 
     @abstractmethod
     def stats(self) -> dict: ...
@@ -188,6 +216,46 @@ class Backend(ABC):
         the first real query after startup does not pay the full cold
         page-load cost.
         """
+
+    @abstractmethod
+    def add_many(self, items: builtins.list[MemoryItem]) -> None: ...
+
+    @abstractmethod
+    def update_many(
+        self,
+        items: builtins.list[MemoryItem],
+        *,
+        busy_timeout_ms: int | None = None,
+    ) -> None: ...
+
+    @abstractmethod
+    def add_cues_many(
+        self, pairs: Iterable[tuple[str, Iterable[str]]]
+    ) -> None: ...
+
+    @abstractmethod
+    def remove_cues_many(
+        self, pairs: Iterable[tuple[str, Iterable[str]]]
+    ) -> None: ...
+
+    @abstractmethod
+    def index_terms_many(
+        self,
+        pairs: Iterable[tuple[str, Iterable[str], MemoryKind]],
+        *,
+        replace: bool = True,
+    ) -> None: ...
+
+    @abstractmethod
+    def get_setting(self, key: str, default: str | None = None) -> str | None: ...
+
+    @abstractmethod
+    def set_setting(self, key: str, value: str) -> None: ...
+
+    @abstractmethod
+    def upsert_many(
+        self, items: builtins.list[MemoryItem]
+    ) -> builtins.list[MemoryItem]: ...
 
 
 class DictBackend(Backend):
@@ -211,14 +279,14 @@ class DictBackend(Backend):
         self._items[item.id] = item
 
     @_locked
-    def add_many(self, items: list[MemoryItem]) -> None:
+    def add_many(self, items: builtins.list[MemoryItem]) -> None:
         for item in items:
             self.add(item)
 
     @_locked
     def update_many(
         self,
-        items: list[MemoryItem],
+        items: builtins.list[MemoryItem],
         *,
         busy_timeout_ms: int | None = None,
     ) -> None:
@@ -275,7 +343,7 @@ class DictBackend(Backend):
         return existing
 
     @_locked
-    def upsert_many(self, items: list[MemoryItem]) -> list[MemoryItem]:
+    def upsert_many(self, items: builtins.list[MemoryItem]) -> builtins.list[MemoryItem]:
         """Bulk semantic dedupe; returns one stored item per input, in order."""
         index: dict[tuple[MemoryKind, str], MemoryItem] = {}
         for other in self._items.values():
@@ -288,8 +356,8 @@ class DictBackend(Backend):
             )
             for item in items
         }
-        new: list[MemoryItem] = []
-        merged: list[MemoryItem] = []
+        new: builtins.list[MemoryItem] = []
+        merged: builtins.list[MemoryItem] = []
         resolved: dict[tuple[MemoryKind, str], MemoryItem] = {}
         for item in items:
             existing = existing_by_hash.get(
@@ -329,7 +397,7 @@ class DictBackend(Backend):
         return self._items.get(memory_id)
 
     @_locked
-    def get_many(self, memory_ids: Iterable[str]) -> list[MemoryItem]:
+    def get_many(self, memory_ids: Iterable[str]) -> builtins.list[MemoryItem]:
         items = [
             item
             for memory_id in memory_ids
@@ -366,7 +434,7 @@ class DictBackend(Backend):
     @_locked
     def recycled_ids(
         self, *, limit: int = 1000, after_seq: int = -1
-    ) -> list[tuple[int, str]]:
+    ) -> builtins.list[tuple[int, str]]:
         recycled = sorted(
             (item.seq, item.id)
             for item in self._items.values()
@@ -474,7 +542,7 @@ class DictBackend(Backend):
         kind: MemoryKind | None = None,
         status: MemoryStatus = MemoryStatus.ACTIVE,
         limit: int | None = None,
-    ) -> list[MemoryItem]:
+    ) -> builtins.list[MemoryItem]:
         items = [
             item
             for item in self._items.values()
@@ -509,7 +577,7 @@ class DictBackend(Backend):
         kind: MemoryKind | None = None,
         status: MemoryStatus = MemoryStatus.ACTIVE,
         limit: int = 50,
-    ) -> list[MemoryItem]:
+    ) -> builtins.list[MemoryItem]:
         """Most important active memories.
 
         Ordered by importance only (no secondary recency sort) so the query
@@ -541,7 +609,7 @@ class DictBackend(Backend):
                 ids.discard(memory_id)
 
     @_locked
-    def find_by_cue(self, cue: str) -> list[MemoryItem]:
+    def find_by_cue(self, cue: str) -> builtins.list[MemoryItem]:
         cue = cue.strip().lower()
         ids = sorted(self._cues.get(cue, set()))
         items = [self._items[i] for i in ids if i in self._items]
@@ -572,8 +640,8 @@ class DictBackend(Backend):
         return self._links.get((src, dst), 0.0)
 
     @_locked
-    def all_links(self) -> list[tuple[str, str, float]]:
-        out: list[tuple[str, str, float]] = []
+    def all_links(self) -> builtins.list[tuple[str, str, float]]:
+        out: builtins.list[tuple[str, str, float]] = []
         for (a, b), w in self._links.items():
             out.append((a, b, w))
             out.append((b, a, w))
@@ -582,7 +650,7 @@ class DictBackend(Backend):
     @_locked
     def related(
         self, memory_id: str, depth: int = 1, max_nodes: int = 20
-    ) -> list[MemoryItem]:
+    ) -> builtins.list[MemoryItem]:
         frontier = {memory_id}
         seen: set[str] = set()
         for _ in range(max(1, depth)):
@@ -814,7 +882,7 @@ class SQLiteBackend(Backend):
         self._conn.execute("BEGIN IMMEDIATE")
 
     @_locked
-    def add_many(self, items: list[MemoryItem]) -> None:
+    def add_many(self, items: builtins.list[MemoryItem]) -> None:
         """Insert many memories and their cues in bounded transactions.
 
         NOTE: no longer globally atomic -- an error mid-way leaves earlier
@@ -832,8 +900,8 @@ class SQLiteBackend(Backend):
                     "SELECT COALESCE(MAX(seq), 0) AS next FROM memories"
                 ).fetchone()
                 seq = int(row["next"])
-                rows: list[tuple] = []
-                cue_rows: list[tuple[str, str]] = []
+                rows: builtins.list[tuple] = []
+                cue_rows: builtins.list[tuple[str, str]] = []
                 for item in chunk:
                     seq += 1
                     item.seq = seq
@@ -877,12 +945,12 @@ class SQLiteBackend(Backend):
         return existing
 
     @_locked
-    def upsert_many(self, items: list[MemoryItem]) -> list[MemoryItem]:
+    def upsert_many(self, items: builtins.list[MemoryItem]) -> builtins.list[MemoryItem]:
         """Bulk semantic dedupe; returns one stored item per input, in order."""
         if not items:
             return []
         existing_by_hash: dict[tuple[MemoryKind, str], MemoryItem] = {}
-        by_kind: dict[str, list[MemoryItem]] = {}
+        by_kind: dict[str, builtins.list[MemoryItem]] = {}
         for item in items:
             by_kind.setdefault(item.kind.value, []).append(item)
         for kind_value, kind_items in by_kind.items():
@@ -896,10 +964,13 @@ class SQLiteBackend(Backend):
                     [kind_value] + chunk,
                 ).fetchall()
                 for row in rows:
-                    item = _row_to_item(row)
-                    existing_by_hash[(item.kind, item.content_hash)] = item
-        new: list[MemoryItem] = []
-        merged: list[MemoryItem] = []
+                    row_item = _row_to_item(row)
+                    if row_item is not None:
+                        existing_by_hash[
+                            (row_item.kind, row_item.content_hash)
+                        ] = row_item
+        new: builtins.list[MemoryItem] = []
+        merged: builtins.list[MemoryItem] = []
         resolved: dict[tuple[MemoryKind, str], MemoryItem] = {}
         for item in items:
             existing = existing_by_hash.get(
@@ -943,13 +1014,13 @@ class SQLiteBackend(Backend):
         return _row_to_item(row) if row else None
 
     @_locked
-    def get_many(self, memory_ids: Iterable[str]) -> list[MemoryItem]:
+    def get_many(self, memory_ids: Iterable[str]) -> builtins.list[MemoryItem]:
         # Dedupe while preserving order; VALUES rows would otherwise repeat
         # when a caller passes the same id twice.
         ids = list(dict.fromkeys(memory_ids))
         if not ids:
             return []
-        items: list[MemoryItem] = []
+        items: builtins.list[MemoryItem] = []
         for start in range(0, len(ids), 1000):
             chunk = ids[start : start + 1000]
             if len(chunk) >= self._JSON_EACH_THRESHOLD and self._json_each_ok:
@@ -984,7 +1055,11 @@ class SQLiteBackend(Backend):
                     "WHERE m.status = ?",
                     (*chunk, MemoryStatus.ACTIVE.value),
                 ).fetchall()
-            items.extend(_row_to_item(row) for row in rows)
+            items.extend(
+                item
+                for row in rows
+                if (item := _row_to_item(row)) is not None
+            )
         items.sort(key=lambda item: item.seq, reverse=True)
         return items
 
@@ -1228,7 +1303,7 @@ class SQLiteBackend(Backend):
     @_locked
     def update_many(
         self,
-        items: list[MemoryItem],
+        items: builtins.list[MemoryItem],
         *,
         busy_timeout_ms: int | None = None,
     ) -> None:
@@ -1346,7 +1421,7 @@ class SQLiteBackend(Backend):
     @_locked
     def recycled_ids(
         self, *, limit: int = 1000, after_seq: int = -1
-    ) -> list[tuple[int, str]]:
+    ) -> builtins.list[tuple[int, str]]:
         rows = self._conn.execute(
             "SELECT seq, id FROM memories "
             "WHERE status = 'recycled' AND seq > ? "
@@ -1382,8 +1457,8 @@ class SQLiteBackend(Backend):
         replace: bool = True,
     ) -> None:
         """Rebuild term rows for many memories in one atomic transaction."""
-        entries: list[tuple[str, str, str]] = []
-        ids: list[str] = []
+        entries: builtins.list[tuple[str, str, str]] = []
+        ids: builtins.list[str] = []
         for memory_id, terms, kind in pairs:
             # Dedupe only; the global entries.sort() below provides the
             # PK-ordered stream, so a per-item sort would be wasted work.
@@ -1557,7 +1632,7 @@ class SQLiteBackend(Backend):
         kind: MemoryKind | None = None,
         status: MemoryStatus = MemoryStatus.ACTIVE,
         limit: int | None = None,
-    ) -> list[MemoryItem]:
+    ) -> builtins.list[MemoryItem]:
         sql = "SELECT * FROM memories WHERE status = ?"
         params: list = [status.value]
         if kind is not None:
@@ -1568,7 +1643,9 @@ class SQLiteBackend(Backend):
             sql += " LIMIT ?"
             params.append(limit)
         rows = self._conn.execute(sql, params).fetchall()
-        return [_row_to_item(r) for r in rows]
+        return [
+            item for r in rows if (item := _row_to_item(r)) is not None
+        ]
 
     @_locked
     def count(
@@ -1644,7 +1721,7 @@ class SQLiteBackend(Backend):
         kind: MemoryKind | None = None,
         status: MemoryStatus = MemoryStatus.ACTIVE,
         limit: int = 50,
-    ) -> list[MemoryItem]:
+    ) -> builtins.list[MemoryItem]:
         """Most important active memories (importance, then recency)."""
         sql = (
             "SELECT * FROM memories WHERE status = ? "
@@ -1658,7 +1735,9 @@ class SQLiteBackend(Backend):
             sql += " LIMIT ?"
             params.append(limit)
         rows = self._conn.execute(sql, params).fetchall()
-        return [_row_to_item(r) for r in rows]
+        return [
+            item for r in rows if (item := _row_to_item(r)) is not None
+        ]
 
     @_locked
     def add_cues(self, memory_id: str, cues: Iterable[str]) -> None:
@@ -1718,7 +1797,7 @@ class SQLiteBackend(Backend):
             )
 
     @_locked
-    def find_by_cue(self, cue: str) -> list[MemoryItem]:
+    def find_by_cue(self, cue: str) -> builtins.list[MemoryItem]:
         cue = cue.strip().lower()
         rows = self._conn.execute(
             """
@@ -1729,7 +1808,9 @@ class SQLiteBackend(Backend):
             (cue,),
         ).fetchall()
         rows.sort(key=lambda row: (row["seq"], row["content"]))
-        return [_row_to_item(r) for r in rows]
+        return [
+            item for r in rows if (item := _row_to_item(r)) is not None
+        ]
 
     @_locked
     def add_link(self, src: str, dst: str, weight: float = 1.0) -> None:
@@ -1811,7 +1892,7 @@ class SQLiteBackend(Backend):
         return float(row["weight"]) if row else 0.0
 
     @_locked
-    def all_links(self) -> list[tuple[str, str, float]]:
+    def all_links(self) -> builtins.list[tuple[str, str, float]]:
         rows = self._conn.execute(
             "SELECT src, dst, weight FROM links "
             "UNION ALL SELECT dst, src, weight FROM links"
@@ -1826,7 +1907,7 @@ class SQLiteBackend(Backend):
     @_locked
     def related(
         self, memory_id: str, depth: int = 1, max_nodes: int = 20
-    ) -> list[MemoryItem]:
+    ) -> builtins.list[MemoryItem]:
         frontier = {memory_id}
         seen: set[str] = set()
         for _ in range(max(1, depth)):
@@ -1854,7 +1935,9 @@ class SQLiteBackend(Backend):
             """,
             [*frontier, max_nodes],
         ).fetchall()
-        return [_row_to_item(r) for r in rows]
+        return [
+            item for r in rows if (item := _row_to_item(r)) is not None
+        ]
 
     def query_plan(self, sql: str, params: tuple = ()) -> str:
         """EXPLAIN QUERY PLAN summary, used by the CI planner audit."""

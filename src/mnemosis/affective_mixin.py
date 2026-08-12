@@ -1,4 +1,5 @@
 """Affective mixin: sleep/emotion advice, difficulty, integration and schema-fit reports."""
+# mypy: disable-error-code="attr-defined"
 
 from __future__ import annotations
 
@@ -571,7 +572,7 @@ class AffectiveMixin:
                     "verdict": verdict,
                 }
             )
-        counts = defaultdict(int)
+        counts: defaultdict[str, int] = defaultdict(int)
         for row in rows:
             counts[row["verdict"]] += 1
         schema_summary = []

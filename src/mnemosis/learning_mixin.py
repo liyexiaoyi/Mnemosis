@@ -1,4 +1,5 @@
 """Learning analysis mixin: agent learning loops and session scoring."""
+# mypy: disable-error-code="attr-defined"
 
 from __future__ import annotations
 

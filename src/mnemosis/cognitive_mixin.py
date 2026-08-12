@@ -1,4 +1,5 @@
 """Cognitive mixin: rumination, attention, analogy, routine and goal-progress tools."""
+# mypy: disable-error-code="attr-defined"
 
 from __future__ import annotations
 
@@ -47,7 +48,7 @@ class CognitiveMixin:
         topic_counts: defaultdict[str, int] = defaultdict(int)
         for item in risky:
             topic_counts[item["topic"]] += 1
-        rumination_topics = [
+        rumination_topics: list[dict] = [
             {"topic": topic, "risky_count": count}
             for topic, count in sorted(
                 topic_counts.items(), key=lambda kv: -kv[1]
@@ -305,7 +306,7 @@ class CognitiveMixin:
                 }
             )
         rows.sort(key=lambda row: row["cue_count"])
-        counts = defaultdict(int)
+        counts: defaultdict[str, int] = defaultdict(int)
         for row in rows:
             counts[row["level"]] += 1
         fragile = [row for row in rows if row["level"] == "fragile"]

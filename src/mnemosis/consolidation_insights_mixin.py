@@ -1,4 +1,5 @@
 """Consolidation insights mixin: forgetting, consolidation and metacognition reports."""
+# mypy: disable-error-code="attr-defined"
 
 from __future__ import annotations
 
@@ -247,7 +248,7 @@ class ConsolidationInsightsMixin:
             and item_cues
             and (set(other.cues) & item_cues)
         ]
-        conflicts = []
+        conflicts: list[dict] = []
         for other in same_topic:
             if other.content_hash == item.content_hash:
                 continue

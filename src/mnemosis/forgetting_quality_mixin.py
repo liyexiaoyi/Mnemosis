@@ -1,4 +1,5 @@
 """Forgetting-quality mixin: topic drift, forgetting export, coverage, source calibration, risk ranking, bridge suggestions."""
+# mypy: disable-error-code="attr-defined"
 
 from __future__ import annotations
 
@@ -265,7 +266,7 @@ class ForgettingQualityMixin:
         existing: set[frozenset[str]] = set()
         for src, dst, _weight in self.backend.all_links():
             existing.add(frozenset((src, dst)))
-        suggestions = []
+        suggestions: list[dict] = []
         compare_items = items[: min(max(2, int(limit) * 3), 200)]
         for a, b in combinations(compare_items, 2):
             if len(suggestions) >= max(1, int(limit)):

@@ -588,11 +588,11 @@ class MemoryEngine(
 
 
 
-    _ENTITY_QUESTION_RE = None
-    _ENTITY_RECORD_RE = None
-    _VALUE_QUESTION_RE = None
-    _VALUE_PATTERN_RE = None
-    _TIME_RANGE_RE = None
+    _ENTITY_QUESTION_RE: re.Pattern[str] | None = None
+    _ENTITY_RECORD_RE: re.Pattern[str] | None = None
+    _VALUE_QUESTION_RE: re.Pattern[str] | None = None
+    _VALUE_PATTERN_RE: re.Pattern[str] | None = None
+    _TIME_RANGE_RE: re.Pattern[str] | None = None
     _TEMPORAL_PAST_RE = re.compile(
         r"上次|上一次|最近|最新|刚才|最后一次|前一次|"
         r"现在|目前|当前|第一次|首次|头一回|"

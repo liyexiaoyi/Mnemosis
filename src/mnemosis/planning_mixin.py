@@ -1,4 +1,5 @@
 """Planning mixin: intents, goal replay, plans and numeric reasoning."""
+# mypy: disable-error-code="attr-defined"
 
 from __future__ import annotations
 
@@ -245,13 +246,13 @@ class PlanningMixin:
                 "duplicate_steps": False,
                 "suggestions": ["计划为空，先写第一步"],
             }
-        verb_hits = sum(
-            1 for step in steps
-            if any(verb in step for verb in self._PLAN_VERBS)
-        )
+        verb_hits = 0
+        for step in steps:
+            if any(verb in step for verb in self._PLAN_VERBS):
+                verb_hits += 1
         has_verbs = verb_hits == len(steps)
         verb_score = 30.0 * verb_hits / len(steps)
-        prev_anchors = []
+        prev_anchors: list[str] = []
         has_ordering = False
         for step in steps:
             if any(anchor in step for anchor in prev_anchors):
@@ -500,7 +501,7 @@ class PlanningMixin:
             text = str(text).strip()
             if text:
                 steps.append(text)
-        out = []
+        out: list[dict] = []
         for step in steps:
             results = self.recall(step, top_k=max(1, int(top_k)))
             support = [
@@ -1382,12 +1383,12 @@ class PlanningMixin:
                 if result.item.cues
                 else content[:2]
             )
-            match_key = ""
+            match_key: tuple[str, str] | None = None
             for (operson, noun) in outcome_by_step:
                 if operson == person and noun and noun in content:
                     match_key = (operson, noun)
                     break
-            if not match_key:
+            if match_key is None:
                 deltas.append(0.0)
                 continue
             delta = max(
@@ -1874,7 +1875,7 @@ class PlanningMixin:
                         f"脑内推演：{speed:g} × {hours:g} = "
                         f"{speed * hours:g}（路程=速度×时间）。"
                     )
-        if simulation is None and detected:
+        if simulation is None and detected and law_used is not None:
             simulation = (
                 f"脑内推演：按“{law_used['rule']}”"
                 "把题面条件逐一代入核对。"

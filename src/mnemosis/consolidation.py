@@ -260,7 +260,7 @@ class Consolidator:
                     continue
                 seen_pairs.add(pair)
                 dominant, weaker = self._dominant(a, b)
-                if dominant is None:
+                if dominant is None or weaker is None:
                     continue
                 weaker.status = MemoryStatus.RECYCLED
                 weaker.updated_at = now
@@ -347,7 +347,7 @@ class Consolidator:
                 cue: [order[item.id] for item in bucket]
                 for cue, bucket in cue_map.items()
             }
-            counts = Counter()
+            counts: Counter[int] = Counter()
             for a_idx, a in enumerate(emotional):
                 counts.clear()
                 for cue in a.cues:
@@ -467,11 +467,11 @@ class Consolidator:
                 cue: set(indices)
                 for cue, indices in cue_idx_map.items()
             }
-            counts = Counter()
+            counts: Counter[int] = Counter()
             cue_idx_get = cue_idx_map.get
             cue_set_get = cue_set_map.get
             for a_idx, a in enumerate(episodes):
-                buckets = []
+                buckets: list[list[int]] = []
                 buckets_append = buckets.append
                 for cue in a.cues:
                     indices = cue_idx_get(cue)
@@ -499,24 +499,27 @@ class Consolidator:
                             else:
                                 second_set = other
                                 break
-                    for b_idx in first:
-                        if b_idx <= a_idx:
-                            continue
-                        if b_idx in second_set:
-                            pending_links.append((a.id, episodes[b_idx].id, 1.0))
-                            links += 1
+                    if second_set is not None:
+                        for b_idx in first:
+                            if b_idx <= a_idx:
+                                continue
+                            if b_idx in second_set:
+                                pending_links.append(
+                                    (a.id, episodes[b_idx].id, 1.0)
+                                )
+                                links += 1
                     continue
                 counts.clear()
                 a_id = a.id
                 for indices in buckets:
                     counts.update(indices)
-                for b_idx, shared in counts.items():
+                for other_idx, shared in counts.items():
                     if (
                         shared < 2
-                        or b_idx <= a_idx
+                        or other_idx <= a_idx
                     ):
                         continue
-                    b_id = episodes[b_idx].id
+                    b_id = episodes[other_idx].id
                     pending_links.append(
                         (a_id, b_id, 0.8 + 0.1 * shared)
                     )

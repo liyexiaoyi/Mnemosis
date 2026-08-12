@@ -173,9 +173,9 @@ def apply_premise_pack(
                     matched,
                 )
         else:
-            item = by_item.get(memory_id)
-            if item is not None:
-                scored.append((boost, 0.0, item, [reason], False))
+            candidate = by_item.get(memory_id)
+            if candidate is not None:
+                scored.append((boost, 0.0, candidate, [reason], False))
     scored.sort(key=lambda entry: entry[0], reverse=True)
 
 

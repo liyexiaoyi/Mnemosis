@@ -1,4 +1,5 @@
 """Snapshot mixin: memory-state snapshots and retrieval assistance."""
+# mypy: disable-error-code="attr-defined"
 
 from __future__ import annotations
 

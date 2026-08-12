@@ -74,7 +74,7 @@ class VectorIndex:
             flat = array("d")
             flat.frombytes(row[0][4:])
             return [
-                flat[i * dim : (i + 1) * dim]
+                list(flat[i * dim : (i + 1) * dim])
                 for i in range(self.bits)
             ]
         if self._dim is None:

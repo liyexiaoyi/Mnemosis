@@ -124,20 +124,20 @@ class Metacognition:
         ece_numerator = 0.0
         total = 0
         for bucket in range(5):
-            entry = buckets.get(bucket)
-            if not entry or entry["n"] == 0:
+            bucket_entry = buckets.get(bucket)
+            if not bucket_entry or bucket_entry["n"] == 0:
                 continue
-            trials = entry["hits"] + entry["fails"]
+            trials = bucket_entry["hits"] + bucket_entry["fails"]
             empirical = (
-                (entry["hits"] + 1.0) / (trials + 2.0)
+                (bucket_entry["hits"] + 1.0) / (trials + 2.0)
                 if trials > 0
                 else None
             )
-            mean_pred = entry["pred_sum"] / entry["n"]
+            mean_pred = bucket_entry["pred_sum"] / bucket_entry["n"]
             rows.append(
                 {
                     "predicted_bucket": f"{bucket * 0.2:.1f}-{(bucket + 1) * 0.2:.1f}",
-                    "n_items": entry["n"],
+                    "n_items": bucket_entry["n"],
                     "mean_predicted": round(mean_pred, 3),
                     "empirical_hit_rate": (
                         round(empirical, 3) if empirical is not None else None

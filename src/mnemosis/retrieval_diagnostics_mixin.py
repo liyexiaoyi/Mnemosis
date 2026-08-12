@@ -1,4 +1,5 @@
 """Retrieval diagnostics mixin: quality, trace, community and schema reports."""
+# mypy: disable-error-code="attr-defined"
 
 from __future__ import annotations
 
@@ -140,7 +141,7 @@ class RetrievalDiagnosticsMixin:
         groups: dict[str, list] = defaultdict(list)
         for item in items:
             groups[find(item.id)].append(item)
-        communities = []
+        communities: list[dict] = []
         for root, members in groups.items():
             cue_counts: Counter = Counter()
             for member in members:
