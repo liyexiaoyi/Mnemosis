@@ -6,6 +6,7 @@ import math
 import re
 import statistics
 import threading
+import time
 from collections import deque
 from datetime import datetime
 from typing import ClassVar
@@ -122,6 +123,10 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
         self.meta = Metacognition(self.store, self.curve, self.consolidator)
         self.recycle = RecycleBin(self.backend)
         self._recall_log: deque[dict] = deque(maxlen=100)
+        self._active_warmup_cues: set[str] = set()
+        self._warmup_at: float | None = None
+        self._warmup_recalls = 0
+        self._warmup_hits = 0
         self._intents: dict[str, dict] = {}
         self._suppressed_ids: dict[str, str] = {}
         self._lock = threading.RLock()
@@ -1031,6 +1036,26 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
             if hasattr(self.store, "reinforce_stats")
             else {}
         )
+        with self._lock:
+            warmup_recalls = self._warmup_recalls
+            warmup_hits = self._warmup_hits
+            warmup_cue_count = len(self._active_warmup_cues)
+            warmup_at = self._warmup_at
+        is_active = (
+            warmup_at is not None
+            and time.monotonic() - warmup_at <= 300
+        )
+        stats["warmup"] = {
+            "cues": warmup_cue_count,
+            "recalls": warmup_recalls,
+            "hits": warmup_hits,
+            "hit_rate": (
+                round(warmup_hits / warmup_recalls, 4)
+                if warmup_recalls
+                else 0.0
+            ),
+            "is_active": is_active,
+        }
         return stats
 
     def calibrate_decay_rate(

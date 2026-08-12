@@ -216,6 +216,10 @@ class RetrievalMixin:
                     "ts": utcnow().isoformat(),
                 }
             )
+            # Same lock section as the log append: log and warmup
+            # counters are updated atomically (RLock is reentrant).
+            if hasattr(self, "_track_warmup_query"):
+                self._track_warmup_query(query)
         if concept_coverage:
             results = self._apply_concept_coverage(
                 query,

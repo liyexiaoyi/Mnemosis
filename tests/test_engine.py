@@ -1,6 +1,7 @@
 import numbers
 import os
 import tempfile
+import threading
 import time
 import unittest
 from datetime import timedelta
@@ -710,6 +711,121 @@ class MemoryEngineTest(unittest.TestCase):
             )
             cues = engine._warmup_cues()
             self.assertIn("vital-cue", cues)
+        finally:
+            engine.close()
+
+    def test_warmup_cues_include_hot_recent_query_cue(self):
+        engine = MemoryEngine()
+        try:
+            source = SourceRecord(origin=SourceType.USER)
+            for index in range(8):
+                engine.remember(
+                    f"fresh filler {index}",
+                    kind=MemoryKind.EPISODIC,
+                    source=source,
+                    cues=[f"filler-cue-{index}"],
+                    importance=0.2,
+                    auto_cues=False,
+                )
+            engine.remember(
+                "vital old fact",
+                kind=MemoryKind.SEMANTIC,
+                source=source,
+                cues=["vital-cue"],
+                importance=1.0,
+                created_at=utcnow() - timedelta(days=365),
+                auto_cues=False,
+            )
+            engine.remember(
+                "hot low importance",
+                kind=MemoryKind.EPISODIC,
+                source=source,
+                cues=["hot-cue"],
+                importance=0.1,
+                auto_cues=False,
+            )
+            for _ in range(5):
+                engine.recall("hot-cue query", top_k=3)
+            cues = engine._warmup_cues()
+            self.assertIn("hot-cue", cues)
+        finally:
+            engine.close()
+
+    def test_warmup_hit_rate_tracked(self):
+        engine = MemoryEngine()
+        try:
+            source = SourceRecord(origin=SourceType.USER)
+            engine.remember(
+                "alpha beta",
+                kind=MemoryKind.EPISODIC,
+                source=source,
+                cues=["hot"],
+                auto_cues=False,
+            )
+            engine._active_warmup_cues = {"hot"}
+            engine._warmup_at = time.monotonic()
+            engine._warmup_recalls = 0
+            engine._warmup_hits = 0
+            engine.recall("hot topic", top_k=3)
+            engine.recall("other topic", top_k=3)
+            warmup = engine.stats()["warmup"]
+            self.assertGreaterEqual(warmup["hits"], 1)
+            self.assertGreaterEqual(warmup["recalls"], 2)
+            self.assertGreater(warmup["hit_rate"], 0.0)
+        finally:
+            engine.close()
+
+    def test_warmup_latin_cue_uses_word_boundary(self):
+        engine = MemoryEngine()
+        try:
+            engine._active_warmup_cues = {"cat"}
+            engine._warmup_at = time.monotonic()
+            engine._warmup_recalls = 0
+            engine._warmup_hits = 0
+            engine.recall("category list", top_k=3)
+            warmup = engine.stats()["warmup"]
+            self.assertEqual(warmup["recalls"], 1)
+            self.assertEqual(warmup["hits"], 0)
+        finally:
+            engine.close()
+
+    def test_warmup_stats_expire_after_window(self):
+        engine = MemoryEngine()
+        try:
+            engine._active_warmup_cues = {"hot"}
+            engine._warmup_at = time.monotonic() - 301
+            engine._warmup_recalls = 5
+            engine._warmup_hits = 3
+            warmup = engine.stats()["warmup"]
+            self.assertFalse(warmup["is_active"])
+            self.assertEqual(warmup["recalls"], 5)
+            self.assertEqual(warmup["hits"], 3)
+            self.assertEqual(warmup["hit_rate"], 0.6)
+        finally:
+            engine.close()
+
+    def test_warmup_counters_thread_safe(self):
+        engine = MemoryEngine()
+        try:
+            engine._active_warmup_cues = {"hot"}
+            engine._warmup_at = time.monotonic()
+            engine._warmup_recalls = 0
+            engine._warmup_hits = 0
+
+            def worker() -> None:
+                for _ in range(25):
+                    engine.recall("hot topic", top_k=3)
+
+            threads = [
+                threading.Thread(target=worker) for _ in range(8)
+            ]
+            for thread in threads:
+                thread.start()
+            for thread in threads:
+                thread.join()
+            warmup = engine.stats()["warmup"]
+            self.assertEqual(warmup["recalls"], 200)
+            self.assertEqual(warmup["hits"], 200)
         finally:
             engine.close()
 

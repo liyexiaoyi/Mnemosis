@@ -4,9 +4,12 @@ from __future__ import annotations
 
 import logging
 import math
+import re
 import threading
+import time
 from collections import defaultdict
 from datetime import datetime, timedelta
+from functools import lru_cache
 
 from .consolidation import ConsolidationReport
 from .metacognition import ConfidenceLabel
@@ -20,6 +23,44 @@ from .types import (
 )
 
 _LOG = logging.getLogger(__name__)
+_CJK_RE = re.compile(r"[\u4e00-\u9fff]")
+
+
+@lru_cache(maxsize=512)
+def _cue_mode(cue: str) -> re.Pattern | str:
+    """Return a compiled word-boundary pattern, or a mode marker."""
+    if _CJK_RE.search(cue):
+        return "cjk"
+    if re.fullmatch(r"\w+", cue):
+        return re.compile(rf"\b{re.escape(cue)}\b", re.IGNORECASE)
+    return "raw"
+
+
+def _cue_hits_query(cue: str, query: str) -> bool:
+    """Whether a cue appears in a query.
+
+    CJK cues use plain substring matching (Chinese has no word
+    boundaries); Latin cues use word boundaries so "cat" does not
+    match "category". Cues with non-word characters (spaces, "+",
+    hyphens) fall back to case-insensitive substring matching. The
+    compiled pattern is cached per cue, so repeated calls in a loop
+    do not recompile the regex.
+    """
+    if (
+        not isinstance(cue, str)
+        or not isinstance(query, str)
+        or not cue
+        or not query
+    ):
+        return False
+    mode = _cue_mode(cue)
+    if mode == "cjk":
+        # Mixed CJK cues (e.g. "AI模型") deliberately fall back to
+        # substring matching: Chinese has no word boundaries.
+        return cue in query
+    if mode == "raw":
+        return cue.lower() in query.lower()
+    return mode.search(query) is not None
 
 
 class ReviewMixin:
@@ -979,6 +1020,11 @@ class ReviewMixin:
         cues = self._warmup_cues()
         if not cues:
             return
+        with self._lock:
+            self._active_warmup_cues = set(cues)
+            self._warmup_at = time.monotonic()
+            self._warmup_recalls = 0
+            self._warmup_hits = 0
         threading.Thread(
             target=self._post_sleep_warmup,
             args=(cues,),
@@ -999,11 +1045,44 @@ class ReviewMixin:
             by_id.setdefault(item.id, item)
         now = now or utcnow()
 
+        candidate_cues = {
+            cue
+            for item in by_id.values()
+            for cue in item.cues
+        }
+        with self._lock:
+            queries = [
+                record.get("query") or ""
+                for record in list(self._recall_log)
+            ]
+
+        heat = {
+            cue: sum(1 for q in queries if _cue_hits_query(cue, q))
+            for cue in candidate_cues
+        }
+        max_heat = max(heat.values(), default=0)
+
         def score(item: MemoryItem) -> float:
             retrievability = min(
                 1.0, self.curve.retrievability(item, now)
             )
-            return 0.6 * item.importance + 0.4 * (1.0 - retrievability)
+            base = (
+                0.6 * item.importance
+                + 0.4 * (1.0 - retrievability)
+            )
+            if max_heat == 0:
+                # No heat signal: ranking is identical to the original
+                # formula, so non-warm sleeps do not change behavior.
+                return base
+            cue_heat = max(
+                (heat.get(cue, 0) for cue in item.cues),
+                default=0,
+            )
+            # Heat is a bonus on top of the original score, so items
+            # without recent query heat keep their exact old ranking.
+            # This score only ranks warmup cues; values above 1.0 keep
+            # hot items distinct instead of flattening them.
+            return base + 0.2 * (cue_heat / max_heat)
 
         candidates = sorted(
             by_id.values(), key=score, reverse=True
@@ -1015,7 +1094,21 @@ class ReviewMixin:
                 if cue not in seen:
                     seen.add(cue)
                     cues.append(cue)
-        return cues
+        return cues[:8]
+
+    def _track_warmup_query(self, query: str) -> None:
+        """Count recalls shortly after warmup that hit a warmed cue."""
+        with self._lock:
+            if not self._active_warmup_cues or self._warmup_at is None:
+                return
+            if time.monotonic() - self._warmup_at > 300:
+                return
+            self._warmup_recalls += 1
+            if any(
+                _cue_hits_query(cue, query)
+                for cue in self._active_warmup_cues
+            ):
+                self._warmup_hits += 1
 
     def _post_sleep_warmup(self, cues: list[str]) -> None:
         for cue in cues[:8]:
@@ -1024,6 +1117,9 @@ class ReviewMixin:
             try:
                 # reinforce=False: warm caches and pages without side-effect
                 # writes queued to the reinforcement worker.
+                # MUST call store.recall (not self.recall): the bottom
+                # layer never touches _track_warmup_query, so the warmup
+                # thread cannot pollute the hit-rate statistics.
                 self.store.recall(cue, top_k=3, reinforce=False)
             except Exception:  # noqa: BLE001
                 _LOG.debug(
