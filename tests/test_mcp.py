@@ -8,6 +8,7 @@ import unittest
 
 from mnemosis import MemoryEngine
 from mnemosis.mcp_server import (
+    CORE_TOOLS,
     EXPERIMENTAL_TOOLS,
     MAX_MESSAGE_SIZE,
     MCPServer,
@@ -146,11 +147,20 @@ class MCPTest(unittest.TestCase):
     def test_tool_tiers(self):
         advanced = MCPServer(MemoryEngine(), expose="advanced")
         experimental = MCPServer(MemoryEngine(), expose="experimental")
+        core = MCPServer(MemoryEngine(), expose="core")
         advanced_names = {tool["name"] for tool in advanced._tools}
         experimental_names = {tool["name"] for tool in experimental._tools}
+        core_names = {tool["name"] for tool in core._tools}
         self.assertIn("remember", advanced_names)
         self.assertTrue(EXPERIMENTAL_TOOLS - advanced_names)
         self.assertTrue(EXPERIMENTAL_TOOLS <= experimental_names)
+        self.assertEqual(core_names, set(CORE_TOOLS))
+        self.assertTrue(CORE_TOOLS <= advanced_names)
+        self.assertTrue(CORE_TOOLS <= experimental_names)
+
+    def test_invalid_expose_rejected(self):
+        with self.assertRaises(ValueError):
+            MCPServer(MemoryEngine(), expose="everything")
 
     def test_calibrate_decay_tool(self):
         result = self.server._call_tool("calibrate_decay", {})

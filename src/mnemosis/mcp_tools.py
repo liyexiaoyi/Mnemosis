@@ -19,6 +19,15 @@ EXPERIMENTAL_TOOLS = frozenset(
     }
 )
 
+CORE_TOOLS = frozenset(
+    {
+        "remember", "remember_turn", "recall", "search_batch",
+        "check", "update", "forget", "restore", "stats",
+        "working_set", "review_due", "review", "memory_map",
+        "export_memories", "import_memories", "tag_memories",
+    }
+)
+
 
 TOOL_DEFINITIONS: list[dict] = [
             {

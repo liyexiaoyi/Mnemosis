@@ -186,7 +186,10 @@ mnemosis mcp --db memory.db   # or: mnemosis-mcp --db memory.db
 ```
 
 By default the MCP server hides experimental tools from `tools/list`
-(they stay callable). Add `--expose experimental` to show all 100+ tools.
+(they stay callable). `--expose core` shows only the 16 everyday tools
+(remember/recall/check/review/stats/...), `--expose advanced` (default)
+adds the rest except experimental, and `--expose experimental` shows all
+100+ tools.
 
 ### Semantic embeddings (optional)
 

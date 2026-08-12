@@ -24,7 +24,7 @@ from .embedding import make_embedder
 from .engine import MemoryEngine
 from .mcp_handlers import MCPHandlersMixin
 from .mcp_registry import registered_handlers
-from .mcp_tools import EXPERIMENTAL_TOOLS, TOOL_DEFINITIONS
+from .mcp_tools import CORE_TOOLS, EXPERIMENTAL_TOOLS, TOOL_DEFINITIONS
 from .vector_index import VectorIndex
 
 PROTOCOL_VERSION = "2025-03-26"
@@ -45,7 +45,17 @@ class MCPServer(MCPHandlersMixin):
             for name, method_name in registered_handlers().items()
         }
         self._tools = list(TOOL_DEFINITIONS)
-        if expose != "experimental":
+        if expose not in ("core", "advanced", "experimental"):
+            raise ValueError(
+                f"expose must be one of core/advanced/experimental, got {expose!r}"
+            )
+        if expose == "core":
+            self._tools = [
+                tool
+                for tool in self._tools
+                if tool["name"] in CORE_TOOLS
+            ]
+        elif expose == "advanced":
             self._tools = [
                 tool
                 for tool in self._tools
@@ -399,11 +409,12 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument(
         "--expose",
-        choices=("advanced", "experimental"),
+        choices=("core", "advanced", "experimental"),
         default="advanced",
         help=(
-            "advanced: hide experimental tools from tools/list "
-            "(default); experimental: show all 100+ tools"
+            "core: only the 16 everyday tools; advanced: hide "
+            "experimental tools (default); experimental: show all 100+ "
+            "tools"
         ),
     )
     parser.add_argument(
@@ -445,6 +456,7 @@ if __name__ == "__main__":
 
 
 __all__ = [
+    "CORE_TOOLS",
     "EXPERIMENTAL_TOOLS",
     "TOOL_DEFINITIONS",
     "MCPServer",

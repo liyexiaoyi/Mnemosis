@@ -85,7 +85,7 @@ args = ["--db", "C:/Users/你的名字/mnemosis.db"]
 | 参数 | 作用 |
 |---|---|
 | `--db PATH` | SQLite 路径（默认内存） |
-| `--expose advanced\|experimental` | 默认 advanced 只暴露核心+高级工具；experimental 暴露全部 100+ 工具 |
+| `--expose core\|advanced\|experimental` | core 只暴露 16 个日常工具；advanced（默认）隐藏实验工具；experimental 暴露全部 100+ 工具 |
 | `--transport stdio\|http` | 本地进程用 stdio；VPS/NAS 远程部署可用 http（配 `--host/--port`） |
 | `--host HOST` / `--port PORT` | HTTP 模式监听地址/端口（默认 127.0.0.1:8000，远程部署改 `0.0.0.0`） |
 | `--embedder none\|ollama\|openai` | 开启稠密语义检索（可选；openai 需要 API Key，ollama 需要本地服务） |
