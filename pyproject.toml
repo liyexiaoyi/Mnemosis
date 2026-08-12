@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mnemosis"
-version = "0.3.0"
+version = "0.3.1"
 description = "A human-inspired memory layer for AI agents: dual-track episodic/semantic memory, forgetting curves, sleep consolidation, active forgetting and metacognition."
 readme = "README.md"
 requires-python = ">=3.10"

@@ -1,5 +1,22 @@
 # Changelog
 
+## v0.3.1 - 架构收尾与端到端质量验证（2026-08-13）
+
+- 架构拆分收官：`analysis_mixin`（原 3516 行）经 12 轮拆成 12 个职责单一的能力
+  Mixin；`mcp_server.py` 拆成 `mcp_tools`（schema 纯数据）/ `mcp_handlers`
+  （130 个处理器 Mixin）/ `mcp_registry`（装饰器注册表）
+- 基准工程：`benchmarks/bench_utils.py` 统一 pin 本地 `src/`（防止误测
+  site-packages 旧安装包）；新增 100k 高频词检索基准；全部独立基准脚本迁移
+- 功能修复：向量索引与 `update` / `forget` / `restore` / `purge` / `sleep`
+  全链路同步；`purge` 改为条件原子删除（防 restore 竞态）；dense 检索过滤
+  回收站记忆
+- 性能：100k 高频词热查询 p99 ~1-2ms；100 万条构建 ~6.1min / 库 5.1GB /
+  峰值内存 2GB / 热查询 p99 ~1.7ms
+- 独立基准（LongMemEval-S，20 题，seed 42）：dense 与 mem0 检索四项持平；
+  seg（`remember_turn` 切句）检索 0.60/0.85/0.90 全面领先；云判分端到端
+  答案准确率 0.65 vs mem0 0.45；修复答案生成 300 token 截断导致的假低分
+- 质量门禁：494 单元测试、ruff 全过、CI 回归 18/18、性能门禁、并发/睡眠冒烟
+
 ## v0.3.0 - 性能与检索质量专项（12 轮迭代）
 
 - 检索提速：关键词零命中不再全表扫描（10k 规模 149ms → 34ms）；融合检索
