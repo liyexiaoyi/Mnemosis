@@ -68,6 +68,15 @@ def run_chunked_build_snapshot() -> dict[str, int]:
             links = engine.backend.all_links()
             out_degree = Counter(src for src, _, _ in links)
             hits = len(engine.recall("投影仪", top_k=3))
+            # Baseline values come from this exact seed-42 dataset:
+            # memories=240, API link views=14304 (7152 canonical rows),
+            # distinct src=240, max out-degree=105, recall hits=3.
+            # all_terms(None) loads everything into memory: safe at this
+            # 240-record scale, but revisit if the CI dataset grows.
+            term_rows = sum(
+                len(ids)
+                for ids in engine.backend.all_terms(None).values()
+            )
         finally:
             engine.close()
     return {
@@ -75,6 +84,7 @@ def run_chunked_build_snapshot() -> dict[str, int]:
         "links": len(links),
         "distinct_src": len(out_degree),
         "max_out_degree": max(out_degree.values(), default=0),
+        "term_rows": term_rows,
         "hits": hits,
     }
 
@@ -172,14 +182,16 @@ def main() -> int:
             and snapshot["links"] == 14304
             and snapshot["distinct_src"] == 240
             and snapshot["max_out_degree"] == 105
+            and snapshot["term_rows"] == 3729
             and snapshot["hits"] == 3
         ),
         (
             f"{snapshot['memories']} memories, "
-            f"{snapshot['links']} links, "
-            f"{snapshot['distinct_src']} distinct src, "
-            f"max degree {snapshot['max_out_degree']}, "
-            f"{snapshot['hits']} recall hits"
+            f"links {snapshot['links']} (expected 14304), "
+            f"distinct src {snapshot['distinct_src']} (expected 240), "
+            f"max degree {snapshot['max_out_degree']} (expected 105), "
+            f"term rows {snapshot['term_rows']} (expected 3729), "
+            f"recall hits {snapshot['hits']} (expected 3)"
         ),
     )
 
