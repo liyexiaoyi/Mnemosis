@@ -3,7 +3,7 @@
 Mnemosis 是一个零依赖的 Python 记忆层：公开入口是 `mnemosis.MemoryEngine`，
 其余都是可替换的组件。核心规则是 `stdlib`-only（不引入第三方运行时依赖）。
 
-核心业务模块共 **25 个**（另有 `__init__.py` / `__main__.py` 两个入口文件），
+核心业务模块共 **33 个**（另有 `__init__.py` / `__main__.py` 两个入口文件），
 按职责分组如下。
 
 ## 模块一览
@@ -54,11 +54,19 @@ Mnemosis 是一个零依赖的 Python 记忆层：公开入口是 `mnemosis.Memo
 |---|---|
 | `planning_mixin.py` | Agent 规划：目标拆解、步骤记忆、意图注册与冲突 |
 | `review_mixin.py` | 间隔复习：到期计划、练习反馈、睡眠后预热 |
+| `learning_mixin.py` | 学习会话：目标设定、练习记录、掌握度统计 |
+| `snapshot_mixin.py` | 记忆快照与检索辅助：阶段性导出、上下文补全 |
+| `practice_mixin.py` | 练习计划与掌握度：预测下次复习效果 |
+| `consolidation_insights_mixin.py` | 巩固/睡眠洞察：睡眠收益、去重、元认知报告 |
+| `narrative_mixin.py` | 叙事与冲突报告：事件故事线、新旧矛盾分析 |
+| `affective_mixin.py` | 情绪侧报告：情绪建议、睡眠推断、情绪记忆分析 |
+| `cognitive_mixin.py` | 认知策略：反刍检查、注意力过滤、类比桥接、夜间例程、目标进展 |
+| `overview_mixin.py` | 概况画像：记忆健康评分、记忆地图、知识图谱导出、学习者画像、上下文打包、编码质量 |
 ### 分析与元认知
 
 | 模块 | 职责 |
 |---|---|
-| `analysis_mixin.py` | 记忆地图、健康评分、知识图谱导出、遗忘报告等分析工具 |
+| `analysis_mixin.py` | 剩余分析报告：解释记忆、对比、多跳报告、遗忘报告、检索质量、回忆轨迹、社区/相似度/关联报告 |
 | `metacognition.py` | 置信度标签、矛盾报告、知识缺口 |
 
 ### 工具与渲染
@@ -79,6 +87,7 @@ flowchart LR
     E --> PM[PlanningMixin]
     E --> VM[ReviewMixin]
     E --> AM[AnalysisMixin]
+    E --> OM[OverviewMixin]
     RM --> DT[DualTrackStore]
     PM --> DT
     VM --> C[Consolidator]
@@ -199,5 +208,5 @@ CREATE INDEX idx_cues_memory ON cues(memory_id);
 2. **默认确定**：评分无隐藏随机性；固定种子可复现（CLI、基准、CI 门禁）。
 3. **可插拔**：embedder、scorer、summarizer 都是可选接口，缺省也能跑。
 4. **不静默删除**：遗忘都走回收站，`purge` 才是真正删除。
-5. **扩展性有护栏**：CI 有 15 项回归（含关联图快照、词条指纹、全链路端到端）；
+5. **扩展性有护栏**：CI 有 18 项回归（含关联图快照、词条指纹、全链路端到端）；
    官方基准见 [scalability.md](scalability.md)。

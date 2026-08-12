@@ -34,6 +34,7 @@ from .importance import ImportanceScorer
 from .learning_mixin import LearningSessionMixin
 from .metacognition import ConfidenceLabel, Metacognition, MetacognitiveCheck
 from .narrative_mixin import NarrativeMixin
+from .overview_mixin import OverviewMixin
 from .planning_mixin import PlanningMixin
 from .practice_mixin import PracticeMixin
 from .recycle import RecycleBin
@@ -72,6 +73,7 @@ class MemoryEngine(
     NarrativeMixin,
     AffectiveMixin,
     CognitiveMixin,
+    OverviewMixin,
 ):
     """The one thing most users touch.
 
