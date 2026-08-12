@@ -165,7 +165,6 @@ def judge_local_strict(question: str, gold: str, candidate: str) -> bool:
 
 def keyword_correct(question: str, gold: str, candidate: str) -> bool:
     """Rule-based fallback: all gold tokens appear in the candidate."""
-    candidate = _extract_final_answer(candidate)
     gold_tokens = _tokens(gold)
     if not gold_tokens:
         return False
@@ -175,8 +174,10 @@ def keyword_correct(question: str, gold: str, candidate: str) -> bool:
 
 def _extract_final_answer(text: str) -> str:
     """Pull the ANSWER: line out of a reasoning-chain response."""
-    match = re.search(r"ANSWER:\s*(.+)", text, flags=re.IGNORECASE)
-    return match.group(1).strip() if match else text.strip()
+    match = re.search(r"ANSWER:\s*([^\n]+)", text, flags=re.IGNORECASE)
+    # No ANSWER: line -> empty, so reasoning text can never leak into the
+    # judge and inflate the score.
+    return match.group(1).strip() if match else ""
 
 
 def make_nomic_embedder(cache_path: str | None = None):
@@ -308,7 +309,8 @@ def _temporal_reasoning_prompt(
         "4) If the context does not contain the answer, answer exactly "
         "'unknown'.\n"
         "Then output your FINAL ANSWER on its own line prefixed with "
-        "'ANSWER:' (and nothing else on that line).\n\n"
+        "'ANSWER:' followed by exactly one line (no newline inside the "
+        "answer, no extra text after it).\n\n"
         f"Context:\n{context}\n"
         f"{date_line}\n"
         f"Question: {question}"
