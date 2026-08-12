@@ -1,7 +1,8 @@
 """Storage backends: in-memory dict backend and SQLite backend.
 
 Design rule: the core is `stdlib`-only. SQLite gives durable persistence
-without external services.
+without external services. Requires SQLite >= 3.35 (upsert + WAL
+checkpoint TRUNCATE); Python 3.9+ ships with a recent enough build.
 """
 
 from __future__ import annotations
@@ -1005,14 +1006,49 @@ class SQLiteBackend(Backend):
         Only for single-process imports; other connections would miss the
         dropped index until ``end_bulk_mode`` recreates it. Do NOT let
         another process/connection write to ``links`` while bulk mode is
-        active: the missing reverse index slows it and the final index
-        rebuild needs the schema lock. Semantic-heavy batches keep
-        replace=True and pay a scan on DELETE (see index_terms_many).
+        active. Links/terms are staged in TEMP tables and only copied to
+        the main tables at end_bulk_mode, so concurrent readers see
+        neither new links nor new terms until the import finishes.
+        Semantic-heavy batches keep replace=True and pay a scan on
+        DELETE (see index_terms_many).
+
+        Callers MUST pair this with end_bulk_mode in a try/finally: an
+        exception between the two leaves TEMP staging tables (and the
+        weakened durability settings) in place until the connection
+        closes.
+
+        Warning: while bulk mode is active, read operations (recall,
+        search, term_dfs) do NOT see the ingested links/terms until
+        end_bulk_mode copies the staging tables. temp_store is switched
+        to FILE so staging stays memory-lean; hosts with abundant RAM and
+        slow temp disks may set PRAGMA temp_store=MEMORY beforehand.
         """
+        if self._bulk_terms_index_deferred:
+            raise RuntimeError(
+                "bulk mode is already active; call end_bulk_mode first"
+            )
         self._conn.execute("PRAGMA synchronous=OFF")
         self._conn.execute("PRAGMA cache_size=-80000")
+        # TEMP staging tables would otherwise live in RAM
+        # (temp_store=MEMORY is the global default); spill them to disk so
+        # a 100k import stays memory-lean on NAS/VPS hosts.
+        self._conn.execute("PRAGMA temp_store=FILE")
         self._conn.execute("DROP INDEX IF EXISTS idx_links_dst")
         self._conn.execute("DROP INDEX IF EXISTS idx_terms_memory")
+        # Stage links/terms in temp tables during the import: no PK
+        # B-tree churn, no WAL growth, and one ordered copy at the end
+        # replaces dozens of per-chunk transactions.
+        self._conn.execute("DROP TABLE IF EXISTS links_bulk")
+        self._conn.execute("DROP TABLE IF EXISTS terms_bulk")
+        self._conn.execute(
+            "CREATE TEMP TABLE links_bulk ("
+            "src TEXT NOT NULL, dst TEXT NOT NULL, weight REAL NOT NULL)"
+        )
+        self._conn.execute(
+            "CREATE TEMP TABLE terms_bulk ("
+            "term TEXT NOT NULL, memory_id TEXT NOT NULL, "
+            "kind TEXT NOT NULL)"
+        )
         self._bulk_terms_index_deferred = True
         self._bulk_write_batch = 5_000
 
@@ -1020,17 +1056,49 @@ class SQLiteBackend(Backend):
     def end_bulk_mode(self) -> None:
         """Restore durability settings, rebuild the deferred index, and
         checkpoint the WAL back into the main database file."""
-        self._conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_links_dst ON links(dst)"
-        )
-        self._conn.execute(
-            "CREATE INDEX IF NOT EXISTS idx_terms_memory ON terms(memory_id)"
-        )
-        self._conn.execute("PRAGMA synchronous=NORMAL")
-        self._conn.execute("PRAGMA cache_size=-20000")
-        self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        self._bulk_terms_index_deferred = False
-        self._bulk_write_batch = _WRITE_BATCH
+        try:
+            with self._conn:
+                self._conn.execute(
+                    "INSERT INTO links (src, dst, weight) "
+                    "SELECT src, dst, MAX(weight) FROM links_bulk "
+                    "GROUP BY src, dst "
+                    "ORDER BY src, dst "
+                    "ON CONFLICT(src, dst) DO UPDATE "
+                    "SET weight = MAX(weight, excluded.weight)"
+                )
+                self._conn.execute(
+                    "INSERT OR IGNORE INTO terms (term, memory_id, kind) "
+                    "SELECT term, memory_id, kind FROM terms_bulk "
+                    "ORDER BY term, memory_id"
+                )
+        finally:
+            # Always release the staged data and restore the connection,
+            # even if the copy failed and rolled back.
+            self._conn.execute("DROP TABLE IF EXISTS links_bulk")
+            self._conn.execute("DROP TABLE IF EXISTS terms_bulk")
+            try:
+                self._conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_links_dst ON links(dst)"
+                )
+                self._conn.execute(
+                    "CREATE INDEX IF NOT EXISTS idx_terms_memory "
+                    "ON terms(memory_id)"
+                )
+            finally:
+                # Durability settings must be restored even if the index
+                # rebuild failed; a failed TRUNCATE checkpoint degrades
+                # silently (a concurrent reader may hold the WAL).
+                self._conn.execute("PRAGMA synchronous=NORMAL")
+                self._conn.execute("PRAGMA cache_size=-20000")
+                self._conn.execute("PRAGMA temp_store=MEMORY")
+                try:
+                    self._conn.execute(
+                        "PRAGMA wal_checkpoint(TRUNCATE)"
+                    )
+                except sqlite3.OperationalError:
+                    pass
+            self._bulk_terms_index_deferred = False
+            self._bulk_write_batch = _WRITE_BATCH
 
     @_locked
     def update(self, item: MemoryItem) -> None:
@@ -1205,15 +1273,22 @@ class SQLiteBackend(Backend):
             finally:
                 if temp_index:
                     self._conn.execute("DROP INDEX idx_terms_memory")
+        if self._bulk_terms_index_deferred:
+            # Bulk import: stage into the temp table; end_bulk_mode copies
+            # once, ordered by the PK, with the same OR IGNORE semantics.
+            with self._conn:
+                self._conn.executemany(
+                    "INSERT INTO terms_bulk (term, memory_id, kind) "
+                    "VALUES (?, ?, ?)",
+                    entries,
+                )
+            return
         # Sorting by (term, memory_id) makes the PK B-tree append-ordered:
         # 2M random-order rows churn pages, ordered rows stream in.
         # Tuples already compare by (term, memory_id, kind); sorting
         # without key= avoids materialising 2M extra key tuples.
         entries.sort()
-        insert_batch = (
-            300_000 if self._bulk_terms_index_deferred else 200_000
-        )
-        for offset in range(0, len(entries), insert_batch):
+        for offset in range(0, len(entries), 200_000):
             with self._conn:
                 self._conn.executemany(
                     # OR IGNORE is cheaper than REPLACE and equivalent here:
@@ -1221,7 +1296,7 @@ class SQLiteBackend(Backend):
                     # kind never changes.
                     "INSERT OR IGNORE INTO terms (term, memory_id, kind) "
                     "VALUES (?, ?, ?)",
-                    entries[offset : offset + insert_batch],
+                    entries[offset : offset + 200_000],
                 )
 
     @_locked
@@ -1487,6 +1562,17 @@ class SQLiteBackend(Backend):
             if self._bulk_terms_index_deferred
             else _LINKS_CHUNK
         )
+        if self._bulk_terms_index_deferred:
+            # Bulk import: stage into a temp table (no PK churn, no WAL
+            # growth); end_bulk_mode copies it once, PK-ordered, and the
+            # upsert keeps the exact weight-MAX semantics.
+            with self._conn:
+                self._conn.executemany(
+                    "INSERT INTO links_bulk (src, dst, weight) "
+                    "VALUES (?, ?, ?)",
+                    rows,
+                )
+            return
         while True:
             chunk = list(islice(rows, chunk_size))
             if not chunk:

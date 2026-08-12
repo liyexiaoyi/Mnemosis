@@ -1380,6 +1380,66 @@ class MemoryEngineTest(unittest.TestCase):
                 if os.path.exists(extra):
                     os.remove(extra)
 
+    def test_remember_many_chunked_semantic_update_matches_single(self):
+        """Bulk semantic upsert keeps old cues and adds new ones.
+
+        The staged terms path (replace=True + temp table) must behave
+        exactly like the single-item remember path: dedupe by content
+        hash, keep existing cues, and rebuild terms from the merged cues.
+        """
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        if os.path.exists(path):
+            os.remove(path)
+        engine = MemoryEngine(path)
+        try:
+            source = SourceRecord(origin=SourceType.USER)
+            engine.remember(
+                "alpha beta core",
+                kind=MemoryKind.SEMANTIC,
+                source=source,
+                cues=["old-cue"],
+                auto_cues=False,
+                importance=0.8,
+            )
+            engine.remember_many_chunked(
+                [
+                    {
+                        "content": "alpha beta core",
+                        "kind": MemoryKind.SEMANTIC,
+                        "source": source,
+                        "cues": ["new-cue"],
+                        "importance": 0.8,
+                    }
+                ],
+                chunk_size=1,
+                auto_cues=False,
+            )
+            rows = engine.backend._conn.execute(
+                "SELECT COUNT(*) FROM memories"
+            ).fetchone()[0]
+            self.assertEqual(rows, 1)
+            cues = {
+                row["cue"]
+                for row in engine.backend._conn.execute(
+                    "SELECT cue FROM cues"
+                ).fetchall()
+            }
+            self.assertEqual(cues, {"old-cue", "new-cue"})
+            terms = {
+                row["term"]
+                for row in engine.backend._conn.execute(
+                    "SELECT term FROM terms"
+                ).fetchall()
+            }
+            self.assertTrue({"old-cue", "new-cue", "alpha"} <= terms)
+        finally:
+            engine.close()
+            for suffix in ("", "-wal", "-shm"):
+                extra = path + suffix
+                if os.path.exists(extra):
+                    os.remove(extra)
+
     def test_remember_many_chunked_links_snapshot(self):
         """Lock the exact link graph produced by the incremental builder.
 
