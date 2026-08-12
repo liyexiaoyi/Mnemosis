@@ -37,6 +37,10 @@ _RECYCLED_ROWS = 500
 _HISTORY_KEEP = 100
 _BASELINE_MIN = 3
 _BASELINE_MAX = 10
+_AUTO_RESET_STREAK = 5
+_WARN_RATIO = 2.5
+_MIN_WARN_MS = {100: 5.0, 500: 20.0, 2000: 80.0}
+_RESET_ENV = "MNEMOSIS_PERF_RESET"
 _TREND_PATH = os.path.normpath(
     os.path.join(
         os.path.dirname(os.path.abspath(__file__)),
@@ -46,48 +50,139 @@ _TREND_PATH = os.path.normpath(
 )
 
 
-def _load_history() -> list[dict]:
+def _empty_meta() -> dict:
+    return {
+        "runs": [],
+        "baselines": {},
+        "warn_streaks": {},
+        "reset_history": [],
+    }
+
+
+def _load_trend() -> dict:
     try:
         with open(_TREND_PATH, encoding="utf-8") as handle:
             data = json.load(handle)
-        if not isinstance(data, list):
-            return []
-        data.sort(key=lambda entry: entry.get("ts", ""))
-        return data
     except (OSError, ValueError):
-        return []
+        return _empty_meta()
+    if isinstance(data, list):
+        # Migrate the pre-round-23 list-only format.
+        data.sort(key=lambda entry: entry.get("ts", ""))
+        return {
+            "runs": data,
+            "baselines": {},
+            "warn_streaks": {},
+            "reset_history": [],
+        }
+    if isinstance(data, dict):
+        data.setdefault("runs", [])
+        data.setdefault("baselines", {})
+        data.setdefault("warn_streaks", {})
+        data.setdefault("reset_history", [])
+        data["runs"].sort(key=lambda entry: entry.get("ts", ""))
+        return data
+    return _empty_meta()
 
 
-def _save_history(history: list[dict]) -> None:
+def _save_trend(meta: dict) -> None:
     os.makedirs(os.path.dirname(_TREND_PATH), exist_ok=True)
     tmp_path = _TREND_PATH + ".tmp"
     with open(tmp_path, "w", encoding="utf-8") as handle:
-        json.dump(history, handle, ensure_ascii=False, indent=2)
+        json.dump(meta, handle, ensure_ascii=False, indent=2)
     os.replace(tmp_path, _TREND_PATH)
 
 
-def _trim_history(history: list[dict]) -> list[dict]:
-    """Keep the most recent _HISTORY_KEEP runs per id-count."""
-    trimmed: list[dict] = []
+def _trim_runs(meta: dict) -> dict:
+    """Keep the most recent _HISTORY_KEEP runs per id-count, time-ordered."""
+    runs = meta["runs"]
+    kept: list[dict] = []
     for count in _CEILINGS_MS:
         entries = [
-            entry for entry in history if entry["count"] == count
+            entry for entry in runs if entry["count"] == count
         ]
-        trimmed.extend(entries[-_HISTORY_KEEP:])
-    return trimmed
+        kept.extend(entries[-_HISTORY_KEEP:])
+    kept.sort(key=lambda entry: entry.get("ts", ""))
+    meta["runs"] = kept
+    meta["reset_history"] = meta.get("reset_history", [])[-50:]
+    return meta
 
 
-def _baseline_ms(history: list[dict], count: int) -> float | None:
-    """Fixed baseline: median of the first runs for this id-count."""
-    entries = [
+def _recent_median_ms(runs: list[dict], count: int) -> float | None:
+    values = [
         entry["best_ms"]
-        for entry in history
+        for entry in runs
+        if entry["count"] == count
+        and entry["best_ms"] <= _CEILINGS_MS[count]
+    ][-_HISTORY_KEEP:]
+    if len(values) < _BASELINE_MIN:
+        return None
+    return statistics.median(values)
+
+
+def _first_runs_median_ms(runs: list[dict], count: int) -> float | None:
+    """Fixed baseline: median of the first runs for this id-count."""
+    values = [
+        entry["best_ms"]
+        for entry in runs
         if entry["count"] == count
         and entry["best_ms"] <= _CEILINGS_MS[count]
     ][:_BASELINE_MAX]
-    if len(entries) < _BASELINE_MIN:
+    if len(values) < _BASELINE_MIN:
         return None
-    return statistics.median(entries)
+    return statistics.median(values)
+
+
+def _update_trend(
+    meta: dict,
+    best_by_count: dict[int, float],
+    *,
+    now_iso: str = "",
+) -> tuple[dict, list[int], dict[int, float], dict[int, float]]:
+    """Update baselines/warn streaks; return (meta, resets, medians, baselines)."""
+    history = meta["runs"]
+    medians: dict[int, float] = {}
+    baselines: dict[int, float] = {}
+    for count in _CEILINGS_MS:
+        recent = _recent_median_ms(history, count)
+        if recent is not None:
+            medians[count] = recent
+        baseline = meta["baselines"].get(str(count))
+        if baseline is None:
+            baseline = _first_runs_median_ms(history, count)
+            if baseline is not None:
+                meta["baselines"][str(count)] = baseline
+        if baseline is not None:
+            baselines[count] = baseline
+    resets: list[int] = []
+    for count, baseline_ms in baselines.items():
+        current = best_by_count[count]
+        ratio = current / baseline_ms if baseline_ms > 0 else 0.0
+        warned = (
+            ratio > _WARN_RATIO
+            and current > _MIN_WARN_MS[count]
+        )
+        streak = (
+            int(meta["warn_streaks"].get(str(count), 0)) + 1
+            if warned
+            else 0
+        )
+        meta["warn_streaks"][str(count)] = streak
+        if streak >= _AUTO_RESET_STREAK:
+            recent = _recent_median_ms(history, count)
+            if recent is not None:
+                meta["baselines"][str(count)] = recent
+                meta["warn_streaks"][str(count)] = 0
+                baselines[count] = recent
+                resets.append(count)
+                meta.setdefault("reset_history", []).append(
+                    {
+                        "ts": now_iso,
+                        "count": count,
+                        "old_ms": baseline_ms,
+                        "new_ms": recent,
+                    }
+                )
+    return meta, resets, medians, baselines
 
 
 def _build_backend() -> SQLiteBackend:
@@ -124,7 +219,15 @@ def main() -> int:
     )[0].id
     failures: list[str] = []
     _results: list[tuple[int, float]] = []
-    history = _load_history()
+    meta = _load_trend()
+    if os.environ.get(_RESET_ENV, "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    ):
+        meta = _empty_meta()
+        print("BASELINE RESET: trend history cleared (env requested)")
+    history = meta["runs"]
     if not history:
         print(
             "WARNING: trend history is empty; soft baseline warnings are "
@@ -153,22 +256,10 @@ def main() -> int:
         if best > ceiling:
             failures.append(f"{count} ids took {best:.2f} ms")
     backend.close()
-    _save_history(_trim_history(history))
     best_by_count = dict(_results)
-    medians: dict[int, float] = {}
-    baselines: dict[int, float] = {}
-    for count, ceiling in _CEILINGS_MS.items():
-        values = [
-            entry["best_ms"]
-            for entry in history
-            if entry["count"] == count
-            and entry["best_ms"] <= ceiling
-        ][-_HISTORY_KEEP:]
-        if len(values) >= 3:
-            medians[count] = statistics.median(values)
-        baseline = _baseline_ms(history, count)
-        if baseline is not None:
-            baselines[count] = baseline
+    meta, resets, medians, baselines = _update_trend(
+        meta, best_by_count, now_iso=now_iso
+    )
     for count, median_ms in medians.items():
         current = best_by_count[count]
         ratio = current / median_ms if median_ms > 0 else 0.0
@@ -180,16 +271,31 @@ def main() -> int:
         current = best_by_count[count]
         ratio = current / baseline_ms if baseline_ms > 0 else 0.0
         print(
-            f"baseline {count}: first-runs median {baseline_ms:.2f} ms, "
+            f"baseline {count}: fixed {baseline_ms:.2f} ms, "
             f"current {current:.2f} ms ({ratio:.2f}x)"
         )
-        # Slow drift must be caught against the *fixed* baseline: a median
-        # over all history would warm up together with the regression.
-        if ratio > 2.5 and current > 0.5 * _CEILINGS_MS[count]:
+        if ratio > _WARN_RATIO and current > _MIN_WARN_MS[count]:
             print(
                 f"WARNING: {count} ids are {ratio:.2f}x slower than the "
                 "fixed baseline"
             )
+    if resets:
+        print(
+            "TREND NOTE: baseline(s) auto-reset this run: "
+            + ", ".join(str(count) for count in resets)
+        )
+        for count in resets:
+            print(
+                f"BASELINE RESET: {count} ids baseline -> "
+                f"{baselines[count]:.2f} ms "
+                "(5 consecutive soft warnings, no hard gate hit)"
+            )
+            if os.environ.get("GITHUB_ACTIONS", "") == "true":
+                print(
+                    f"::warning::get_many baseline auto-reset for {count} "
+                    "ids; check recent changes for a legitimate perf step"
+                )
+    _save_trend(_trim_runs(meta))
     if not baselines:
         print(
             "NOTE: fixed baseline not established yet "

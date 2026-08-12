@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
   workflow_call:
+  workflow_dispatch:
+    inputs:
+      perf_baseline_reset:
+        description: "Reset the get_many performance baseline"
+        type: boolean
+        default: false
 
 jobs:
   test:
@@ -42,6 +48,7 @@ jobs:
         run: python benchmarks/ci_perf.py
         env:
           PYTHONPATH: src
+          MNEMOSIS_PERF_RESET: ${{ github.event.inputs.perf_baseline_reset || '' }}
 
   benchmark-smoke:
     runs-on: ubuntu-latest
