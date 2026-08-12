@@ -589,6 +589,57 @@ class MemoryEngineTest(unittest.TestCase):
             engine.store.shutdown_reinforce_worker()
             refreshed = engine.backend.get(item.id)
             self.assertEqual(refreshed.retrieval_successes, 1)
+            worker_stats = engine.stats()["reinforce_worker"]
+            self.assertGreaterEqual(worker_stats["received"], 1)
+            self.assertGreaterEqual(worker_stats["written"], 1)
+            self.assertEqual(worker_stats["dropped"], 0)
+            self.assertEqual(
+                worker_stats["received"],
+                worker_stats["written"] + worker_stats["dropped"],
+            )
+        finally:
+            engine.close()
+
+    def test_reinforce_queue_full_falls_back_to_sync(self):
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        if os.path.exists(path):
+            os.remove(path)
+        engine = MemoryEngine(path)
+        try:
+            engine.store._reinforce_queue.maxsize = 1
+            source = SourceRecord(origin=SourceType.USER)
+            first = engine.remember(
+                "queue backpressure a",
+                kind=MemoryKind.EPISODIC,
+                source=source,
+                auto_cues=False,
+            )
+            second = engine.remember(
+                "queue backpressure b",
+                kind=MemoryKind.EPISODIC,
+                source=source,
+                auto_cues=False,
+            )
+            first.retrieval_successes += 1
+            second.retrieval_successes += 1
+            engine.store.enqueue_reinforce([first])
+            engine.store.enqueue_reinforce([second])
+            engine.store.shutdown_reinforce_worker()
+            self.assertEqual(
+                engine.backend.get(first.id).retrieval_successes, 1
+            )
+            self.assertEqual(
+                engine.backend.get(second.id).retrieval_successes, 1
+            )
+            stats = engine.store.reinforce_stats()
+            self.assertGreaterEqual(stats["received"], 2)
+            self.assertGreaterEqual(stats["written"], 2)
+            self.assertEqual(stats["dropped"], 0)
+            self.assertEqual(
+                stats["received"],
+                stats["written"] + stats["dropped"],
+            )
         finally:
             engine.close()
 

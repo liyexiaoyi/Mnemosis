@@ -55,6 +55,10 @@ _TERM_CACHE_LIMIT = 50_000
 _DF_CACHE_LIMIT = 50_000
 """Upper bound for the term document-frequency cache (FIFO eviction)."""
 
+_REINFORCE_QUEUE_MAX = 10_000
+"""Backpressure cap for the background reinforcement queue; when full,
+reinforcement falls back to a synchronous write instead of dropping."""
+
 _FALLBACK_IMPORTANCE_BOOST = 0.20
 """Extra score per unit of importance in zero-hit fallback ranking.
 
@@ -217,10 +221,16 @@ class DualTrackStore:
         self._df_cache: OrderedDict[
             tuple[str, MemoryKind | None], int
         ] = OrderedDict()
-        self._reinforce_queue: queue.Queue = queue.Queue()
+        self._reinforce_queue: queue.Queue = queue.Queue(
+            maxsize=_REINFORCE_QUEUE_MAX
+        )
         self._reinforce_thread: threading.Thread | None = None
         self._worker_lock = threading.Lock()
         self._is_shutdown = False
+        self.reinforce_received = 0
+        self.reinforce_written = 0
+        self.reinforce_dropped = 0
+        self.reinforce_sync_fallback = 0
         self._lock = threading.RLock()
         self.pattern_completions = 0
 
@@ -1188,8 +1198,12 @@ class DualTrackStore:
                         merged.append(item)
             try:
                 self.backend.update_many(merged)
+                with self._worker_lock:
+                    self.reinforce_written += len(merged)
             except Exception as exc:  # noqa: BLE001
                 _LOG.debug("background reinforcement failed: %s", exc)
+                with self._worker_lock:
+                    self.reinforce_dropped += len(merged)
             for _ in batches:
                 self._reinforce_queue.task_done()
             if sentinel:
@@ -1202,9 +1216,44 @@ class DualTrackStore:
             return
         if self._is_shutdown:
             _LOG.debug("reinforcement dropped: worker already shut down")
+            with self._worker_lock:
+                self.reinforce_dropped += len(items)
             return
         self._ensure_reinforce_worker()
-        self._reinforce_queue.put(items)
+        try:
+            self._reinforce_queue.put_nowait(items)
+        except queue.Full:
+            # Backpressure: never let the queue grow without bound; a full
+            # queue degrades to a synchronous best-effort write.
+            with self._worker_lock:
+                self.reinforce_received += len(items)
+                self.reinforce_sync_fallback += 1
+            try:
+                self.backend.update_many(items)
+                with self._worker_lock:
+                    self.reinforce_written += len(items)
+            except Exception as exc:  # noqa: BLE001
+                _LOG.warning(
+                    "reinforcement queue full; sync fallback failed: %s",
+                    exc,
+                )
+                with self._worker_lock:
+                    self.reinforce_dropped += len(items)
+            return
+        with self._worker_lock:
+            self.reinforce_received += len(items)
+
+    def reinforce_stats(self) -> dict:
+        """Observability counters for the background worker."""
+        with self._worker_lock:
+            return {
+                "received": self.reinforce_received,
+                "written": self.reinforce_written,
+                "dropped": self.reinforce_dropped,
+                "sync_fallback": self.reinforce_sync_fallback,
+                "queue_size": self._reinforce_queue.qsize(),
+                "queue_max": self._reinforce_queue.maxsize,
+            }
 
     def shutdown_reinforce_worker(self) -> None:
         """Drain pending reinforcement writes and stop the worker."""

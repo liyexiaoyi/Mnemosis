@@ -1026,6 +1026,11 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
             if hasattr(self.store, "fallback_cache_stats")
             else {}
         )
+        stats["reinforce_worker"] = (
+            self.store.reinforce_stats()
+            if hasattr(self.store, "reinforce_stats")
+            else {}
+        )
         return stats
 
     def calibrate_decay_rate(
