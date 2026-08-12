@@ -521,6 +521,9 @@ class MemoryEngineTest(unittest.TestCase):
         self.assertGreaterEqual(
             tiny.stats()["fallback_cache"]["evictions"], 1
         )
+        self.assertGreaterEqual(
+            tiny.stats()["fallback_cache"]["evictions_last_60s"], 1
+        )
 
     def test_rerank_pool_params_are_configurable(self):
         class _CountingEmbedder(Embedder):

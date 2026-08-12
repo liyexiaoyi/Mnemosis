@@ -11,7 +11,7 @@ import numbers
 import re
 import threading
 import time
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from datetime import datetime
 
 from .backend import Backend
@@ -188,6 +188,9 @@ class DualTrackStore:
         self.fallback_cache_hits = 0
         self.fallback_cache_misses = 0
         self.fallback_cache_evictions = 0
+        self._fallback_cache_eviction_times: deque[float] = deque(
+            maxlen=32768
+        )
         self._inverted: dict[str, dict[str, set[str]]] = {}
         self._df_cache: dict[tuple[str, MemoryKind | None], int] = {}
         self._lock = threading.RLock()
@@ -1626,6 +1629,7 @@ class DualTrackStore:
             while len(self._fallback_cache) > self.fallback_cache_size:
                 self._fallback_cache.popitem(last=False)
                 self.fallback_cache_evictions += 1
+                self._fallback_cache_eviction_times.append(time.monotonic())
 
     def invalidate_fallback_cache(self) -> None:
         """Drop cached fallback results after any memory mutation."""
@@ -1639,11 +1643,19 @@ class DualTrackStore:
             hit_rate = (
                 self.fallback_cache_hits / total if total > 0 else 0.0
             )
+            cutoff = time.monotonic() - 60.0
+            while (
+                self._fallback_cache_eviction_times
+                and self._fallback_cache_eviction_times[0] < cutoff
+            ):
+                self._fallback_cache_eviction_times.popleft()
+            evictions_last_60s = len(self._fallback_cache_eviction_times)
             return {
                 "hits": self.fallback_cache_hits,
                 "misses": self.fallback_cache_misses,
                 "hit_rate": round(hit_rate, 4),
                 "evictions": self.fallback_cache_evictions,
+                "evictions_last_60s": evictions_last_60s,
                 "entries": len(self._fallback_cache),
                 "size_limit": self.fallback_cache_size,
                 "ttl_seconds": self.fallback_cache_ttl,

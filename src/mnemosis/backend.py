@@ -782,10 +782,22 @@ class SQLiteBackend(Backend):
                 # parameter: no giant SQL string to parse, same PK-index
                 # lookup, and no per-chunk VALUES bloat for very large lists
                 # (1000 UUIDs serialize to ~40KB, far below SQLite limits).
+                # A plain WHERE status would make the planner scan the
+                # (status, importance) index, so the PK is forced explicitly
+                # and status is filtered as a post-predicate.
+                # NOTE: sqlite_autoindex_memories_1 is the auto-generated
+                # TEXT-PK index name; if the schema ever renames the PK,
+                # audit_query_plans + test_core_query_plans_use_indexes are
+                # the CI contract that forces a deliberate update here.
                 rows = self._conn.execute(
                     "SELECT m.* FROM memories m "
-                    "JOIN json_each(?) AS j ON m.id = j.value",
-                    (json.dumps(chunk, default=str),),
+                    "INDEXED BY sqlite_autoindex_memories_1 "
+                    "JOIN json_each(?) AS j ON m.id = j.value "
+                    "WHERE m.status = ?",
+                    (
+                        json.dumps(chunk, default=str),
+                        MemoryStatus.ACTIVE.value,
+                    ),
                 ).fetchall()
             else:
                 # A long `id IN (...)` list can make SQLite scan the table on
@@ -794,15 +806,11 @@ class SQLiteBackend(Backend):
                 placeholders = "),(".join("?" for _ in chunk)
                 rows = self._conn.execute(
                     "WITH cte(id) AS (VALUES (" + placeholders + ")) "
-                    "SELECT m.* FROM memories m JOIN cte ON m.id = cte.id",
-                    tuple(chunk),
+                    "SELECT m.* FROM memories m JOIN cte ON m.id = cte.id "
+                    "WHERE m.status = ?",
+                    (*chunk, MemoryStatus.ACTIVE.value),
                 ).fetchall()
-            items.extend(
-                item
-                for row in rows
-                if (item := _row_to_item(row)).status
-                == MemoryStatus.ACTIVE
-            )
+            items.extend(_row_to_item(row) for row in rows)
         items.sort(key=lambda item: item.seq, reverse=True)
         return items
 
@@ -1253,19 +1261,23 @@ class SQLiteBackend(Backend):
         return {
             "get_many": self.query_plan(
                 "WITH cte(id) AS (VALUES (?), (?)) "
-                "SELECT m.* FROM memories m JOIN cte ON m.id = cte.id",
-                ("a", "b"),
+                "SELECT m.* FROM memories m JOIN cte ON m.id = cte.id "
+                "WHERE m.status = ?",
+                ("a", "b", "active"),
             ),
             "get_many_long": self.query_plan(
                 "WITH cte(id) AS (VALUES ("
                 + "),(".join("?" for _ in range(50))
-                + ")) SELECT m.* FROM memories m JOIN cte ON m.id = cte.id",
-                tuple(f"id{i}" for i in range(50)),
+                + ")) SELECT m.* FROM memories m JOIN cte ON m.id = cte.id "
+                "WHERE m.status = ?",
+                tuple(f"id{i}" for i in range(50)) + ("active",),
             ),
             "get_many_json": self.query_plan(
                 "SELECT m.* FROM memories m "
-                "JOIN json_each(?) AS j ON m.id = j.value",
-                ("[]",),
+                "INDEXED BY sqlite_autoindex_memories_1 "
+                "JOIN json_each(?) AS j ON m.id = j.value "
+                "WHERE m.status = ?",
+                ("[]", "active"),
             ),
             "list_recent": self.query_plan(
                 "SELECT * FROM memories WHERE status = ? "

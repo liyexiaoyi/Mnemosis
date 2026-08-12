@@ -262,13 +262,22 @@ class SQLiteBackendTest(unittest.TestCase):
                 )
                 backend.add(item)
                 stored.append(item)
+            recycled = MemoryItem(
+                content="batch recycled item",
+                kind=MemoryKind.EPISODIC,
+                source=SourceRecord(origin=SourceType.USER),
+                status=MemoryStatus.RECYCLED,
+            )
+            backend.add(recycled)
             ids = [item.id for item in stored]
-            batch = backend.get_many(ids[:70])  # >= 64 -> json_each path
+            batch = backend.get_many(
+                ids[:70] + [recycled.id]
+            )  # >= 64 -> json_each path
             self.assertEqual(len(batch), 70)
             self.assertEqual(
                 {item.id for item in batch}, set(ids[:70])
             )
-            dup_batch = ids[:67] + [ids[0], ids[1], ids[2]]
+            dup_batch = ids[:67] + [ids[0], ids[1], ids[2], recycled.id]
             deduped_large = backend.get_many(dup_batch)
             self.assertEqual(len(deduped_large), 67)
             self.assertEqual(
