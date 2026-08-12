@@ -153,7 +153,14 @@ class DictBackend(Backend):
             self.add(item)
 
     @_locked
-    def update_many(self, items: list[MemoryItem]) -> None:
+    def update_many(
+        self,
+        items: list[MemoryItem],
+        *,
+        busy_timeout_ms: int | None = None,
+    ) -> None:
+        # Memory backend: no disk lock, so busy_timeout_ms is intentionally
+        # ignored (kept in the signature for caller compatibility).
         for item in items:
             self.update(item)
 
@@ -935,7 +942,12 @@ class SQLiteBackend(Backend):
             self._conn.execute(_UPDATE_SQL, _update_row(item))
 
     @_locked
-    def update_many(self, items: list[MemoryItem]) -> None:
+    def update_many(
+        self,
+        items: list[MemoryItem],
+        *,
+        busy_timeout_ms: int | None = None,
+    ) -> None:
         """Update many memory rows in one atomic transaction."""
         if not items:
             return
@@ -968,21 +980,41 @@ class SQLiteBackend(Backend):
                     item.id,
                 )
             )
-        with self._conn:
-            self._conn.executemany(
-                """
-                UPDATE memories SET
-                    content = ?, content_hash = ?, source_json = ?, cues_json = ?,
-                    created_at = ?, last_access_at = ?, access_count = ?,
-                    importance = ?, strength = ?, confidence = ?, status = ?,
-                    context = ?, affect = ?, evidence_count = ?,
-                    storage_strength = ?, updated_at = ?, revision_count = ?,
-                    seq = ?, last_review_at = ?, review_streak = ?,
-                    retrieval_successes = ?, retrieval_failures = ?
-                WHERE id = ?
-                """,
-                rows,
+        previous_timeout: int | None = None
+        if busy_timeout_ms is not None:
+            row = self._conn.execute("PRAGMA busy_timeout").fetchone()
+            previous_timeout = row[0] if row is not None else None
+            self._conn.execute(
+                f"PRAGMA busy_timeout={int(busy_timeout_ms)}"
             )
+        try:
+            with self._conn:
+                self._conn.executemany(
+                    """
+                    UPDATE memories SET
+                        content = ?, content_hash = ?, source_json = ?,
+                        cues_json = ?,
+                        created_at = ?, last_access_at = ?, access_count = ?,
+                        importance = ?, strength = ?, confidence = ?,
+                        status = ?,
+                        context = ?, affect = ?, evidence_count = ?,
+                        storage_strength = ?, updated_at = ?,
+                        revision_count = ?,
+                        seq = ?, last_review_at = ?, review_streak = ?,
+                        retrieval_successes = ?, retrieval_failures = ?
+                    WHERE id = ?
+                    """,
+                    rows,
+                )
+        finally:
+            if busy_timeout_ms is not None and previous_timeout is not None:
+                try:
+                    self._conn.execute(
+                        f"PRAGMA busy_timeout={previous_timeout}"
+                    )
+                except sqlite3.Error:
+                    # Restoring the pragma must not mask the original error.
+                    pass
 
     @_locked
     def delete(self, memory_id: str) -> None:

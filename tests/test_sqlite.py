@@ -293,6 +293,23 @@ class SQLiteBackendTest(unittest.TestCase):
         }
         self.assertIn("idx_terms_memory", indexes)
 
+    def test_update_many_busy_timeout_restored(self):
+        backend = SQLiteBackend(":memory:")
+        try:
+            item = MemoryItem(
+                content="timeout restore target",
+                kind=MemoryKind.EPISODIC,
+                source=SourceRecord(origin=SourceType.USER),
+            )
+            backend.add(item)
+            backend.update_many([item], busy_timeout_ms=100)
+            row = backend._conn.execute(
+                "PRAGMA busy_timeout"
+            ).fetchone()
+            self.assertEqual(row[0], 5000)
+        finally:
+            backend.close()
+
     def test_get_many_large_batch_json_path_and_dedupe(self):
         backend = SQLiteBackend(":memory:")
         try:

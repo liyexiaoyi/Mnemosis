@@ -59,6 +59,13 @@ _REINFORCE_QUEUE_MAX = 10_000
 """Backpressure cap for the background reinforcement queue; when full,
 reinforcement falls back to a synchronous write instead of dropping."""
 
+_REINFORCE_HIGH_WATERMARK = 0.8
+"""Start degrading at 80% queue usage so spikes are smoothed instead of
+concentrated into one big stall at 100%."""
+
+_REINFORCE_SYNC_TIMEOUT_MS = 100
+"""Cap how long a sync-fallback write may wait on the SQLite lock."""
+
 _FALLBACK_IMPORTANCE_BOOST = 0.20
 """Extra score per unit of importance in zero-hit fallback ranking.
 
@@ -1220,28 +1227,40 @@ class DualTrackStore:
                 self.reinforce_dropped += len(items)
             return
         self._ensure_reinforce_worker()
+        with self._worker_lock:
+            high_water = (
+                self._reinforce_queue.maxsize * _REINFORCE_HIGH_WATERMARK
+            )
+            overloaded = self._reinforce_queue.qsize() >= high_water
+        if overloaded:
+            self._sync_fallback_write(items)
+            return
         try:
             self._reinforce_queue.put_nowait(items)
         except queue.Full:
-            # Backpressure: never let the queue grow without bound; a full
-            # queue degrades to a synchronous best-effort write.
-            with self._worker_lock:
-                self.reinforce_received += len(items)
-                self.reinforce_sync_fallback += 1
-            try:
-                self.backend.update_many(items)
-                with self._worker_lock:
-                    self.reinforce_written += len(items)
-            except Exception as exc:  # noqa: BLE001
-                _LOG.warning(
-                    "reinforcement queue full; sync fallback failed: %s",
-                    exc,
-                )
-                with self._worker_lock:
-                    self.reinforce_dropped += len(items)
+            self._sync_fallback_write(items)
             return
         with self._worker_lock:
             self.reinforce_received += len(items)
+
+    def _sync_fallback_write(self, items: list[MemoryItem]) -> None:
+        """Backpressure path: write synchronously with a bounded lock wait."""
+        with self._worker_lock:
+            self.reinforce_received += len(items)
+            self.reinforce_sync_fallback += 1
+        try:
+            self.backend.update_many(
+                items,
+                busy_timeout_ms=_REINFORCE_SYNC_TIMEOUT_MS,
+            )
+            with self._worker_lock:
+                self.reinforce_written += len(items)
+        except Exception as exc:  # noqa: BLE001
+            _LOG.warning(
+                "reinforcement sync fallback failed: %s", exc
+            )
+            with self._worker_lock:
+                self.reinforce_dropped += len(items)
 
     def reinforce_stats(self) -> dict:
         """Observability counters for the background worker."""

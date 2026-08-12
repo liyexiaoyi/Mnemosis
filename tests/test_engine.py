@@ -643,6 +643,32 @@ class MemoryEngineTest(unittest.TestCase):
         finally:
             engine.close()
 
+    def test_reinforce_sync_fallback_writes_with_timeout(self):
+        fd, path = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
+        if os.path.exists(path):
+            os.remove(path)
+        engine = MemoryEngine(path)
+        try:
+            source = SourceRecord(origin=SourceType.USER)
+            item = engine.remember(
+                "sync fallback target",
+                kind=MemoryKind.EPISODIC,
+                source=source,
+                auto_cues=False,
+            )
+            item.retrieval_successes += 1
+            engine.store._sync_fallback_write([item])
+            refreshed = engine.backend.get(item.id)
+            self.assertEqual(refreshed.retrieval_successes, 1)
+            stats = engine.store.reinforce_stats()
+            self.assertEqual(stats["sync_fallback"], 1)
+            self.assertEqual(stats["received"], 1)
+            self.assertEqual(stats["written"], 1)
+            self.assertEqual(stats["dropped"], 0)
+        finally:
+            engine.close()
+
     def test_rerank_pool_params_are_configurable(self):
         class _CountingEmbedder(Embedder):
             def __init__(self) -> None:
