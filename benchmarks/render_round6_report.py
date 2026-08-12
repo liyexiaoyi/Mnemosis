@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import json
 import os
 
@@ -129,7 +130,7 @@ def chart_reliability() -> str:
             center = bucket_start + 0.1
             empirical = r["empirical_hit_rate"]
             points.append((center, empirical))
-        for (x1, y1), (x2, y2) in zip(points, points[1:]):
+        for (x1, y1), (x2, y2) in itertools.pairwise(points):
             draw.line([(px(x1), py(y1)), (px(x2), py(y2))], fill=color, width=4)
         for x, y in points:
             draw.ellipse(

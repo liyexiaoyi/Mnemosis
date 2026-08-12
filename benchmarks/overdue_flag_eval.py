@@ -18,6 +18,8 @@ _SRC = os.path.normpath(os.path.join(_BENCH, "..", "src"))
 sys.path.insert(0, _BENCH)
 sys.path.insert(0, _SRC)
 
+import itertools
+
 from mnemosis import MemoryEngine
 from mnemosis.types import MemoryKind, SourceRecord, SourceType, utcnow
 
@@ -67,7 +69,7 @@ def _run() -> dict:
     )
     fc_sorted = all(
         not b["overdue"] or a["overdue"]
-        for a, b in zip(forecast, forecast[1:])
+        for a, b in itertools.pairwise(forecast)
     )
     return {
         "overdue_total": len(overdue_ids),

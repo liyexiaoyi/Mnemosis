@@ -114,7 +114,7 @@ def chart() -> str:
             draw.text((bx + 34, y + 170 - bh + 4), f"{score:.0%}", fill="white", font=f_val)
             draw.text((bx + 2, y + 178), project_labels[project], fill="#111", font=f_label)
     y += 250
-    totals = {
+    {
         project: f"{data['retrieval'][project]['total']}/10"
         for project in projects
     }

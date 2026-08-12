@@ -26,6 +26,8 @@ _SRC = os.path.normpath(os.path.join(_BENCH, "..", "src"))
 sys.path.insert(0, _BENCH)
 sys.path.insert(0, _SRC)
 
+import itertools
+
 from mnemosis import MemoryEngine
 from mnemosis.types import MemoryKind, SourceRecord, SourceType, utcnow
 
@@ -87,7 +89,7 @@ def _simulate(engine: MemoryEngine, mode: str, seed: int) -> dict:
                 successes += 1
             else:
                 failures += 1
-        for a, b in zip(cats, cats[1:]):
+        for a, b in itertools.pairwise(cats):
             total_pairs += 1
             if a == b:
                 same_cat_pairs += 1

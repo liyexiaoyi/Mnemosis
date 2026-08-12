@@ -39,7 +39,7 @@ def _store(seed: int) -> MemoryEngine:
         cues=["sup-b"],
         auto_cues=False,
     )
-    c = engine.remember(
+    engine.remember(
         f"ccc keep {seed}",
         kind=MemoryKind.SEMANTIC,
         source=user,

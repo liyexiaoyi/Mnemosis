@@ -238,7 +238,7 @@ def main() -> int:
         try:
             reports["cognitive_memory_official"] = run_cognitive_memory(dataset, questions)
             print("cognitive-memory:", reports["cognitive_memory_official"])
-        except Exception as exc:  # package unavailable in this sandbox
+        except Exception as exc:  # noqa: BLE001 (package unavailable here)
             print("cognitive-memory skipped:", exc)
 
     from mnemosis.embedding import NGramEmbedder

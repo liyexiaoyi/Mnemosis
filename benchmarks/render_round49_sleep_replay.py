@@ -29,7 +29,7 @@ def chart() -> str:
     draw = ImageDraw.Draw(img)
     f_title = _font(30)
     f_sub = _font(18)
-    f_panel = _font(22)
+    _font(22)
     f_label = _font(18)
     f_val = _font(16)
     f_note = _font(16)

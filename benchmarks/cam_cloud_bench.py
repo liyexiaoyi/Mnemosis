@@ -75,7 +75,7 @@ def main() -> int:
     def _make_dual_init(orig_init):
         def _dual(self, key_path, model):
             with open(key_path, "r", encoding="utf-8") as handle:
-                key = handle.read().strip()
+                handle.read().strip()
             orig_init(self, key_path, model)
             from openai import OpenAI as _OpenAI
 

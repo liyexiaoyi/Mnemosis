@@ -176,7 +176,7 @@ def all_models_matrix_chart() -> str:
     draw.text((40, 65),
               "同一批 12 题、同一评分规则。灰柱=模型裸答；绿柱=把 Mnemosis 检索到的记忆放进上下文再回答",
               fill="#555", font=f_sub)
-    n = len(models)
+    len(models)
     group_w = 240
     bar_w = 72
     chart_h = 280

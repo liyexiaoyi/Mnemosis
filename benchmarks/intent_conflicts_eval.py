@@ -26,10 +26,10 @@ from mnemosis.types import utcnow
 def _store(seed: int) -> tuple[MemoryEngine, MCPServer, str]:
     engine = MemoryEngine()
     now = utcnow()
-    i1 = engine.remember_intent(
+    engine.remember_intent(
         f"call a {seed}", due_at=now + timedelta(minutes=10)
     )
-    i2 = engine.remember_intent(
+    engine.remember_intent(
         f"call b {seed}", due_at=now + timedelta(minutes=20)
     )
     i3 = engine.remember_intent(

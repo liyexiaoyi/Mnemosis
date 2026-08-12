@@ -37,10 +37,10 @@ def _store(seed: int) -> tuple[MemoryEngine, MCPServer, str]:
         strength=0.7,
         auto_cues=False,
     )
-    weak = engine.remember(
+    engine.remember(
         "zzz", kind=MemoryKind.EPISODIC, source=user, auto_cues=False
     )
-    mid = engine.remember(
+    engine.remember(
         "mid quality memory", kind=MemoryKind.EPISODIC, source=user,
         cues=["中间"], affect="positive", auto_cues=False,
     )

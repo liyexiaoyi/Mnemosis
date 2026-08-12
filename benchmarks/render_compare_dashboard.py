@@ -143,8 +143,6 @@ def chart_kinds() -> str:
     data = _kind_accuracy()
     kind_labels = {"fact": "记住事实", "event": "记住事件",
                    "temporal": "之后发生了什么", "distractor": "没聊过不乱说"}
-    kind_colors = {"fact": "#1a7f37", "event": "#2f80ed",
-                   "temporal": "#e6a700", "distractor": "#c0392b"}
     project_labels = {"mnemosis": "Mnemosis", "mem0": "mem0 官方包",
                       "cognitive": "cognitive-memory"}
     models = ["qwen3-vl:8b", "qwen2.5-vl", "qwen2.5:3b"]
@@ -161,7 +159,6 @@ def chart_kinds() -> str:
               fill="#555", font=f_sub)
     panel_w = 1380
     chart_h = 180
-    base_y = 150
     for mi, model in enumerate(models):
         py = 120 + mi * 300
         draw.text((60, py), model, fill="#111", font=f_label)

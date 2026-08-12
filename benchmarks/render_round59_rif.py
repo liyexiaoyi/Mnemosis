@@ -24,8 +24,8 @@ def chart() -> str:
              encoding="utf-8")
     )
     sup = data["suppressed"]
-    unsup = data["unsuppressed"]
-    none = data["none"]
+    data["unsuppressed"]
+    data["none"]
     W, H = 1500, 1200
     img = Image.new("RGB", (W, H), "white")
     draw = ImageDraw.Draw(img)

@@ -394,10 +394,8 @@ def main() -> int:
                     {"q": q["q"], "answer": answer,
                      "expected": q["answer"], "score": round(score, 2)}
                 )
-        for cond in llm:
-            llm[cond]["accuracy"] = round(
-                llm[cond]["hits"] / llm[cond]["n"], 3
-            )
+        for cond, value in llm.items():
+            value["accuracy"] = round(value["hits"] / value["n"], 3)
         report["llm_zh"] = {
             cond: {k: v for k, v in llm[cond].items() if k != "rows"}
             for cond in llm

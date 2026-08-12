@@ -32,7 +32,7 @@ def _store(seed: int) -> MemoryEngine:
         cues=["alpha-key"],
         auto_cues=False,
     )
-    m2 = engine.remember(
+    engine.remember(
         f"beta term {seed}",
         kind=MemoryKind.SEMANTIC,
         source=user,

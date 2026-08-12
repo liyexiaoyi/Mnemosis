@@ -39,8 +39,8 @@ def locomo_pct(locomo: dict, mode: str, cat: str, key: str) -> float:
 
 def _svg_open(title: str, subtitle: str, w: int, h: int) -> list[str]:
     return [
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" '
-        f'viewBox="0 0 {w} {h}" font-family="Microsoft YaHei, SimHei, sans-serif">',
+        (f'<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" '
+        f'viewBox="0 0 {w} {h}" font-family="Microsoft YaHei, SimHei, sans-serif">'),
         f'<rect width="{w}" height="{h}" fill="#ffffff"/>',
         f'<text x="70" y="28" font-size="17" font-weight="bold" fill="#222">{title}</text>',
         f'<text x="70" y="50" font-size="12" fill="#666">{subtitle}</text>',

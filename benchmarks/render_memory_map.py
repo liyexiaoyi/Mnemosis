@@ -24,11 +24,11 @@ def render_svg(data: dict, title: str) -> str:
     height = pad * 2 + 40 + len(topics) * row_h + 110
     max_count = max([t["count"] for t in topics] or [1])
     parts = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" '
-        f'height="{height}">',
+        (f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" '
+        f'height="{height}">'),
         f'<rect width="{width}" height="{height}" fill="#ffffff"/>',
-        f'<text x="{pad}" y="34" font-size="20" font-weight="bold" '
-        f'fill="#111">{html.escape(title)}</text>',
+        (f'<text x="{pad}" y="34" font-size="20" font-weight="bold" '
+        f'fill="#111">{html.escape(title)}</text>'),
     ]
     for index, topic in enumerate(topics):
         y = pad + 50 + index * row_h

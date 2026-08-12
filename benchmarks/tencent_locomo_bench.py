@@ -79,7 +79,7 @@ def main() -> int:
     deadline = time.time() + args.wait_seconds
     while time.time() < deadline:
         h = _health()
-        consumed = h["services"]["pipelineWorker"]["tasksConsumed"]
+        h["services"]["pipelineWorker"]["tasksConsumed"]
         completed = h["services"]["pipelineWorker"]["tasksCompleted"]
         failed = h["services"]["pipelineWorker"]["tasksFailed"]
         if completed + failed >= len(memories):

@@ -29,7 +29,7 @@ def _store(seed: int) -> tuple[MemoryEngine, MCPServer, str, str]:
     i1 = engine.remember_intent(
         f"soon a {seed}", due_at=now + timedelta(minutes=10)
     )
-    i2 = engine.remember_intent(
+    engine.remember_intent(
         f"soon b {seed}", due_at=now + timedelta(minutes=20)
     )
     i3 = engine.remember_intent(

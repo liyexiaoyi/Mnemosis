@@ -23,6 +23,7 @@ import re
 import sys
 import time
 import urllib.request
+from contextlib import suppress
 
 os.environ["MEM0_TELEMETRY"] = "False"
 
@@ -251,7 +252,7 @@ def _run_tencent() -> dict:
         )
     deadline = time.time() + 600
     while time.time() < deadline:
-        try:
+        with suppress(Exception):
             with urllib.request.urlopen(
                 "http://127.0.0.1:8420/health", timeout=5
             ) as resp:
@@ -259,8 +260,6 @@ def _run_tencent() -> dict:
             pw = h["services"]["pipelineWorker"]
             if pw["tasksCompleted"] + pw["tasksFailed"] >= len(_memories()):
                 break
-        except Exception:  # noqa: BLE001
-            pass
         time.sleep(5)
     rows = []
     for s in SCENARIOS:

@@ -73,9 +73,7 @@ def _score(answer: str, question: str) -> bool:
         r"\b(notebook|camera|coffee beans|hiking boots|vinyl record|sketchbook)\b",
         lowered,
     )
-    if m:
-        return True
-    return False
+    return bool(m)
 
 
 def build_context() -> tuple[list[str], dict[str, list[str]]]:

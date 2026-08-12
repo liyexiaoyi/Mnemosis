@@ -338,7 +338,7 @@ def main() -> int:
             codex_answers = json.load(handle)
     else:
         codex_answers = {}
-    for project, ctx in contexts.items():
+    for project in contexts:
         codex_answers.setdefault(project, {})
         for question in questions:
             codex_answers[project].setdefault(question["q"], "")

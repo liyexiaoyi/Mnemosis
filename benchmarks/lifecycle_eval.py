@@ -111,14 +111,14 @@ def run_update_eval() -> dict:
     top_content = results[0].item.content if results else ""
     stale_survives = any("100 per minute" in r.item.content for r in results)
 
-    a = engine.remember(
+    engine.remember(
         "Deploy takes 3 minutes.",
         kind=MemoryKind.SEMANTIC,
         source=user,
         cues=["deploy", "time"],
         confidence=0.9,
     )
-    b = engine.remember(
+    engine.remember(
         "Deploy takes 30 minutes.",
         kind=MemoryKind.SEMANTIC,
         source=user,

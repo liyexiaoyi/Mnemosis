@@ -26,7 +26,7 @@ def _load(path: str):
 
 def main() -> int:
     v1 = _load(os.path.join(_BENCH, "results", "final_matrix.json"))
-    local = _load(os.path.join(_BENCH, "results", "local_model_matrix.json"))[
+    _load(os.path.join(_BENCH, "results", "local_model_matrix.json"))[
         "matrix"
     ]
     v2extra = _load(

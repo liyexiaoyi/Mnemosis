@@ -52,7 +52,7 @@ def score_ranked(questions, results_provider) -> dict:
     for question in questions:
         kind = question["kind"]
         stats[kind]["n"] += 1
-        contents, top_score = results_provider(question)
+        contents, _top_score = results_provider(question)
         expected = _expected(question)
         if kind == "distractor":
             stats[kind]["pass"] += int(not contents)

@@ -19,7 +19,7 @@ def _font(size: int) -> ImageFont.FreeTypeFont:
 
 
 def chart() -> str:
-    data = json.load(
+    json.load(
         open(
             os.path.join(_BENCH, "results", "toolchain27_eval.json"),
             encoding="utf-8",
@@ -30,7 +30,7 @@ def chart() -> str:
     draw = ImageDraw.Draw(img)
     f_title = _font(30)
     f_sub = _font(18)
-    f_panel = _font(21)
+    _font(21)
     f_label = _font(19)
     f_val = _font(17)
     f_note = _font(16)

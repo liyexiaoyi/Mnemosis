@@ -56,7 +56,7 @@ def _run() -> dict:
         )
         ratio_ok += int(report["completion_ratio"] == 0.25)
         default_ok += int(
-            set(s["status"] for s in engine.plan_tracker(plan)["steps"])
+            {s["status"] for s in engine.plan_tracker(plan)["steps"]}
             == {"pending"}
         )
         fields_ok += int(

@@ -21,8 +21,8 @@ PALETTE = ["#4c78a8", "#f58518", "#54a24b", "#e45756", "#72b7b2", "#f2cf5b"]
 
 def _svg_open(title: str) -> list[str]:
     return [
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{WIDTH}" height="{HEIGHT}" '
-        f'viewBox="0 0 {WIDTH} {HEIGHT}" font-family="Segoe UI, Arial, sans-serif">',
+        (f'<svg xmlns="http://www.w3.org/2000/svg" width="{WIDTH}" height="{HEIGHT}" '
+        f'viewBox="0 0 {WIDTH} {HEIGHT}" font-family="Segoe UI, Arial, sans-serif">'),
         f'<rect width="{WIDTH}" height="{HEIGHT}" fill="#ffffff"/>',
         f'<text x="{MARGIN_L}" y="28" font-size="17" font-weight="bold" fill="#222">{title}</text>',
     ]
@@ -30,12 +30,12 @@ def _svg_open(title: str) -> list[str]:
 
 def _axes(ymax: float, ylabel: str) -> list[str]:
     lines = [
-        f'<line x1="{MARGIN_L}" y1="{HEIGHT - MARGIN_B}" x2="{WIDTH - MARGIN_R}" '
-        f'y2="{HEIGHT - MARGIN_B}" stroke="#999" stroke-width="1"/>',
-        f'<line x1="{MARGIN_L}" y1="{MARGIN_T}" x2="{MARGIN_L}" '
-        f'y2="{HEIGHT - MARGIN_B}" stroke="#999" stroke-width="1"/>',
-        f'<text x="16" y="{(MARGIN_T + HEIGHT - MARGIN_B) / 2}" font-size="12" fill="#666" '
-        f'transform="rotate(-90 16,{(MARGIN_T + HEIGHT - MARGIN_B) / 2})" text-anchor="middle">{ylabel}</text>',
+        (f'<line x1="{MARGIN_L}" y1="{HEIGHT - MARGIN_B}" x2="{WIDTH - MARGIN_R}" '
+        f'y2="{HEIGHT - MARGIN_B}" stroke="#999" stroke-width="1"/>'),
+        (f'<line x1="{MARGIN_L}" y1="{MARGIN_T}" x2="{MARGIN_L}" '
+        f'y2="{HEIGHT - MARGIN_B}" stroke="#999" stroke-width="1"/>'),
+        (f'<text x="16" y="{(MARGIN_T + HEIGHT - MARGIN_B) / 2}" font-size="12" fill="#666" '
+        f'transform="rotate(-90 16,{(MARGIN_T + HEIGHT - MARGIN_B) / 2})" text-anchor="middle">{ylabel}</text>'),
     ]
     for tick in range(5):
         value = ymax * tick / 4
@@ -115,8 +115,8 @@ def dot_matrix_chart(
     width = MARGIN_L + len(columns) * cell_w + 20
     height = MARGIN_T + len(rows) * cell_h + 30
     lines = [
-        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
-        f'viewBox="0 0 {width} {height}" font-family="Segoe UI, Arial, sans-serif">',
+        (f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
+        f'viewBox="0 0 {width} {height}" font-family="Segoe UI, Arial, sans-serif">'),
         f'<rect width="{width}" height="{height}" fill="#ffffff"/>',
         f'<text x="{MARGIN_L}" y="28" font-size="17" font-weight="bold" fill="#222">{title}</text>',
     ]

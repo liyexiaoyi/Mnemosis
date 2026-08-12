@@ -28,6 +28,7 @@ def run_cli(db: str, *args: str) -> tuple[str, int]:
         text=True,
         env=env,
         timeout=120,
+        check=False,
     )
     if proc.returncode != 0:
         return f"<exit {proc.returncode}> {proc.stderr.strip()}", proc.returncode

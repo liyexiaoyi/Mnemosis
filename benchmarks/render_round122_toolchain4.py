@@ -23,7 +23,7 @@ def chart() -> str:
         open(os.path.join(_BENCH, "results", "toolchain4_eval.json"),
              encoding="utf-8")
     )
-    suite = json.load(
+    json.load(
         open(os.path.join(_BENCH, "results", "run_all_evals.json"),
              encoding="utf-8")
     )

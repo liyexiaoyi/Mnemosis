@@ -43,7 +43,7 @@ def _run_pair(seed: int, lopsided: bool) -> dict:
         cues=[cue],
         evidence_count=4 if lopsided else 1,
     )
-    report = engine.sleep()
+    engine.sleep()
     active = engine.backend.list(kind=MemoryKind.SEMANTIC)
     active_content = {i.content for i in active}
     stale_retired = old_content not in active_content
