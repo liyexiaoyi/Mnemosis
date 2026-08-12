@@ -13,7 +13,7 @@ human memory actually works.
 > a teacher-style, zero-background tour of every feature (Chinese).
 
 > 🗄️ Want the storage layer explained? See
-> [**存储功能介绍（技术人员版）**](docs/storage-guide.zh-CN.md) (Chinese).
+> [**存储功能介绍（技术人员版）**](存储功能介绍（技术人员版）.md) (Chinese).
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/liyexiaoyi/Mnemosis/actions/workflows/ci.yml/badge.svg)](https://github.com/liyexiaoyi/Mnemosis/actions/workflows/ci.yml)
