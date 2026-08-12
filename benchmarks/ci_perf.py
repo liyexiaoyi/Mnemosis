@@ -45,6 +45,10 @@ _WARN_RATIO = 2.5
 _MIN_WARN_MS = {100: 5.0, 500: 20.0, 2000: 80.0}
 _P95_WARN_RATIO = 1.2
 _MIN_P95_WARN_MS = {100: 2.0, 500: 8.0, 2000: 30.0}
+_GRADUAL_MIN_RUNS = 6
+_GRADUAL_WINDOW = 8
+_GRADUAL_SLOPE_MS = {100: 0.05, 500: 0.2, 2000: 1.0}
+_GRADUAL_TOTAL_MS = {100: 0.2, 500: 1.0, 2000: 4.0}
 _RESET_ENV = "MNEMOSIS_PERF_RESET"
 _SUMMARY_ENV = "MNEMOSIS_PERF_SUMMARY_PATH"
 _TREND_PATH = os.path.normpath(
@@ -203,6 +207,50 @@ def _p95_warning(
     )
 
 
+def _slope_ms_per_run(values: list[float]) -> float:
+    """Least-squares slope of values over their run index."""
+    n = len(values)
+    if n < 2:
+        return 0.0
+    mean_x = (n - 1) / 2.0
+    mean_y = sum(values) / n
+    numerator = sum(
+        (index - mean_x) * (value - mean_y)
+        for index, value in enumerate(values)
+    )
+    denominator = sum(
+        (index - mean_x) ** 2 for index in range(n)
+    )
+    return numerator / denominator if denominator else 0.0
+
+
+def _gradual_warning(
+    runs: list[dict], count: int
+) -> tuple[bool, float]:
+    """Detect slow, monotonic drift that single-run ratios miss.
+
+    Fits a line to the last N runs of best_ms and warns when the slope
+    exceeds a per-count floor AND the total drift over the window is
+    material, so a noisy but flat series never trips.
+    """
+    entries = [
+        entry.get("best_ms")
+        for entry in runs
+        if entry["count"] == count
+        and isinstance(entry.get("best_ms"), (int, float))
+    ]
+    window = entries[-_GRADUAL_WINDOW:]
+    if len(window) < _GRADUAL_MIN_RUNS:
+        return False, 0.0
+    slope = _slope_ms_per_run(window)
+    total_drift = window[-1] - window[0]
+    warned = (
+        slope > _GRADUAL_SLOPE_MS[count]
+        and total_drift > _GRADUAL_TOTAL_MS[count]
+    )
+    return warned, slope
+
+
 def _update_trend(
     meta: dict,
     best_by_count: dict[int, float],
@@ -272,6 +320,7 @@ def _summary_markdown(
     *,
     noisy_env: bool = False,
     load1: float = 0.0,
+    gradual: dict[int, float] | None = None,
 ) -> str:
     lines = [
         "## get_many performance gate",
@@ -312,6 +361,21 @@ def _summary_markdown(
         lines.append(
             f"> ⚠️ noisy CI env: 1-min load {load1:.2f} "
             f"> cores {os.cpu_count() or 1}; treat deltas with caution."
+        )
+    gradual = gradual or {}
+    for count, slope in sorted(gradual.items()):
+        n_entries = sum(
+            1
+            for entry in runs
+            if entry["count"] == count
+            and isinstance(entry.get("best_ms"), (int, float))
+        )
+        window_size = min(_GRADUAL_WINDOW, n_entries)
+        lines.append("")
+        lines.append(
+            f"> ⚠️ gradual regression on {count} ids: best is drifting "
+            f"~{slope:.2f} ms per run over the last "
+            f"{window_size} runs."
         )
     if resets:
         lines.append("")
@@ -448,6 +512,15 @@ def main() -> int:
                 f"WARNING: {count} ids are {ratio:.2f}x slower than the "
                 "fixed baseline"
             )
+    gradual_warns: dict[int, float] = {}
+    for count in _CEILINGS_MS:
+        warned, slope = _gradual_warning(history, count)
+        if warned:
+            gradual_warns[count] = slope
+            print(
+                f"GRADUAL WARNING: {count} ids drift "
+                f"+{slope:.2f} ms/run over the last {_GRADUAL_WINDOW} runs"
+            )
     if resets:
         print(
             "TREND NOTE: baseline(s) auto-reset this run: "
@@ -478,6 +551,7 @@ def main() -> int:
         history,
         noisy_env=noisy_env,
         load1=load1,
+        gradual=gradual_warns,
     )
     step_summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if step_summary_path:

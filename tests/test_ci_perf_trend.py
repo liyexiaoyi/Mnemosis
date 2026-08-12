@@ -235,6 +235,54 @@ class TrendLogicTest(unittest.TestCase):
         self.assertTrue(ci_perf._is_noisy(1.0, 3.0, 2))
         self.assertFalse(ci_perf._is_noisy(5.0, 5.0, 0))
 
+    def test_slope_ms_per_run(self):
+        rising = [float(index) for index in range(1, 9)]
+        self.assertAlmostEqual(ci_perf._slope_ms_per_run(rising), 1.0)
+        flat = [5.0] * 8
+        self.assertAlmostEqual(ci_perf._slope_ms_per_run(flat), 0.0)
+        falling = [float(index) for index in range(8, 0, -1)]
+        self.assertAlmostEqual(ci_perf._slope_ms_per_run(falling), -1.0)
+        self.assertEqual(ci_perf._slope_ms_per_run([1.0]), 0.0)
+
+    def test_gradual_warning_detects_slow_drift(self):
+        runs = [
+            {
+                "ts": f"2026-08-{index:02d}T00:00:00+00:00",
+                "count": 100,
+                "best_ms": 1.0 + 0.1 * index,
+            }
+            for index in range(8)
+        ]
+        warned, slope = ci_perf._gradual_warning(runs, 100)
+        self.assertTrue(warned)
+        self.assertGreater(slope, 0.05)
+
+    def test_gradual_warning_ignores_noise_and_short_history(self):
+        noisy = [1.0, 0.9, 1.1, 0.8, 1.2, 0.9, 1.1, 1.0]
+        runs = [
+            {
+                "ts": f"2026-08-{index:02d}T00:00:00+00:00",
+                "count": 100,
+                "best_ms": value,
+            }
+            for index, value in enumerate(noisy, start=1)
+        ]
+        warned, _ = ci_perf._gradual_warning(runs, 100)
+        self.assertFalse(warned)
+        short = runs[:3]
+        warned, _ = ci_perf._gradual_warning(short, 100)
+        self.assertFalse(warned)
+        slow = [
+            {
+                "ts": f"2026-08-{index:02d}T00:00:00+00:00",
+                "count": 100,
+                "best_ms": 1.0 + 0.02 * index,
+            }
+            for index in range(8)
+        ]
+        warned, _ = ci_perf._gradual_warning(slow, 100)
+        self.assertFalse(warned)
+
 
 if __name__ == "__main__":
     unittest.main()
