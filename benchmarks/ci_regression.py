@@ -8,20 +8,75 @@ build. All datasets are generated locally with fixed seeds.
 from __future__ import annotations
 
 import os
+import random
 import sys
+import tempfile
+from collections import Counter
 
 _BENCH = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, _BENCH)
 sys.path.insert(0, os.path.normpath(os.path.join(_BENCH, "..", "src")))
 
-import lifecycle_eval  # noqa: E402
-from locomo_bench import (  # noqa: E402
+import lifecycle_eval
+from locomo_bench import (
     build_engine,
     eval_retrieval,
     generate_dataset,
 )
 
+from mnemosis import MemoryEngine
+from mnemosis.types import MemoryKind, SourceRecord, SourceType
+
 _CHECKS: list[tuple[str, bool, str]] = []
+
+
+def run_chunked_build_snapshot() -> dict[str, int]:
+    """Deterministic chunked-build graph snapshot.
+
+    Guards the incremental association builder: a change to link
+    selection or bucket handling must keep the exact edge count of a
+    fixed seed/records dataset.
+    """
+    rng = random.Random(42)
+    products = [
+        "投影仪", "手机", "空调", "冰箱",
+        "洗衣机", "电脑", "电视", "耳机",
+    ]
+    source = SourceRecord(origin=SourceType.USER)
+    records = []
+    for _ in range(240):
+        user = rng.randint(1, 1000)
+        product = rng.choice(products)
+        month = rng.randint(1, 12)
+        day = rng.randint(1, 28)
+        records.append(
+            {
+                "content": (
+                    f"用户{user}在2026年{month}月{day}日购买了"
+                    f"{product}，花了{rng.randint(100, 999)}元。"
+                ),
+                "kind": MemoryKind.EPISODIC,
+                "source": source,
+                "importance": 0.5,
+            }
+        )
+    with tempfile.TemporaryDirectory() as tmp:
+        engine = MemoryEngine(os.path.join(tmp, "snapshot.db"))
+        try:
+            engine.remember_many_chunked(records, chunk_size=40)
+            memories = engine.store.backend.count()
+            links = engine.backend.all_links()
+            out_degree = Counter(src for src, _, _ in links)
+            hits = len(engine.recall("投影仪", top_k=3))
+        finally:
+            engine.close()
+    return {
+        "memories": memories,
+        "links": len(links),
+        "distinct_src": len(out_degree),
+        "max_out_degree": max(out_degree.values(), default=0),
+        "hits": hits,
+    }
 
 
 def check(name: str, ok: bool, detail: str = "") -> None:
@@ -107,6 +162,25 @@ def main() -> int:
         "locomo distractor pass >= 0.95",
         distractor["pass"] / distractor["n"] >= 0.95,
         f"{distractor['pass']}/{distractor['n']}",
+    )
+
+    snapshot = run_chunked_build_snapshot()
+    check(
+        "chunked build graph snapshot",
+        (
+            snapshot["memories"] == 240
+            and snapshot["links"] == 14304
+            and snapshot["distinct_src"] == 240
+            and snapshot["max_out_degree"] == 105
+            and snapshot["hits"] == 3
+        ),
+        (
+            f"{snapshot['memories']} memories, "
+            f"{snapshot['links']} links, "
+            f"{snapshot['distinct_src']} distinct src, "
+            f"max degree {snapshot['max_out_degree']}, "
+            f"{snapshot['hits']} recall hits"
+        ),
     )
 
     failed = [name for name, ok, _ in _CHECKS if not ok]
