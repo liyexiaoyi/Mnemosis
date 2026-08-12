@@ -12,6 +12,9 @@ human memory actually works.
 > [**奶龙级入门教程——基本功能介绍版**](奶龙级入门教程——基本功能介绍版.md) —
 > a teacher-style, zero-background tour of every feature (Chinese).
 
+> 🗄️ Want the storage layer explained? See
+> [**存储功能介绍（技术人员版）**](docs/storage-guide.zh-CN.md) (Chinese).
+
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/liyexiaoyi/Mnemosis/actions/workflows/ci.yml/badge.svg)](https://github.com/liyexiaoyi/Mnemosis/actions/workflows/ci.yml)
 [![Open in GitHub Codespaces](https://img.shields.io/badge/Codespaces-一键打开-181717?logo=github)](https://codespaces.new/liyexiaoyi/Mnemosis)
