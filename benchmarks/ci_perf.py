@@ -38,7 +38,7 @@ _HISTORY_KEEP = 100
 _BASELINE_MIN = 3
 _BASELINE_MAX = 10
 _AUTO_RESET_STREAK = 5
-_RESET_COOLDOWN_RUNS = 20
+_RESET_COOLDOWN_HOURS = 24.0
 _WARN_RATIO = 2.5
 _MIN_WARN_MS = {100: 5.0, 500: 20.0, 2000: 80.0}
 _RESET_ENV = "MNEMOSIS_PERF_RESET"
@@ -59,7 +59,7 @@ def _empty_meta() -> dict:
         "warn_streaks": {},
         "reset_history": [],
         "run_count": 0,
-        "last_reset_run": {},
+        "last_reset_ts": {},
     }
 
 
@@ -78,7 +78,7 @@ def _load_trend() -> dict:
             "warn_streaks": {},
             "reset_history": [],
             "run_count": 0,
-            "last_reset_run": {},
+            "last_reset_ts": {},
         }
     if isinstance(data, dict):
         data.setdefault("runs", [])
@@ -86,7 +86,8 @@ def _load_trend() -> dict:
         data.setdefault("warn_streaks", {})
         data.setdefault("reset_history", [])
         data.setdefault("run_count", 0)
-        data.setdefault("last_reset_run", {})
+        data.setdefault("last_reset_ts", {})
+        data.pop("last_reset_run", None)
         data["runs"].sort(key=lambda entry: entry.get("ts", ""))
         return data
     return _empty_meta()
@@ -140,6 +141,22 @@ def _first_runs_median_ms(runs: list[dict], count: int) -> float | None:
     return statistics.median(values)
 
 
+def _cooldown_elapsed(
+    last_reset_ts: str | None,
+    now_iso: str,
+    hours: float,
+) -> bool:
+    """True when no recorded reset, or it happened at least `hours` ago."""
+    if not last_reset_ts:
+        return True
+    try:
+        last = datetime.fromisoformat(last_reset_ts)
+        now = datetime.fromisoformat(now_iso)
+        return (now - last).total_seconds() >= hours * 3600
+    except (TypeError, ValueError):
+        return True
+
+
 def _update_trend(
     meta: dict,
     best_by_count: dict[int, float],
@@ -177,29 +194,26 @@ def _update_trend(
         meta["warn_streaks"][str(count)] = streak
         if streak >= _AUTO_RESET_STREAK:
             recent = _recent_median_ms(history, count)
-            if recent is not None:
-                run_count = int(meta.get("run_count", 0))
-                last_reset_run = int(
-                    meta.get("last_reset_run", {}).get(
-                        str(count), -_RESET_COOLDOWN_RUNS
-                    )
+            if recent is not None and _cooldown_elapsed(
+                meta.get("last_reset_ts", {}).get(str(count)),
+                now_iso,
+                _RESET_COOLDOWN_HOURS,
+            ):
+                meta["baselines"][str(count)] = recent
+                meta["warn_streaks"][str(count)] = 0
+                baselines[count] = recent
+                resets.append(count)
+                meta.setdefault("reset_history", []).append(
+                    {
+                        "ts": now_iso,
+                        "count": count,
+                        "old_ms": baseline_ms,
+                        "new_ms": recent,
+                    }
                 )
-                if run_count - last_reset_run >= _RESET_COOLDOWN_RUNS:
-                    meta["baselines"][str(count)] = recent
-                    meta["warn_streaks"][str(count)] = 0
-                    baselines[count] = recent
-                    resets.append(count)
-                    meta.setdefault("reset_history", []).append(
-                        {
-                            "ts": now_iso,
-                            "count": count,
-                            "old_ms": baseline_ms,
-                            "new_ms": recent,
-                        }
-                    )
-                    meta.setdefault("last_reset_run", {})[
-                        str(count)
-                    ] = run_count
+                meta.setdefault("last_reset_ts", {})[
+                    str(count)
+                ] = now_iso
     return meta, resets, medians, baselines
 
 
@@ -208,20 +222,40 @@ def _summary_markdown(
     medians: dict[int, float],
     baselines: dict[int, float],
     resets: list[int],
+    runs: list[dict],
 ) -> str:
+    def _previous_best(count: int) -> float | None:
+        entries = [
+            entry for entry in runs if entry["count"] == count
+        ]
+        if len(entries) >= 2:
+            return entries[-2].get("best_ms")
+        return None
+
     lines = [
         "## get_many performance gate",
         "",
-        "| ids | best ms | median ms | baseline ms | ceiling ms |",
-        "|---|---|---|---|---|",
+        "| ids | best ms | Δ vs prev | median ms | baseline ms | ceiling ms |",
+        "|---|---|---|---|---|---|",
     ]
     for count, best in results:
+        previous = _previous_best(count)
+        if previous is None:
+            delta = "-"
+        else:
+            diff = best - previous
+            if diff > 0.05:
+                delta = f"🔴 +{diff:.2f}"
+            elif diff < -0.05:
+                delta = f"🟢 {diff:.2f}"
+            else:
+                delta = "≈"
         median_ms = f"{medians[count]:.2f}" if count in medians else "-"
         baseline_ms = (
             f"{baselines[count]:.2f}" if count in baselines else "-"
         )
         lines.append(
-            f"| {count} | {best:.2f} | {median_ms} | "
+            f"| {count} | {best:.2f} | {delta} | {median_ms} | "
             f"{baseline_ms} | {_CEILINGS_MS[count]:.0f} |"
         )
     if resets:
@@ -352,7 +386,7 @@ def main() -> int:
             "(need >= 3 recorded runs per id-count)."
         )
     summary = _summary_markdown(
-        _results, medians, baselines, resets
+        _results, medians, baselines, resets, history
     )
     step_summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if step_summary_path:

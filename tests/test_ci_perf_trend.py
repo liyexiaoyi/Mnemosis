@@ -29,7 +29,7 @@ def _meta_with_streak(streak: int, baseline: float) -> dict:
         "warn_streaks": {"100": streak},
         "reset_history": [],
         "run_count": 30,
-        "last_reset_run": {},
+        "last_reset_ts": {},
     }
 
 
@@ -113,11 +113,37 @@ class TrendLogicTest(unittest.TestCase):
         trimmed = ci_perf._trim_runs(meta)
         self.assertEqual(len(trimmed["reset_history"]), 50)
 
+    def test_load_trend_drops_old_last_reset_run(self):
+        original_path = ci_perf._TREND_PATH
+        fd, path = tempfile.mkstemp(suffix=".json")
+        os.close(fd)
+        ci_perf._TREND_PATH = path
+        try:
+            with open(path, "w", encoding="utf-8") as handle:
+                json.dump(
+                    {
+                        "runs": [],
+                        "baselines": {},
+                        "warn_streaks": {},
+                        "last_reset_run": {"100": 5},
+                    },
+                    handle,
+                )
+            meta = ci_perf._load_trend()
+            self.assertNotIn("last_reset_run", meta)
+            self.assertEqual(meta["last_reset_ts"], {})
+        finally:
+            ci_perf._TREND_PATH = original_path
+            if os.path.exists(path):
+                os.remove(path)
+
     def test_auto_reset_blocked_by_cooldown(self):
         meta = _meta_with_streak(5, 0.2)
-        meta["last_reset_run"] = {"100": 25}  # 5 runs ago, cooldown is 20
+        meta["last_reset_ts"] = {
+            "100": "2026-08-09T00:00:00+00:00"
+        }
         updated, resets, _, baselines = ci_perf._update_trend(
-            meta, {100: 10.0}, now_iso="2026-08-10T00:00:00+00:00"
+            meta, {100: 10.0}, now_iso="2026-08-09T12:00:00+00:00"
         )
         self.assertEqual(resets, [])
         self.assertEqual(updated["warn_streaks"]["100"], 6)
@@ -125,14 +151,66 @@ class TrendLogicTest(unittest.TestCase):
 
     def test_auto_reset_allowed_after_cooldown(self):
         meta = _meta_with_streak(5, 0.2)
-        meta["run_count"] = 40
-        meta["last_reset_run"] = {"100": 20}  # exactly 20 runs ago
+        meta["last_reset_ts"] = {
+            "100": "2026-08-08T00:00:00+00:00"
+        }
         updated, resets, _, _ = ci_perf._update_trend(
             meta, {100: 10.0}, now_iso="2026-08-10T00:00:00+00:00"
         )
         self.assertIn(100, resets)
         self.assertEqual(updated["warn_streaks"]["100"], 0)
-        self.assertEqual(updated["last_reset_run"]["100"], 40)
+        self.assertEqual(
+            updated["last_reset_ts"]["100"], "2026-08-10T00:00:00+00:00"
+        )
+
+    def test_summary_includes_delta_column(self):
+        runs = [
+            {
+                "ts": "2026-08-01T00:00:00+00:00",
+                "count": 100,
+                "best_ms": 1.0,
+            },
+            {
+                "ts": "2026-08-02T00:00:00+00:00",
+                "count": 100,
+                "best_ms": 1.0,
+            },
+            {
+                "ts": "2026-08-02T00:00:00+00:00",
+                "count": 500,
+                "best_ms": 6.0,
+            },
+            {
+                "ts": "2026-08-02T00:00:00+00:00",
+                "count": 2000,
+                "best_ms": 20.0,
+            },
+            {
+                "ts": "2026-08-03T00:00:00+00:00",
+                "count": 100,
+                "best_ms": 2.0,
+            },
+            {
+                "ts": "2026-08-03T00:00:00+00:00",
+                "count": 500,
+                "best_ms": 5.0,
+            },
+            {
+                "ts": "2026-08-03T00:00:00+00:00",
+                "count": 2000,
+                "best_ms": 20.0,
+            },
+        ]
+        summary = ci_perf._summary_markdown(
+            [(100, 2.0), (500, 5.0), (2000, 20.0)],
+            {100: 2.0, 500: 5.0, 2000: 20.0},
+            {100: 1.0, 500: 5.0, 2000: 20.0},
+            [],
+            runs,
+        )
+        self.assertIn("Δ vs prev", summary)
+        self.assertIn("🔴 +1.00", summary)
+        self.assertIn("🟢 -1.00", summary)
 
 
 if __name__ == "__main__":
