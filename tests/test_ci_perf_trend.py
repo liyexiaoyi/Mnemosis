@@ -2,9 +2,11 @@
 
 import json
 import os
+import platform
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 _BENCH = os.path.normpath(
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "benchmarks")
@@ -253,9 +255,10 @@ class TrendLogicTest(unittest.TestCase):
             }
             for index in range(8)
         ]
-        warned, slope = ci_perf._gradual_warning(runs, 100)
+        warned, slope, r2 = ci_perf._gradual_warning(runs, 100)
         self.assertTrue(warned)
         self.assertGreater(slope, 0.05)
+        self.assertGreater(r2, 0.9)
 
     def test_gradual_warning_ignores_noise_and_short_history(self):
         noisy = [1.0, 0.9, 1.1, 0.8, 1.2, 0.9, 1.1, 1.0]
@@ -267,10 +270,10 @@ class TrendLogicTest(unittest.TestCase):
             }
             for index, value in enumerate(noisy, start=1)
         ]
-        warned, _ = ci_perf._gradual_warning(runs, 100)
+        warned, _, _ = ci_perf._gradual_warning(runs, 100)
         self.assertFalse(warned)
         short = runs[:3]
-        warned, _ = ci_perf._gradual_warning(short, 100)
+        warned, _, _ = ci_perf._gradual_warning(short, 100)
         self.assertFalse(warned)
         slow = [
             {
@@ -280,8 +283,61 @@ class TrendLogicTest(unittest.TestCase):
             }
             for index in range(8)
         ]
-        warned, _ = ci_perf._gradual_warning(slow, 100)
+        warned, _, _ = ci_perf._gradual_warning(slow, 100)
         self.assertFalse(warned)
+
+    def test_gradual_warning_requires_good_fit(self):
+        # Strong upward slope but poor linear fit: R² < 0.7 blocks the warn.
+        noisy_rise = [1.0, 5.0, 1.2, 4.8, 1.5, 4.5, 1.8, 4.2]
+        runs = [
+            {
+                "ts": f"2026-08-{index:02d}T00:00:00+00:00",
+                "count": 100,
+                "best_ms": value,
+            }
+            for index, value in enumerate(noisy_rise, start=1)
+        ]
+        warned, slope, r2 = ci_perf._gradual_warning(runs, 100)
+        self.assertGreater(slope, 0.05)
+        self.assertLess(r2, 0.7)
+        self.assertFalse(warned)
+
+    def test_r_squared(self):
+        rising = [float(index) for index in range(1, 9)]
+        self.assertAlmostEqual(
+            ci_perf._r_squared(rising, 1.0), 1.0
+        )
+        flat = [5.0] * 8
+        self.assertAlmostEqual(
+            ci_perf._r_squared(flat, 0.0), 1.0
+        )
+        noisy = [1.0, 2.0, 1.5, 4.0, 3.0, 5.0, 4.5, 6.0]
+        slope = ci_perf._slope_ms_per_run(noisy)
+        self.assertLess(ci_perf._r_squared(noisy, slope), 1.0)
+
+    def test_runner_label_and_change(self):
+        with mock.patch.dict(
+            os.environ, {"ImageOS": "ubuntu24"}, clear=True
+        ):
+            self.assertEqual(ci_perf._runner_label(), "ubuntu24")
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(
+                ci_perf._runner_label(),
+                f"{platform.system()}-{platform.machine()}",
+            )
+        self.assertTrue(
+            ci_perf._runner_changed(
+                {"runner": "ubuntu24"}, "macos-14"
+            )
+        )
+        self.assertFalse(
+            ci_perf._runner_changed(
+                {"runner": "ubuntu24"}, "ubuntu24"
+            )
+        )
+        self.assertFalse(
+            ci_perf._runner_changed({"runner": ""}, "ubuntu24")
+        )
 
 
 if __name__ == "__main__":

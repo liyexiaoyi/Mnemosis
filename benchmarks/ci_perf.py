@@ -13,6 +13,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import platform
 import statistics
 import sys
 import time
@@ -68,6 +69,7 @@ def _empty_meta() -> dict:
         "reset_history": [],
         "run_count": 0,
         "last_reset_ts": {},
+        "runner": "",
     }
 
 
@@ -87,6 +89,7 @@ def _load_trend() -> dict:
             "reset_history": [],
             "run_count": 0,
             "last_reset_ts": {},
+            "runner": "",
         }
     if isinstance(data, dict):
         data.setdefault("runs", [])
@@ -95,6 +98,7 @@ def _load_trend() -> dict:
         data.setdefault("reset_history", [])
         data.setdefault("run_count", 0)
         data.setdefault("last_reset_ts", {})
+        data.setdefault("runner", "")
         data.pop("last_reset_run", None)
         data["runs"].sort(key=lambda entry: entry.get("ts", ""))
         return data
@@ -224,9 +228,29 @@ def _slope_ms_per_run(values: list[float]) -> float:
     return numerator / denominator if denominator else 0.0
 
 
+def _r_squared(values: list[float], slope: float) -> float:
+    """Coefficient of determination for the least-squares fit."""
+    n = len(values)
+    if n < 2:
+        return 1.0
+    mean_x = (n - 1) / 2.0
+    mean_y = sum(values) / n
+    predicted = [
+        slope * (index - mean_x) + mean_y for index in range(n)
+    ]
+    ss_res = sum(
+        (value - fitted) ** 2
+        for value, fitted in zip(values, predicted)
+    )
+    ss_tot = sum((value - mean_y) ** 2 for value in values)
+    if ss_tot < 1e-9:
+        return 1.0
+    return max(0.0, 1.0 - ss_res / ss_tot)
+
+
 def _gradual_warning(
     runs: list[dict], count: int
-) -> tuple[bool, float]:
+) -> tuple[bool, float, float]:
     """Detect slow, monotonic drift that single-run ratios miss.
 
     Fits a line to the last N runs of best_ms and warns when the slope
@@ -241,14 +265,33 @@ def _gradual_warning(
     ]
     window = entries[-_GRADUAL_WINDOW:]
     if len(window) < _GRADUAL_MIN_RUNS:
-        return False, 0.0
+        return False, 0.0, 0.0
     slope = _slope_ms_per_run(window)
+    r2 = _r_squared(window, slope)
     total_drift = window[-1] - window[0]
     warned = (
         slope > _GRADUAL_SLOPE_MS[count]
         and total_drift > _GRADUAL_TOTAL_MS[count]
+        and r2 > 0.7
     )
-    return warned, slope
+    return warned, slope, r2
+
+
+def _runner_label() -> str:
+    """GitHub-hosted runner identity; local runs collapse to unknown."""
+    image = os.environ.get("ImageOS")
+    if image:
+        return image
+    os_name = os.environ.get("RUNNER_OS") or "unknown"
+    arch = os.environ.get("RUNNER_ARCH") or "unknown"
+    if os_name != "unknown" and arch != "unknown":
+        return f"{os_name}-{arch}"
+    return f"{platform.system()}-{platform.machine()}"
+
+
+def _runner_changed(meta: dict, runner: str) -> bool:
+    """A different runner makes historical baselines incomparable."""
+    return bool(meta.get("runner")) and meta.get("runner") != runner
 
 
 def _update_trend(
@@ -320,7 +363,7 @@ def _summary_markdown(
     *,
     noisy_env: bool = False,
     load1: float = 0.0,
-    gradual: dict[int, float] | None = None,
+    gradual: dict[int, tuple[float, float]] | None = None,
 ) -> str:
     lines = [
         "## get_many performance gate",
@@ -363,7 +406,7 @@ def _summary_markdown(
             f"> cores {os.cpu_count() or 1}; treat deltas with caution."
         )
     gradual = gradual or {}
-    for count, slope in sorted(gradual.items()):
+    for count, (slope, r2) in sorted(gradual.items()):
         n_entries = sum(
             1
             for entry in runs
@@ -374,7 +417,7 @@ def _summary_markdown(
         lines.append("")
         lines.append(
             f"> ⚠️ gradual regression on {count} ids: best is drifting "
-            f"~{slope:.2f} ms per run over the last "
+            f"~{slope:.2f} ms per run (R² {r2:.2f}) over the last "
             f"{window_size} runs."
         )
     if resets:
@@ -429,6 +472,14 @@ def main() -> int:
     ):
         meta = _empty_meta()
         print("BASELINE RESET: trend history cleared (env requested)")
+    runner = _runner_label()
+    if _runner_changed(meta, runner):
+        print(
+            f"RUNNER CHANGED: {meta.get('runner')} -> {runner}; "
+            "perf trend reset for the new environment"
+        )
+        meta = _empty_meta()
+    meta["runner"] = runner
     meta["run_count"] = int(meta.get("run_count", 0)) + 1
     history = meta["runs"]
     if not history:
@@ -512,14 +563,15 @@ def main() -> int:
                 f"WARNING: {count} ids are {ratio:.2f}x slower than the "
                 "fixed baseline"
             )
-    gradual_warns: dict[int, float] = {}
+    gradual_warns: dict[int, tuple[float, float]] = {}
     for count in _CEILINGS_MS:
-        warned, slope = _gradual_warning(history, count)
+        warned, slope, r2 = _gradual_warning(history, count)
         if warned:
-            gradual_warns[count] = slope
+            gradual_warns[count] = (slope, r2)
             print(
                 f"GRADUAL WARNING: {count} ids drift "
-                f"+{slope:.2f} ms/run over the last {_GRADUAL_WINDOW} runs"
+                f"+{slope:.2f} ms/run (R² {r2:.2f}) over the last "
+                f"{_GRADUAL_WINDOW} runs"
             )
     if resets:
         print(
