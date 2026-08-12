@@ -165,6 +165,15 @@ class EmbedderFactoryTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             make_embedder("openai", api_key="")
 
+    def test_openai_cache_key_normalizes_base_url(self):
+        with_slash = make_embedder(
+            "openai", api_key="k", base_url="https://api.test/v1/"
+        )
+        without_slash = make_embedder(
+            "openai", api_key="k", base_url="https://api.test/v1"
+        )
+        self.assertEqual(with_slash.cache_key, without_slash.cache_key)
+
     def test_dense_recall_wiring(self):
         def fake(text: str) -> list[float]:
             return [1.0 if "猫" in text else 0.0, 1.0]

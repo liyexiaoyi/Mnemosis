@@ -202,6 +202,8 @@ def ollama_embedder(
     timeout: float = 60.0,
 ) -> Embedder:
     """Embedder backed by a local Ollama ``/api/embed`` endpoint."""
+    model = model.strip()
+    base_url = base_url.rstrip("/")
     url = base_url.rstrip("/") + "/api/embed"
 
     def _embed(text: str) -> list[float]:
@@ -257,6 +259,8 @@ def openai_embedder(
         raise ValueError(
             "openai embedder needs MNEMOSIS_EMBEDDING_API_KEY or api_key=..."
         )
+    model = model.strip()
+    base_url = base_url.rstrip("/")
     url = base_url.rstrip("/") + "/embeddings"
 
     def _embed(text: str) -> list[float]:
