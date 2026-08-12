@@ -70,6 +70,14 @@ remote API is never called for hundreds of texts per query.
 _RERANK_SCORE_GAP = 0.10
 """Dense re-rank stops after the first adjacent score gap above this."""
 
+_RERANK_SCORE_GAP_RATIO = 0.30
+"""The gap must also exceed 30% of the previous score to count as a cliff.
+
+An absolute gap of 0.10 means very different things at score 0.9 vs 0.25;
+requiring the relative drop too stops low-score regions from being
+over-cut.
+"""
+
 _RERANK_MIN_POOL = 4
 """Minimum lexical candidates embedded despite the score cliff.
 
@@ -714,7 +722,11 @@ class DualTrackStore:
                 cutoff = 1
                 previous = top_score
                 for entry in lexical_hits[1:]:
-                    if previous - entry[0] > _RERANK_SCORE_GAP:
+                    gap = previous - entry[0]
+                    if (
+                        gap > _RERANK_SCORE_GAP
+                        and gap > previous * _RERANK_SCORE_GAP_RATIO
+                    ):
                         break
                     previous = entry[0]
                     cutoff += 1

@@ -512,6 +512,39 @@ class MemoryEngineTest(unittest.TestCase):
         # Scores are nearly identical (no cliff), so all 16 are embedded.
         self.assertEqual(remote.calls, 17)
 
+    def test_rerank_low_score_region_is_not_over_cut(self):
+        """A small absolute gap in a low-score region is not a cliff."""
+
+        class _RemoteEmbedder(Embedder):
+            remote = True
+
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def embed(self, text: str) -> list[float]:
+                self.calls += 1
+                return [1.0, 0.0, 0.0]
+
+        remote = _RemoteEmbedder()
+        engine = MemoryEngine(
+            embedder=remote,
+            dense_rerank_candidates=20,
+            zero_hit_rerank_pool=20,
+        )
+        source = SourceRecord(origin=SourceType.USER)
+        for index in range(16):
+            engine.remember(
+                f"alpha beta low score {index}",
+                kind=MemoryKind.EPISODIC,
+                source=source,
+                importance=0.01,
+                strength=0.1,
+                auto_cues=False,
+            )
+        engine.recall("alpha beta", top_k=3)
+        # gap ~0.03 absolute but <30% relative -> no cliff, all embedded.
+        self.assertEqual(remote.calls, 17)
+
     def test_remember_many_embeds_in_one_batch_call(self):
         embedder = _BatchCountingEmbedder()
         engine = MemoryEngine(
