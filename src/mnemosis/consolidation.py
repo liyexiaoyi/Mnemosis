@@ -144,8 +144,6 @@ class Consolidator:
         now = now or utcnow()
         total_before = self.backend.count()
         replayed = self._replay_recent(now)
-        initial_semantic = self.store.all_active(MemoryKind.SEMANTIC)
-        weak_replayed = self._replay_weak_important(now, initial_semantic)
         # Load the episodic store once and share it across the phases that
         # scan it; each phase filters ACTIVE status in memory, which matches
         # the fresh-load semantics while avoiding ~5 full SQLite loads.
@@ -157,6 +155,10 @@ class Consolidator:
         # facts participate in conflict detection, accommodation and
         # reflection without three separate full-store loads.
         semantic_items = self.store.all_active(MemoryKind.SEMANTIC)
+        # Weak replay runs on the post-promotion snapshot: after merge and
+        # promotion the semantic store is final, so only one semantic load
+        # is needed for the whole sleep cycle.
+        weak_replayed = self._replay_weak_important(now, semantic_items)
         conflicts = self.detect_conflicts(semantic_items)
         rem_links, rem_resolved = self._rem_phase(now, conflicts, episodes)
         emotion_boosted, emotion_links = self._emotion_phase(now, episodes)

@@ -9,14 +9,17 @@ from __future__ import annotations
 from .backend import Backend
 from .types import MemoryItem
 
-_LINK_CUE_BUCKET_LIMIT = 500
-"""Cues shared by more items than this are skipped during batch linking.
 
-Auto-extracted cues like 用户/购买 appear in tens of thousands of memories;
-iterating them per item would turn batch ingestion into ~10^10 iterations
-at 100k scale. As in REM consolidation, only cues with real
-discriminative power participate in the association graph.
-"""
+def _cue_bucket_limit(pool_size: int) -> int:
+    """Adaptive generic-cue threshold for batch linking (~1% of the store).
+
+    Auto-extracted cues like 用户/购买 appear in tens of thousands of
+    memories; iterating them per item would turn batch ingestion into
+    ~10^10 iterations at 100k scale. The threshold scales with the store
+    (10k -> 200, 50k -> 500, 100k -> 1000) so small stores filter mid-freq
+    noise and large stores keep locally discriminative cues.
+    """
+    return max(200, pool_size // 100)
 
 
 class AssociationIndex:
@@ -76,9 +79,10 @@ class AssociationIndex:
             for cue in item.cues:
                 cue_freq[cue] = cue_freq.get(cue, 0) + 1
         cue_map: dict[str, list[MemoryItem]] = {}
+        limit = _cue_bucket_limit(len(pool))
         for item in pool:
             for cue in item.cues:
-                if cue_freq.get(cue, 0) > _LINK_CUE_BUCKET_LIMIT:
+                if cue_freq.get(cue, 0) > limit:
                     continue
                 cue_map.setdefault(cue, []).append(item)
         edge_set: set[tuple[str, str, float]] = set()
