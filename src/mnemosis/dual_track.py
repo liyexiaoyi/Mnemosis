@@ -771,15 +771,16 @@ class DualTrackStore:
                 embedder_key = (
                     f"{type(embedder).__module__}.{type(embedder).__name__}"
                 )
+                cache_updates = {
+                    (
+                        item.content_hash,
+                        embedder_key,
+                        getattr(embedder, "cache_key", ""),
+                    ): vector
+                    for item, vector in zip(rerank_items, vectors)
+                }
                 with self._lock:
-                    for item, vector in zip(rerank_items, vectors):
-                        self._embed_cache[
-                            (
-                                item.content_hash,
-                                embedder_key,
-                                getattr(embedder, "cache_key", ""),
-                            )
-                        ] = vector
+                    self._embed_cache.update(cache_updates)
                 vector_by_id = {
                     item.id: vector
                     for item, vector in zip(rerank_items, vectors)
