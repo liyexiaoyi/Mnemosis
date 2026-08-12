@@ -13,7 +13,13 @@ from datetime import datetime, timezone
 
 from mnemosis import MemoryEngine
 from mnemosis.backend import SQLiteBackend, _row_to_item
-from mnemosis.types import MemoryItem, MemoryKind, SourceRecord, SourceType
+from mnemosis.types import (
+    MemoryItem,
+    MemoryKind,
+    MemoryStatus,
+    SourceRecord,
+    SourceType,
+)
 
 
 class SQLiteBackendTest(unittest.TestCase):
@@ -158,6 +164,76 @@ class SQLiteBackendTest(unittest.TestCase):
             ).fetchall()
         }
         self.assertIn("idx_memories_status_seq", indexes)
+
+    def test_core_query_plans_use_indexes(self):
+        backend = SQLiteBackend(":memory:")
+        try:
+            # Seed enough rows with mixed statuses so the planner has real
+            # selectivity statistics (80 active / 20 recycled) instead of
+            # empty-table heuristics that differ across SQLite builds.
+            stored: list[MemoryItem] = []
+            for index in range(100):
+                status = (
+                    MemoryStatus.ACTIVE
+                    if index < 80
+                    else MemoryStatus.RECYCLED
+                )
+                item = MemoryItem(
+                    content=f"seed memory {index} alpha beta",
+                    kind=MemoryKind.EPISODIC,
+                    source=SourceRecord(origin=SourceType.USER),
+                    cues=["alpha", "beta"],
+                    importance=0.5 + (index % 10) * 0.05,
+                    status=status,
+                )
+                backend.add(item)
+                backend.add_cues(item.id, item.cues)
+                backend.index_terms(
+                    item.id, frozenset(["alpha", "beta"]), item.kind
+                )
+                stored.append(item)
+            backend.add_link(stored[0].id, stored[1].id, 1.0)
+            backend.add_link(stored[1].id, stored[0].id, 1.0)
+            backend._conn.execute("ANALYZE")
+            plans = backend.audit_query_plans()
+            self.assertIn("USING INDEX", plans["get_many"])
+            self.assertIn(
+                "sqlite_autoindex_memories_1",
+                plans["get_many"],
+            )
+            self.assertNotIn(
+                "idx_memories_status_importance", plans["get_many"]
+            )
+            self.assertNotIn("SCAN m", plans["get_many"])
+            self.assertIn("USING INDEX", plans["get_many_long"])
+            self.assertIn(
+                "sqlite_autoindex_memories_1",
+                plans["get_many_long"],
+            )
+            self.assertNotIn(
+                "idx_memories_status_importance",
+                plans["get_many_long"],
+            )
+            self.assertNotIn("SCAN m", plans["get_many_long"])
+            self.assertIn("idx_memories_status_seq", plans["list_recent"])
+            self.assertNotIn("SCAN", plans["list_recent"])
+            self.assertIn(
+                "idx_memories_status_importance", plans["list_strongest"]
+            )
+            self.assertNotIn("SCAN", plans["list_strongest"])
+            self.assertIn("sqlite_autoindex_cues_1", plans["find_by_cue"])
+            self.assertIn(
+                "sqlite_autoindex_terms_1", plans["find_by_terms"]
+            )
+            self.assertIn("sqlite_autoindex_terms_1", plans["term_df"])
+            self.assertIn(
+                "sqlite_autoindex_links_1", plans["related_links"]
+            )
+            self.assertIn(
+                "sqlite_autoindex_memories_1", plans["related_memories"]
+            )
+        finally:
+            backend.close()
 
     def test_persistence_across_reopen(self):
         self.remember("The password hint is 'blue whale'.", cues=["password"])

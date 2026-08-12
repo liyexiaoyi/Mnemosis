@@ -908,6 +908,11 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
         stats = self.backend.stats()
         stats["trash"] = len(self.recycle.list_trash())
         stats["review_due"] = len(self.review_due(limit=1000))
+        stats["fallback_cache"] = (
+            self.store.fallback_cache_stats()
+            if hasattr(self.store, "fallback_cache_stats")
+            else {}
+        )
         return stats
 
     def calibrate_decay_rate(

@@ -185,6 +185,9 @@ class DualTrackStore:
         self._fallback_cache: OrderedDict[
             tuple, tuple[float, dict]
         ] = OrderedDict()
+        self.fallback_cache_hits = 0
+        self.fallback_cache_misses = 0
+        self.fallback_cache_evictions = 0
         self._inverted: dict[str, dict[str, set[str]]] = {}
         self._df_cache: dict[tuple[str, MemoryKind | None], int] = {}
         self._lock = threading.RLock()
@@ -1604,11 +1607,14 @@ class DualTrackStore:
         with self._lock:
             entry = self._fallback_cache.get(key)
             if entry is None:
+                self.fallback_cache_misses += 1
                 return None
             expires_at, payload = entry
             if expires_at <= time.monotonic():
                 del self._fallback_cache[key]
+                self.fallback_cache_misses += 1
                 return None
+            self.fallback_cache_hits += 1
             return payload
 
     def _fallback_cache_store(self, key: tuple, payload: dict) -> None:
@@ -1619,11 +1625,29 @@ class DualTrackStore:
             )
             while len(self._fallback_cache) > self.fallback_cache_size:
                 self._fallback_cache.popitem(last=False)
+                self.fallback_cache_evictions += 1
 
     def invalidate_fallback_cache(self) -> None:
         """Drop cached fallback results after any memory mutation."""
         with self._lock:
             self._fallback_cache.clear()
+
+    def fallback_cache_stats(self) -> dict:
+        """Hit/miss counters and capacity for observability."""
+        with self._lock:
+            total = self.fallback_cache_hits + self.fallback_cache_misses
+            hit_rate = (
+                self.fallback_cache_hits / total if total > 0 else 0.0
+            )
+            return {
+                "hits": self.fallback_cache_hits,
+                "misses": self.fallback_cache_misses,
+                "hit_rate": round(hit_rate, 4),
+                "evictions": self.fallback_cache_evictions,
+                "entries": len(self._fallback_cache),
+                "size_limit": self.fallback_cache_size,
+                "ttl_seconds": self.fallback_cache_ttl,
+            }
 
     def _rebuild_cached_fallback(
         self,

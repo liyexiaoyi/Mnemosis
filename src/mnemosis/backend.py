@@ -766,19 +766,21 @@ class SQLiteBackend(Backend):
 
     @_locked
     def get_many(self, memory_ids: Iterable[str]) -> list[MemoryItem]:
-        ids = list(memory_ids)
+        # Dedupe while preserving order; VALUES rows would otherwise repeat
+        # when a caller passes the same id twice.
+        ids = list(dict.fromkeys(memory_ids))
         if not ids:
             return []
         items: list[MemoryItem] = []
         for start in range(0, len(ids), 500):
             chunk = ids[start : start + 500]
-            placeholders = ",".join("?" for _ in chunk)
+            # A long `id IN (...)` list can make SQLite scan the table on
+            # small stores and after ANALYZE; a VALUES CTE join always
+            # resolves through the primary key index.
+            placeholders = "),(".join("?" for _ in chunk)
             rows = self._conn.execute(
-                # id is the primary key; adding a status filter here makes
-                # SQLite pick the (status, importance) index and scan every
-                # active row (~30ms at 50k instead of ~0.02ms). Filter in
-                # Python instead, keeping the exact active-only contract.
-                f"SELECT * FROM memories WHERE id IN ({placeholders})",
+                "WITH cte(id) AS (VALUES (" + placeholders + ")) "
+                "SELECT m.* FROM memories m JOIN cte ON m.id = cte.id",
                 tuple(chunk),
             ).fetchall()
             items.extend(
@@ -1209,6 +1211,69 @@ class SQLiteBackend(Backend):
             [*frontier, max_nodes],
         ).fetchall()
         return [_row_to_item(r) for r in rows]
+
+    def query_plan(self, sql: str, params: tuple = ()) -> str:
+        """EXPLAIN QUERY PLAN summary, used by the CI planner audit."""
+        rows = self._conn.execute(
+            "EXPLAIN QUERY PLAN " + sql, params
+        ).fetchall()
+        return " | ".join(row[3] or "" for row in rows)
+
+    def audit_query_plans(self) -> dict[str, str]:
+        """Run EXPLAIN QUERY PLAN over the core hot-path queries.
+
+        CI asserts that each one still uses its intended index; this guards
+        against silent planner regressions (e.g. the get_many status-filter
+        scan that appeared once the memories table passed ~10k rows).
+        """
+        return {
+            "get_many": self.query_plan(
+                "WITH cte(id) AS (VALUES (?), (?)) "
+                "SELECT m.* FROM memories m JOIN cte ON m.id = cte.id",
+                ("a", "b"),
+            ),
+            "get_many_long": self.query_plan(
+                "WITH cte(id) AS (VALUES ("
+                + "),(".join("?" for _ in range(50))
+                + ")) SELECT m.* FROM memories m JOIN cte ON m.id = cte.id",
+                tuple(f"id{i}" for i in range(50)),
+            ),
+            "list_recent": self.query_plan(
+                "SELECT * FROM memories WHERE status = ? "
+                "ORDER BY seq DESC LIMIT ?",
+                ("active", 10),
+            ),
+            "list_strongest": self.query_plan(
+                "SELECT * FROM memories WHERE status = ? "
+                "ORDER BY importance DESC LIMIT ?",
+                ("active", 10),
+            ),
+            "find_by_cue": self.query_plan(
+                "SELECT m.* FROM cues c JOIN memories m "
+                "ON m.id = c.memory_id WHERE c.cue = ? AND m.status = ?",
+                ("cue", "active"),
+            ),
+            "find_by_terms": self.query_plan(
+                "SELECT DISTINCT m.id FROM terms t JOIN memories m "
+                "ON m.id = t.memory_id WHERE t.term = ? AND m.status = ? "
+                "LIMIT 10",
+                ("term", "active"),
+            ),
+            "term_df": self.query_plan(
+                "SELECT COUNT(*) FROM terms t JOIN memories m "
+                "ON m.id = t.memory_id WHERE t.term = ? AND m.status = ?",
+                ("term", "active"),
+            ),
+            "related_links": self.query_plan(
+                "SELECT dst FROM links WHERE src IN (?)",
+                ("a",),
+            ),
+            "related_memories": self.query_plan(
+                "SELECT * FROM memories WHERE id IN (?) "
+                "ORDER BY seq, content LIMIT ?",
+                ("a", 20),
+            ),
+        }
 
     @_locked
     def stats(self) -> dict:

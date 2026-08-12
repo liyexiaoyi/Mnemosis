@@ -480,6 +480,48 @@ class MemoryEngineTest(unittest.TestCase):
         # Lexical-hit queries are never served from the fallback cache.
         self.assertGreater(counting.calls, calls_after_first)
 
+    def test_fallback_cache_stats_are_exposed(self):
+        engine = MemoryEngine(fallback_cache_ttl=60)
+        source = SourceRecord(origin=SourceType.USER)
+        for index in range(10):
+            engine.remember(
+                f"stats cache record {index}",
+                kind=MemoryKind.EPISODIC,
+                source=source,
+                auto_cues=False,
+            )
+        engine.recall("zzzz no hits", top_k=3)  # miss -> stored
+        engine.recall("zzzz no hits", top_k=3)  # hit
+        engine.remember(
+            "stats new record",
+            kind=MemoryKind.EPISODIC,
+            source=source,
+            auto_cues=False,
+        )
+        engine.recall("zzzz no hits", top_k=3)  # miss again
+        stats = engine.stats()["fallback_cache"]
+        self.assertGreaterEqual(stats["hits"], 1)
+        self.assertGreaterEqual(stats["misses"], 2)
+        self.assertGreaterEqual(stats["entries"], 1)
+        self.assertEqual(stats["size_limit"], 32)
+        self.assertEqual(stats["ttl_seconds"], 60)
+        self.assertGreater(stats["hit_rate"], 0.0)
+        self.assertLessEqual(stats["hit_rate"], 1.0)
+        tiny = MemoryEngine(fallback_cache_ttl=60, fallback_cache_size=1)
+        source2 = SourceRecord(origin=SourceType.USER)
+        for index in range(5):
+            tiny.remember(
+                f"evict record {index}",
+                kind=MemoryKind.EPISODIC,
+                source=source2,
+                auto_cues=False,
+            )
+        tiny.recall("zzzz query one", top_k=3)
+        tiny.recall("zzzz query two", top_k=3)
+        self.assertGreaterEqual(
+            tiny.stats()["fallback_cache"]["evictions"], 1
+        )
+
     def test_rerank_pool_params_are_configurable(self):
         class _CountingEmbedder(Embedder):
             def __init__(self) -> None:
