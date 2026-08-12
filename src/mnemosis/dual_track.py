@@ -67,6 +67,15 @@ network-backed embedders fall back to ``_DENSE_RERANK_CANDIDATES`` so a
 remote API is never called for hundreds of texts per query.
 """
 
+_RERANK_EARLY_TERMINATE_RATIO = 0.5
+"""Lexical-score floor for the dense re-rank pool.
+
+Candidates whose lexical score falls below half of the top score sit on a
+clear score cliff and carry little retrieval signal; embedding them wastes
+remote API calls, so the pool is cut off there (the zero-budget paraphrase
+rescue still applies).
+"""
+
 _EN_SYNONYMS: dict[str, tuple[str, ...]] = {
     "spent": ("cost", "paid", "bought", "spending"),
     "money": ("cost", "amount", "price", "payment"),
@@ -695,8 +704,20 @@ class DualTrackStore:
                 zero_budget = min(
                     16, len(scored) - len(lexical_hits)
                 )
+                # Early termination: stop embedding once the lexical score
+                # decays below a fraction of the top candidate.
+                top_score = lexical_hits[0][0]
+                threshold = top_score * _RERANK_EARLY_TERMINATE_RATIO
+                cutoff = 0
+                for entry in lexical_hits:
+                    if entry[0] < threshold:
+                        break
+                    cutoff += 1
                 pool = lexical_hits[
-                    : self.dense_rerank_candidates - zero_budget
+                    : min(
+                        cutoff,
+                        self.dense_rerank_candidates - zero_budget,
+                    )
                 ]
                 if zero_budget > 0:
                     pool = pool + [

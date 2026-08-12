@@ -399,6 +399,47 @@ class MemoryEngineTest(unittest.TestCase):
         engine.recall("zzzz", top_k=3)
         self.assertLessEqual(counting.calls, 11)  # query + 10-candidate pool
 
+    def test_rerank_pool_early_terminates_on_score_cliff(self):
+        """Remote embedders stop embedding once lexical scores drop sharply."""
+
+        class _RemoteEmbedder(Embedder):
+            remote = True
+
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def embed(self, text: str) -> list[float]:
+                self.calls += 1
+                return [1.0, 0.0, 0.0]
+
+        remote = _RemoteEmbedder()
+        engine = MemoryEngine(
+            embedder=remote,
+            dense_rerank_candidates=20,
+            zero_hit_rerank_pool=20,
+        )
+        source = SourceRecord(origin=SourceType.USER)
+        engine.remember(
+            "alpha beta strong",
+            kind=MemoryKind.EPISODIC,
+            source=source,
+            importance=1.0,
+            auto_cues=False,
+        )
+        for index in range(15):
+            engine.remember(
+                "alpha " + "filler word " * 15 + f"weak {index}",
+                kind=MemoryKind.EPISODIC,
+                source=source,
+                importance=0.05,
+                strength=0.1,
+                auto_cues=False,
+            )
+        engine.recall("alpha beta", top_k=3)
+        # query + the strong top candidate only (weak tail below the 0.5
+        # score cliff), instead of embedding all 16 candidates.
+        self.assertLessEqual(remote.calls, 3)
+
     def test_remember_many_embeds_in_one_batch_call(self):
         embedder = _BatchCountingEmbedder()
         engine = MemoryEngine(
