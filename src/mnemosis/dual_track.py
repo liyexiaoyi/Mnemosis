@@ -825,6 +825,7 @@ class DualTrackStore:
             expansion_discount,
             max_expansion_roots,
             max_expansion_neighbors,
+            fallback_mode=fallback_mode,
         )
         if event_chain is not None:
             self._follow_event_chain(
@@ -1016,6 +1017,7 @@ class DualTrackStore:
                     suppression_min_cues,
                     suppression_floor,
                     query_terms,
+                    fallback_mode=fallback_mode,
                 )
         return results
 
@@ -1182,7 +1184,11 @@ class DualTrackStore:
         for score, _, item, _, _ in roots:
             root_cues = set(item.cues)
             for linked in self.backend.related(
-                item.id, depth=1, max_nodes=1000
+                # Loading 1000 neighbours to use 8 is wasted JSON decoding;
+                # both orders are by seq/content, so the first 8 are identical.
+                item.id,
+                depth=1,
+                max_nodes=max(64, max_neighbors * 4),
             )[:max_neighbors]:
                 if self.backend.link_weight(item.id, linked.id) < link_weight_min:
                     continue
@@ -1416,6 +1422,7 @@ class DualTrackStore:
         discount: float,
         max_roots: int,
         max_neighbors: int,
+        fallback_mode: bool = False,
     ) -> None:
         """Spreading activation over the association graph (HippoRAG-style).
 
@@ -1423,6 +1430,11 @@ class DualTrackStore:
         so "what did Alice do after X?" can surface the chronologically next
         event even when it shares no words with the query.
         """
+        if fallback_mode:
+            # Zero-hit queries have no lexical anchor: spreading activation
+            # over recent/strongest fallback items only adds noise and costs
+            # 5-6 graph traversals per recall.
+            return
         roots = [entry for entry in scored[:max_roots] if entry[4]]
         if not roots:
             return
@@ -1478,6 +1490,9 @@ class DualTrackStore:
         min_shared_cues: int,
         floor: float,
         query_terms: set[str],
+        *,
+        fallback_mode: bool = False,
+        max_suppressed: int = 12,
     ) -> None:
         """Retrieval-induced forgetting (Anderson, Bjork & Bjork, 1994).
 
@@ -1486,6 +1501,12 @@ class DualTrackStore:
         strength. This mirrors RIF's category-competitor effect instead of
         punishing everything loosely related.
         """
+        if fallback_mode:
+            # A generic/zero-hit query carries no discriminative signal, so
+            # it must not trigger retrieval-induced forgetting across a wide
+            # set of loosely related traces (and the 100+ SQLite updates it
+            # would otherwise cause).
+            return
         selected = {item.id for item in items}
         suppressed: set[str] = set()
         for item in items:
@@ -1502,6 +1523,8 @@ class DualTrackStore:
                 )
                 self.backend.update(linked)
                 suppressed.add(linked.id)
+                if len(suppressed) >= max_suppressed:
+                    return
 
     def recent(
         self, kind: MemoryKind | None = None, limit: int = 10

@@ -744,6 +744,60 @@ class CognitionTest(unittest.TestCase):
         self.assertLess(refreshed.strength, strength_before)
         self.assertAlmostEqual(refreshed.strength, strength_before - 0.05)
 
+    def test_suppression_skipped_for_fallback_queries(self):
+        target = self.remember(
+            "The user likes coffee.",
+            cues=["coffee", "user"],
+        )
+        rival = self.remember(
+            "The user likes tea.",
+            cues=["coffee", "user"],
+        )
+        self.engine.store.backend.add_link(target.id, rival.id, 1.0)
+        self.engine.store.backend.add_link(rival.id, target.id, 1.0)
+        strength_before = rival.strength
+        self.engine.store._suppress_linked_rivals(
+            [target],
+            0.05,
+            2,
+            0.7,
+            {"coffee"},
+            fallback_mode=True,
+        )
+        refreshed = self.engine.backend.get(rival.id)
+        self.assertEqual(refreshed.strength, strength_before)
+
+    def test_suppression_caps_number_of_rivals(self):
+        target = self.remember(
+            "The user likes coffee.",
+            cues=["coffee", "user"],
+        )
+        rivals = [
+            self.remember(
+                f"The user likes tea variant {index}.",
+                cues=["coffee", "user"],
+            )
+            for index in range(15)
+        ]
+        for rival in rivals:
+            self.engine.store.backend.add_link(target.id, rival.id, 1.0)
+        before = {rival.id: rival.strength for rival in rivals}
+        self.engine.store._suppress_linked_rivals(
+            [target],
+            0.05,
+            2,
+            0.7,
+            {"coffee"},
+            max_suppressed=8,
+        )
+        suppressed = sum(
+            1
+            for rival in rivals
+            if self.engine.backend.get(rival.id).strength < before[rival.id]
+        )
+        self.assertGreaterEqual(suppressed, 1)
+        self.assertLessEqual(suppressed, 8)
+
     def test_blocked_retrieval_detection(self):
         blocked = self.remember(
             "An unrelated topic paragraph.",

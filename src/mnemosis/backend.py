@@ -1196,10 +1196,11 @@ class SQLiteBackend(Backend):
             f"""
             SELECT * FROM memories WHERE id IN ({placeholders})
             ORDER BY seq, content
+            LIMIT ?
             """,
-            list(frontier),
+            [*frontier, max_nodes],
         ).fetchall()
-        return [_row_to_item(r) for r in rows][:max_nodes]
+        return [_row_to_item(r) for r in rows]
 
     @_locked
     def stats(self) -> dict:
