@@ -149,6 +149,16 @@ class SQLiteBackendTest(unittest.TestCase):
             self.assertTrue(hasattr(item, field.name), field.name)
         self.assertEqual(item.content, "fast path field check")
 
+    def test_new_database_has_status_seq_index(self):
+        """A brand-new store must also get the recency-fallback index."""
+        indexes = {
+            row[1]
+            for row in self.engine.backend._conn.execute(
+                "PRAGMA index_list(memories)"
+            ).fetchall()
+        }
+        self.assertIn("idx_memories_status_seq", indexes)
+
     def test_persistence_across_reopen(self):
         self.remember("The password hint is 'blue whale'.", cues=["password"])
         self.engine.close()
