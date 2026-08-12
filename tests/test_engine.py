@@ -370,6 +370,35 @@ class MemoryEngineTest(unittest.TestCase):
         engine.recall("zzzz no hits", top_k=5)
         self.assertLessEqual(remote.calls, 65)  # query + capped re-rank pool
 
+    def test_rerank_pool_params_are_configurable(self):
+        class _CountingEmbedder(Embedder):
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def embed(self, text: str) -> list[float]:
+                self.calls += 1
+                return [1.0, 0.0, 0.0]
+
+        counting = _CountingEmbedder()
+        engine = MemoryEngine(
+            embedder=counting,
+            dense_rerank_candidates=4,
+            zero_hit_rerank_pool=10,
+        )
+        source = SourceRecord(origin=SourceType.USER)
+        for index in range(30):
+            engine.remember(
+                f"alpha record {index}",
+                kind=MemoryKind.EPISODIC,
+                source=source,
+                auto_cues=False,
+            )
+        engine.recall("alpha", top_k=3)
+        self.assertLessEqual(counting.calls, 5)  # query + 4-candidate pool
+        counting.calls = 0
+        engine.recall("zzzz", top_k=3)
+        self.assertLessEqual(counting.calls, 11)  # query + 10-candidate pool
+
     def test_remember_many_embeds_in_one_batch_call(self):
         embedder = _BatchCountingEmbedder()
         engine = MemoryEngine(

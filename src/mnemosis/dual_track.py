@@ -137,10 +137,15 @@ class DualTrackStore:
         backend: Backend,
         curve: ForgettingCurve,
         scorer: ImportanceScorer,
+        *,
+        dense_rerank_candidates: int = _DENSE_RERANK_CANDIDATES,
+        zero_hit_rerank_pool: int = _MAX_ZERO_HIT_RERANK_POOL,
     ) -> None:
         self.backend = backend
         self.curve = curve
         self.scorer = scorer
+        self.dense_rerank_candidates = max(1, int(dense_rerank_candidates))
+        self.zero_hit_rerank_pool = max(1, int(zero_hit_rerank_pool))
         self._term_cache: dict[tuple, frozenset[str]] = {}
         self._embed_cache: dict[str, list[float]] = {}
         self._inverted: dict[str, dict[str, set[str]]] = {}
@@ -691,7 +696,7 @@ class DualTrackStore:
                     16, len(scored) - len(lexical_hits)
                 )
                 pool = lexical_hits[
-                    : _DENSE_RERANK_CANDIDATES - zero_budget
+                    : self.dense_rerank_candidates - zero_budget
                 ]
                 if zero_budget > 0:
                     pool = pool + [
@@ -705,9 +710,9 @@ class DualTrackStore:
                 # score ranked it beyond the first 64.
                 pool = scored[
                     : (
-                        _MAX_ZERO_HIT_RERANK_POOL
+                        self.zero_hit_rerank_pool
                         if not getattr(embedder, "remote", False)
-                        else _DENSE_RERANK_CANDIDATES
+                        else self.dense_rerank_candidates
                     )
                 ]
             rerank_ids = {entry[2].id for entry in pool}

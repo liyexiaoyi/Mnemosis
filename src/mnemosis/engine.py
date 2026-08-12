@@ -67,6 +67,8 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
         embedder: Embedder | None = None,
         vector_index=None,
         index_embedder: Embedder | None = None,
+        dense_rerank_candidates: int = 64,
+        zero_hit_rerank_pool: int = 200,
     ) -> None:
         self.backend: Backend = make_backend(memory_file)
         if decay_rate is None:
@@ -81,7 +83,13 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
         self.embedder = embedder
         self.vector_index = vector_index
         self.index_embedder = index_embedder
-        self.store = DualTrackStore(self.backend, self.curve, self.scorer)
+        self.store = DualTrackStore(
+            self.backend,
+            self.curve,
+            self.scorer,
+            dense_rerank_candidates=dense_rerank_candidates,
+            zero_hit_rerank_pool=zero_hit_rerank_pool,
+        )
         self.associations = AssociationIndex(self.backend)
         self.event_chain = EventChainIndex(self.backend)
         self.consolidator = Consolidator(self.store, self.backend)
