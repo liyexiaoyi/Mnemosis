@@ -29,6 +29,7 @@ from .dual_track import (
     DualTrackStore,
 )
 from .embedding import Embedder
+from .explanation_mixin import ExplanationMixin
 from .forgetting import ForgettingCurve, ReviewScheduler
 from .importance import ImportanceScorer
 from .learning_mixin import LearningSessionMixin
@@ -74,6 +75,7 @@ class MemoryEngine(
     AffectiveMixin,
     CognitiveMixin,
     OverviewMixin,
+    ExplanationMixin,
 ):
     """The one thing most users touch.
 

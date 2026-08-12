@@ -3,7 +3,7 @@
 Mnemosis 是一个零依赖的 Python 记忆层：公开入口是 `mnemosis.MemoryEngine`，
 其余都是可替换的组件。核心规则是 `stdlib`-only（不引入第三方运行时依赖）。
 
-核心业务模块共 **33 个**（另有 `__init__.py` / `__main__.py` 两个入口文件），
+核心业务模块共 **34 个**（另有 `__init__.py` / `__main__.py` 两个入口文件），
 按职责分组如下。
 
 ## 模块一览
@@ -62,6 +62,7 @@ Mnemosis 是一个零依赖的 Python 记忆层：公开入口是 `mnemosis.Memo
 | `affective_mixin.py` | 情绪侧报告：情绪建议、睡眠推断、情绪记忆分析 |
 | `cognitive_mixin.py` | 认知策略：反刍检查、注意力过滤、类比桥接、夜间例程、目标进展 |
 | `overview_mixin.py` | 概况画像：记忆健康评分、记忆地图、知识图谱导出、学习者画像、上下文打包、编码质量 |
+| `explanation_mixin.py` | 解释与报告：单条记忆解释、双条对比、聚类摘要、多跳关联、考前突击计划、会话总结 |
 ### 分析与元认知
 
 | 模块 | 职责 |
@@ -88,6 +89,7 @@ flowchart LR
     E --> VM[ReviewMixin]
     E --> AM[AnalysisMixin]
     E --> OM[OverviewMixin]
+    E --> EM[ExplanationMixin]
     RM --> DT[DualTrackStore]
     PM --> DT
     VM --> C[Consolidator]
