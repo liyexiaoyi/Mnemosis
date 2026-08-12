@@ -36,6 +36,12 @@ _WRITE_BATCH = 2_000
 """Rows per transaction in add_many/add_cues_many: a single giant insert
 can hold the write lock for seconds during large imports."""
 
+_LINKS_CHUNK = 50_000
+"""Rows per transaction in add_links_many outside bulk mode."""
+
+_LINKS_BULK_CHUNK = 100_000
+"""Rows per transaction in add_links_many during bulk import."""
+
 
 def _locked(method):
     """Serialize a backend method on the instance lock (reentrant)."""
@@ -1395,8 +1401,18 @@ class SQLiteBackend(Backend):
             for src, dst, weight in pairs
             if src != dst
         )
+        # Bulk mode (deferred term index, big page cache, synchronous=OFF)
+        # is single-process import only: a 100k-row transaction adds only
+        # ~10-20MB of WAL and rolls back cheaply, but halves the number of
+        # commits versus 50k. Normal mode (sleep consolidation etc.) keeps
+        # the smaller chunk so write-lock holds stay short.
+        chunk_size = (
+            _LINKS_BULK_CHUNK
+            if self._bulk_terms_index_deferred
+            else _LINKS_CHUNK
+        )
         while True:
-            chunk = list(islice(rows, 50_000))
+            chunk = list(islice(rows, chunk_size))
             if not chunk:
                 return
             # Sort by the PK (src, dst) so B-tree inserts stream in page
