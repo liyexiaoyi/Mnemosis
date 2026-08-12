@@ -669,6 +669,24 @@ class MemoryEngineTest(unittest.TestCase):
         finally:
             engine.close()
 
+    def test_post_sleep_warmup_populates_fallback_cache(self):
+        engine = MemoryEngine()
+        try:
+            source = SourceRecord(origin=SourceType.USER)
+            for index in range(5):
+                engine.remember(
+                    f"warm target {index}",
+                    kind=MemoryKind.EPISODIC,
+                    source=source,
+                    auto_cues=False,
+                )
+            engine._post_sleep_warmup(["zzz nosuch qqq"])
+            self.assertGreaterEqual(
+                len(engine.store._fallback_cache), 1
+            )
+        finally:
+            engine.close()
+
     def test_rerank_pool_params_are_configurable(self):
         class _CountingEmbedder(Embedder):
             def __init__(self) -> None:

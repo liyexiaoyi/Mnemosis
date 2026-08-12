@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import logging
 import math
+import threading
 from collections import defaultdict
 from datetime import datetime, timedelta
 
@@ -16,6 +18,8 @@ from .types import (
     SourceType,
     utcnow,
 )
+
+_LOG = logging.getLogger(__name__)
 
 
 class ReviewMixin:
@@ -965,7 +969,45 @@ class ReviewMixin:
         summarizer=None,
     ) -> ConsolidationReport:
         self.store.invalidate_fallback_cache()
-        return self.consolidator.sleep(now, summarizer=summarizer)
+        report = self.consolidator.sleep(now, summarizer=summarizer)
+        self._schedule_post_sleep_warmup()
+        return report
+
+    def _schedule_post_sleep_warmup(self) -> None:
+        """Warm caches/pages after sleep so the first user query is not a
+        cold miss (sleep can evict OS page cache and SQLite buffers)."""
+        try:
+            recent = self.store.recent(limit=20)
+        except Exception:  # noqa: BLE001
+            return
+        cues: list[str] = []
+        seen: set[str] = set()
+        for item in recent:
+            for cue in item.cues:
+                if cue not in seen:
+                    seen.add(cue)
+                    cues.append(cue)
+        if not cues:
+            return
+        threading.Thread(
+            target=self._post_sleep_warmup,
+            args=(cues,),
+            name="mnemosis-warmup",
+            daemon=True,
+        ).start()
+
+    def _post_sleep_warmup(self, cues: list[str]) -> None:
+        for cue in cues[:8]:
+            if getattr(self, "_closed", False):
+                break
+            try:
+                # reinforce=False: warm caches and pages without side-effect
+                # writes queued to the reinforcement worker.
+                self.store.recall(cue, top_k=3, reinforce=False)
+            except Exception:  # noqa: BLE001
+                _LOG.debug(
+                    "post-sleep warmup recall failed", exc_info=True
+                )
     def reflect(self, summarizer=None, now: datetime | None = None) -> list[MemoryItem]:
         """Rewrite evidence-backed semantic facts as an abstraction of their
         supporting episodes (reflection; Park et al., 2023)."""

@@ -1083,6 +1083,7 @@ class MemoryEngine(RetrievalMixin, PlanningMixin, ReviewMixin, AnalysisMixin):
         }
 
     def close(self) -> None:
+        self._closed = True
         self.store.shutdown_reinforce_worker()
         if hasattr(self.backend, "close"):
             self.backend.close()
