@@ -76,6 +76,14 @@ remote API calls, so the pool is cut off there (the zero-budget paraphrase
 rescue still applies).
 """
 
+_RERANK_MIN_POOL = 4
+"""Minimum lexical candidates embedded despite the score cliff.
+
+A relative threshold can over-cut when the top score is extreme (e.g. a
+very strong match next to paraphrase synonyms); keeping at least this many
+candidates bounds the recall loss.
+"""
+
 _EN_SYNONYMS: dict[str, tuple[str, ...]] = {
     "spent": ("cost", "paid", "bought", "spending"),
     "money": ("cost", "amount", "price", "payment"),
@@ -715,7 +723,7 @@ class DualTrackStore:
                     cutoff += 1
                 pool = lexical_hits[
                     : min(
-                        cutoff,
+                        max(_RERANK_MIN_POOL, cutoff),
                         self.dense_rerank_candidates - zero_budget,
                     )
                 ]

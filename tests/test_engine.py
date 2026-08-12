@@ -436,9 +436,49 @@ class MemoryEngineTest(unittest.TestCase):
                 auto_cues=False,
             )
         engine.recall("alpha beta", top_k=3)
-        # query + the strong top candidate only (weak tail below the 0.5
-        # score cliff), instead of embedding all 16 candidates.
-        self.assertLessEqual(remote.calls, 3)
+        # query + the minimum re-rank pool (4), NOT all 16 candidates.
+        self.assertLessEqual(remote.calls, 5)
+
+    def test_rerank_min_pool_prevents_over_cut(self):
+        """Even an extreme top score keeps at least 4 candidates embedded."""
+
+        class _RemoteEmbedder(Embedder):
+            remote = True
+
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def embed(self, text: str) -> list[float]:
+                self.calls += 1
+                return [1.0, 0.0, 0.0]
+
+        remote = _RemoteEmbedder()
+        engine = MemoryEngine(
+            embedder=remote,
+            dense_rerank_candidates=20,
+            zero_hit_rerank_pool=20,
+        )
+        source = SourceRecord(origin=SourceType.USER)
+        engine.remember(
+            "alpha beta gamma",
+            kind=MemoryKind.EPISODIC,
+            source=source,
+            importance=1.0,
+            auto_cues=False,
+        )
+        for index in range(15):
+            engine.remember(
+                "beta gamma " + "filler word " * 15 + f"paraphrase {index}",
+                kind=MemoryKind.EPISODIC,
+                source=source,
+                importance=0.05,
+                strength=0.1,
+                auto_cues=False,
+            )
+        engine.recall("alpha beta gamma", top_k=3)
+        # top score is extreme; without the min-pool the tail would be cut
+        # to 1 candidate, but the min pool keeps 4 (query + 4 calls).
+        self.assertEqual(remote.calls, 5)
 
     def test_remember_many_embeds_in_one_batch_call(self):
         embedder = _BatchCountingEmbedder()
