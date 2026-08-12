@@ -168,10 +168,16 @@ class DictBackend(Backend):
 
     @_locked
     def index_terms_many(
-        self, pairs: Iterable[tuple[str, Iterable[str], MemoryKind]]
+        self,
+        pairs: Iterable[tuple[str, Iterable[str], MemoryKind]],
+        *,
+        replace: bool = True,
     ) -> None:
         for memory_id, terms, kind in pairs:
-            self.index_terms(memory_id, terms, kind)
+            if replace:
+                self.remove_terms(memory_id)
+            for term in set(terms):
+                self._terms_index.setdefault(term, set()).add(memory_id)
 
     @_locked
     def get_setting(self, key: str, default: str | None = None) -> str | None:
@@ -848,6 +854,17 @@ class SQLiteBackend(Backend):
             self._conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_links_dst ON links(dst)"
             )
+        term_indexes = {
+            row[1]
+            for row in self._conn.execute(
+                "PRAGMA index_list('terms')"
+            ).fetchall()
+        }
+        if "idx_terms_memory" not in term_indexes:
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_terms_memory "
+                "ON terms(memory_id)"
+            )
         sync = self._conn.execute("PRAGMA synchronous").fetchone()[0]
         if sync != 1:
             self._conn.execute("PRAGMA synchronous=NORMAL")
@@ -864,11 +881,13 @@ class SQLiteBackend(Backend):
         dropped index until ``end_bulk_mode`` recreates it. Do NOT let
         another process/connection write to ``links`` while bulk mode is
         active: the missing reverse index slows it and the final index
-        rebuild needs the schema lock.
+        rebuild needs the schema lock. Semantic-heavy batches keep
+        replace=True and pay a scan on DELETE (see index_terms_many).
         """
         self._conn.execute("PRAGMA synchronous=OFF")
         self._conn.execute("PRAGMA cache_size=-80000")
         self._conn.execute("DROP INDEX IF EXISTS idx_links_dst")
+        self._conn.execute("DROP INDEX IF EXISTS idx_terms_memory")
 
     @_locked
     def end_bulk_mode(self) -> None:
@@ -876,6 +895,9 @@ class SQLiteBackend(Backend):
         checkpoint the WAL back into the main database file."""
         self._conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_links_dst ON links(dst)"
+        )
+        self._conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_terms_memory ON terms(memory_id)"
         )
         self._conn.execute("PRAGMA synchronous=NORMAL")
         self._conn.execute("PRAGMA cache_size=-20000")
@@ -965,7 +987,10 @@ class SQLiteBackend(Backend):
             self._term_pending = 0
 
     def index_terms_many(
-        self, pairs: Iterable[tuple[str, Iterable[str], MemoryKind]]
+        self,
+        pairs: Iterable[tuple[str, Iterable[str], MemoryKind]],
+        *,
+        replace: bool = True,
     ) -> None:
         """Rebuild term rows for many memories in one atomic transaction."""
         entries: list[tuple[str, str, str]] = []
@@ -983,18 +1008,31 @@ class SQLiteBackend(Backend):
         # Deletes are small and share one transaction; inserts commit every
         # 200k rows so the WAL stays bounded (a single multi-million-row
         # transaction can balloon to multiple GB before checkpointing).
-        with self._conn:
-            for start in range(0, len(ids), 500):
-                chunk = ids[start : start + 500]
-                placeholders = ",".join("?" for _ in chunk)
-                self._conn.execute(
-                    f"DELETE FROM terms WHERE memory_id IN ({placeholders})",
-                    tuple(chunk),
-                )
+        if replace:
+            # NOTE: in bulk mode idx_terms_memory is dropped for insert
+            # speed, so these DELETEs scan when a semantic batch is large.
+            # That is the intended trade-off: episodic imports
+            # (replace=False) skip them entirely, and semantic upserts are
+            # usually small.
+            with self._conn:
+                for start in range(0, len(ids), 500):
+                    chunk = ids[start : start + 500]
+                    placeholders = ",".join("?" for _ in chunk)
+                    self._conn.execute(
+                        "DELETE FROM terms "
+                        f"WHERE memory_id IN ({placeholders})",
+                        tuple(chunk),
+                    )
+        # Sorting by (term, memory_id) makes the PK B-tree append-ordered:
+        # 2M random-order rows churn pages, ordered rows stream in.
+        entries.sort(key=lambda row: (row[0], row[1]))
         for offset in range(0, len(entries), 200_000):
             with self._conn:
                 self._conn.executemany(
-                    "INSERT OR REPLACE INTO terms (term, memory_id, kind) "
+                    # OR IGNORE is cheaper than REPLACE and equivalent here:
+                    # the batch deletes its own ids first, and a memory's
+                    # kind never changes.
+                    "INSERT OR IGNORE INTO terms (term, memory_id, kind) "
                     "VALUES (?, ?, ?)",
                     entries[offset : offset + 200_000],
                 )

@@ -337,10 +337,12 @@ class DualTrackStore:
                 semantic_index += 1
             else:
                 stored.append(item)
-        self.backend.add_cues_many((item.id, item.cues) for item in stored)
         self.backend.index_terms_many(
-            (item.id, self._terms(item, cache=False), item.kind)
-            for item in stored
+            (
+                (item.id, self._terms(item, cache=False), item.kind)
+                for item in stored
+            ),
+            replace=bool(semantic),
         )
         self.invalidate_term_index()
         return stored

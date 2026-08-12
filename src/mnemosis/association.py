@@ -6,6 +6,8 @@ memory, and related memories are reachable from each other.
 
 from __future__ import annotations
 
+import heapq
+
 from .backend import Backend
 from .types import MemoryItem
 
@@ -177,23 +179,23 @@ class AssociationIndex:
                     self._batch_cue_map.pop(cue, None)
                     continue
                 bucket.append(item)
-            related_ids: set[str] = set()
+            candidates: dict[str, MemoryItem] = {}
             for cue in item.cues:
                 for other in self._batch_cue_map.get(cue, ()):
                     if other.id != item.id:
-                        related_ids.add(other.id)
-            related = [
-                self._batch_pool[rid]
-                for rid in related_ids
-                if rid in self._batch_pool
-            ]
-            related.sort(
-                key=lambda other: (other.seq, other.content),
-                reverse=True,
-            )
-            for other in related[:max_links]:
-                edge_set.add((item.id, other.id, weight))
-                edge_set.add((other.id, item.id, weight))
+                        candidates[other.id] = other
+            if candidates:
+                if len(candidates) > max_links:
+                    related = heapq.nlargest(
+                        max_links,
+                        candidates.values(),
+                        key=lambda other: (other.seq, other.content),
+                    )
+                else:
+                    related = list(candidates.values())
+                for other in related:
+                    edge_set.add((item.id, other.id, weight))
+                    edge_set.add((other.id, item.id, weight))
         return list(edge_set)
 
     def related(
