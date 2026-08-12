@@ -174,6 +174,7 @@ class TrendLogicTest(unittest.TestCase):
                 "ts": "2026-08-02T00:00:00+00:00",
                 "count": 100,
                 "best_ms": 1.0,
+                "p95_ms": 1.0,
             },
             {
                 "ts": "2026-08-02T00:00:00+00:00",
@@ -212,13 +213,27 @@ class TrendLogicTest(unittest.TestCase):
         self.assertIn("p95 ms", summary)
         self.assertIn("🔴 +1.00", summary)
         self.assertIn("🟢 -1.00", summary)
-        self.assertIn("| 100 | 2.00 | 🔴 +1.00 | 2.00 | 2.50 |", summary)
+        self.assertIn(
+            "| 100 | 2.00 | 🔴 +1.00 | 2.00 | 2.50 ⚠️ |", summary
+        )
 
     def test_percentile_nearest_rank(self):
         values = [float(index) for index in range(1, 11)]
         self.assertEqual(ci_perf._percentile(values, 50), 5.0)
         self.assertEqual(ci_perf._percentile(values, 95), 10.0)
         self.assertEqual(ci_perf._percentile(values, 99), 10.0)
+
+    def test_p95_warning_logic(self):
+        self.assertTrue(ci_perf._p95_warning(5.0, 1.0, 100))
+        self.assertFalse(ci_perf._p95_warning(2.2, 2.0, 100))
+        self.assertFalse(ci_perf._p95_warning(1.5, 1.0, 100))
+        self.assertFalse(ci_perf._p95_warning(3.0, None, 100))
+
+    def test_is_noisy(self):
+        self.assertFalse(ci_perf._is_noisy(2.0, 1.0, 2))
+        self.assertTrue(ci_perf._is_noisy(3.0, 1.0, 2))
+        self.assertTrue(ci_perf._is_noisy(1.0, 3.0, 2))
+        self.assertFalse(ci_perf._is_noisy(5.0, 5.0, 0))
 
 
 if __name__ == "__main__":

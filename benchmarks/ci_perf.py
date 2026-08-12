@@ -43,6 +43,8 @@ _AUTO_RESET_STREAK = 5
 _RESET_COOLDOWN_HOURS = 24.0
 _WARN_RATIO = 2.5
 _MIN_WARN_MS = {100: 5.0, 500: 20.0, 2000: 80.0}
+_P95_WARN_RATIO = 1.2
+_MIN_P95_WARN_MS = {100: 2.0, 500: 8.0, 2000: 30.0}
 _RESET_ENV = "MNEMOSIS_PERF_RESET"
 _SUMMARY_ENV = "MNEMOSIS_PERF_SUMMARY_PATH"
 _TREND_PATH = os.path.normpath(
@@ -166,6 +168,41 @@ def _percentile(values: list[float], percent: float) -> float:
     return ordered[index]
 
 
+def _reference_value(
+    runs: list[dict], count: int, field: str
+) -> float | None:
+    """Median of the up-to-3 previous runs for a field (excludes current)."""
+    entries = [entry for entry in runs if entry["count"] == count]
+    previous = [
+        entry.get(field)
+        for entry in entries[:-1][-3:]
+        if isinstance(entry.get(field), (int, float))
+    ]
+    if not previous:
+        return None
+    return statistics.median(previous)
+
+
+def _is_noisy(load1: float, load5: float, cores: int) -> bool:
+    """CI host is likely contended when either load average beats cores."""
+    if cores <= 0:
+        return False
+    return max(load1, load5) > cores
+
+
+def _p95_warning(
+    current_p95: float, reference_p95: float | None, count: int
+) -> bool:
+    """Long-tail regression: >20% worse than the recent median AND above
+    an absolute floor, so tiny jitter on fast lookups never warns."""
+    if reference_p95 is None:
+        return False
+    return (
+        current_p95 > reference_p95 * _P95_WARN_RATIO
+        and current_p95 > _MIN_P95_WARN_MS[count]
+    )
+
+
 def _update_trend(
     meta: dict,
     best_by_count: dict[int, float],
@@ -232,21 +269,10 @@ def _summary_markdown(
     baselines: dict[int, float],
     resets: list[int],
     runs: list[dict],
+    *,
+    noisy_env: bool = False,
+    load1: float = 0.0,
 ) -> str:
-    def _reference_best(count: int) -> float | None:
-        """Median of the up-to-3 previous runs (excludes the current run)."""
-        entries = [
-            entry for entry in runs if entry["count"] == count
-        ]
-        previous = [
-            entry.get("best_ms")
-            for entry in entries[:-1][-3:]
-            if isinstance(entry.get("best_ms"), (int, float))
-        ]
-        if not previous:
-            return None
-        return statistics.median(previous)
-
     lines = [
         "## get_many performance gate",
         "",
@@ -257,7 +283,7 @@ def _summary_markdown(
         "|---|---|---|---|---|---|---|",
     ]
     for count, best, p95 in results:
-        reference = _reference_best(count)
+        reference = _reference_value(runs, count, "best_ms")
         if reference is None:
             delta = "-"
         else:
@@ -272,9 +298,20 @@ def _summary_markdown(
         baseline_ms = (
             f"{baselines[count]:.2f}" if count in baselines else "-"
         )
+        p95_cell = f"{p95:.2f}"
+        if _p95_warning(
+            p95, _reference_value(runs, count, "p95_ms"), count
+        ):
+            p95_cell += " ⚠️"
         lines.append(
             f"| {count} | {best:.2f} | {delta} | {median_ms} | "
-            f"{p95:.2f} | {baseline_ms} | {_CEILINGS_MS[count]:.0f} |"
+            f"{p95_cell} | {baseline_ms} | {_CEILINGS_MS[count]:.0f} |"
+        )
+    if noisy_env:
+        lines.append("")
+        lines.append(
+            f"> ⚠️ noisy CI env: 1-min load {load1:.2f} "
+            f"> cores {os.cpu_count() or 1}; treat deltas with caution."
         )
     if resets:
         lines.append("")
@@ -336,6 +373,18 @@ def main() -> int:
             "disabled for this run (first run or cache restore failed)."
         )
     now_iso = datetime.now(timezone.utc).isoformat()
+    noisy_env = False
+    load1 = 0.0
+    try:
+        load1, load5, _ = os.getloadavg()
+        noisy_env = _is_noisy(load1, load5, os.cpu_count() or 1)
+    except (AttributeError, OSError):
+        pass
+    if noisy_env:
+        print(
+            f"WARNING: noisy CI env (load {load1:.2f} > "
+            f"{os.cpu_count() or 1} cores)"
+        )
     for count in (100, 500, 2000):
         sample = ids[:count] + [recycled_id]
         backend.get_many(sample)  # warm
@@ -369,6 +418,8 @@ def main() -> int:
                 "median_ms": median_ms,
                 "p95_ms": p95,
                 "p99_ms": p99,
+                "noisy_env": noisy_env,
+                "load1": load1,
             }
         )
         if best > ceiling:
@@ -420,7 +471,13 @@ def main() -> int:
             "(need >= 3 recorded runs per id-count)."
         )
     summary = _summary_markdown(
-        _results, medians, baselines, resets, history
+        _results,
+        medians,
+        baselines,
+        resets,
+        history,
+        noisy_env=noisy_env,
+        load1=load1,
     )
     step_summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if step_summary_path:
