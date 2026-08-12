@@ -1333,13 +1333,17 @@ class DualTrackStore:
                 cached = embedder.embed(self._embed_text(item))
                 self._embed_cache[key] = cached
                 self._trim_embed_cache_locked()
-            else:
-                self._embed_cache.move_to_end(key)
             return cached
 
     def _trim_embed_cache_locked(self) -> None:
-        """Evict the least-recently-used vectors beyond the limit."""
-        while len(self._embed_cache) > self.embed_cache_limit:
+        """Evict oldest-inserted vectors beyond the limit.
+
+        Read hits intentionally do not touch the order (a move on every hit
+        would need a write lock per read); this is a capacity-bounding FIFO
+        cache, which keeps concurrent reads cheap and memory bounded.
+        """
+        evict = len(self._embed_cache) - self.embed_cache_limit
+        for _ in range(evict):
             self._embed_cache.popitem(last=False)
 
     @staticmethod
