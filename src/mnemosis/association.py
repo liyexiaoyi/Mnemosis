@@ -9,6 +9,15 @@ from __future__ import annotations
 from .backend import Backend
 from .types import MemoryItem
 
+_LINK_CUE_BUCKET_LIMIT = 500
+"""Cues shared by more items than this are skipped during batch linking.
+
+Auto-extracted cues like 用户/购买 appear in tens of thousands of memories;
+iterating them per item would turn batch ingestion into ~10^10 iterations
+at 100k scale. As in REM consolidation, only cues with real
+discriminative power participate in the association graph.
+"""
+
 
 class AssociationIndex:
     def __init__(self, backend: Backend) -> None:
@@ -62,9 +71,15 @@ class AssociationIndex:
         """
         pool = self.backend.list()
         by_id = {item.id: item for item in pool}
+        cue_freq: dict[str, int] = {}
+        for item in pool:
+            for cue in item.cues:
+                cue_freq[cue] = cue_freq.get(cue, 0) + 1
         cue_map: dict[str, list[MemoryItem]] = {}
         for item in pool:
             for cue in item.cues:
+                if cue_freq.get(cue, 0) > _LINK_CUE_BUCKET_LIMIT:
+                    continue
                 cue_map.setdefault(cue, []).append(item)
         edge_set: set[tuple[str, str, float]] = set()
         for item in items:

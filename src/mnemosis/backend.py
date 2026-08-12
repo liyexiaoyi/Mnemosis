@@ -185,6 +185,47 @@ class DictBackend(Backend):
         return existing
 
     @_locked
+    def upsert_many(self, items: list[MemoryItem]) -> list[MemoryItem]:
+        """Bulk semantic dedupe; returns one stored item per input, in order."""
+        index: dict[tuple[MemoryKind, str], MemoryItem] = {}
+        for other in self._items.values():
+            index.setdefault(
+                (other.kind, other.content_hash), other
+            )
+        existing_by_hash = {
+            (item.kind, item.content_hash): index.get(
+                (item.kind, item.content_hash)
+            )
+            for item in items
+        }
+        new: list[MemoryItem] = []
+        merged: list[MemoryItem] = []
+        resolved: dict[tuple[MemoryKind, str], MemoryItem] = {}
+        for item in items:
+            existing = existing_by_hash.get(
+                (item.kind, item.content_hash)
+            )
+            if existing is None:
+                existing = resolved.get((item.kind, item.content_hash))
+            if existing is None:
+                new.append(item)
+                resolved[(item.kind, item.content_hash)] = item
+            else:
+                _merge_stats(existing, item)
+                merged.append(existing)
+                resolved[(item.kind, item.content_hash)] = existing
+        if new:
+            self.add_many(new)
+        if merged:
+            self.update_many(merged)
+            self.add_cues_many(
+                (existing.id, existing.cues) for existing in merged
+            )
+        return [
+            resolved[(item.kind, item.content_hash)] for item in items
+        ]
+
+    @_locked
     def find_by_hash(
         self, kind: MemoryKind, content_hash: str
     ) -> MemoryItem | None:
@@ -617,6 +658,55 @@ class SQLiteBackend(Backend):
             raise
         self.add_cues(existing.id, item.cues)
         return existing
+
+    @_locked
+    def upsert_many(self, items: list[MemoryItem]) -> list[MemoryItem]:
+        """Bulk semantic dedupe; returns one stored item per input, in order."""
+        if not items:
+            return []
+        existing_by_hash: dict[tuple[MemoryKind, str], MemoryItem] = {}
+        by_kind: dict[str, list[MemoryItem]] = {}
+        for item in items:
+            by_kind.setdefault(item.kind.value, []).append(item)
+        for kind_value, kind_items in by_kind.items():
+            hashes = list({item.content_hash for item in kind_items})
+            for start in range(0, len(hashes), 500):
+                chunk = hashes[start : start + 500]
+                placeholders = ",".join("?" for _ in chunk)
+                rows = self._conn.execute(
+                    "SELECT * FROM memories WHERE kind = ? "
+                    f"AND content_hash IN ({placeholders})",
+                    [kind_value] + chunk,
+                ).fetchall()
+                for row in rows:
+                    item = _row_to_item(row)
+                    existing_by_hash[(item.kind, item.content_hash)] = item
+        new: list[MemoryItem] = []
+        merged: list[MemoryItem] = []
+        resolved: dict[tuple[MemoryKind, str], MemoryItem] = {}
+        for item in items:
+            existing = existing_by_hash.get(
+                (item.kind, item.content_hash)
+            )
+            if existing is None:
+                existing = resolved.get((item.kind, item.content_hash))
+            if existing is None:
+                new.append(item)
+                resolved[(item.kind, item.content_hash)] = item
+            else:
+                _merge_stats(existing, item)
+                merged.append(existing)
+                resolved[(item.kind, item.content_hash)] = existing
+        if new:
+            self.add_many(new)
+        if merged:
+            self.update_many(merged)
+            self.add_cues_many(
+                (existing.id, existing.cues) for existing in merged
+            )
+        return [
+            resolved[(item.kind, item.content_hash)] for item in items
+        ]
 
     @_locked
     def find_by_hash(

@@ -320,6 +320,10 @@ At a 50k-input / 25k-active real-Chinese store, recall is 26-85ms and
 sleep consolidation ~2.3s after the large-store scaling work (batched term
 df, batched REM links, generic-cue skipping).
 
+At 100k input (50k active, real Chinese): batch ingestion is ~6.8 minutes
+(was >2h before the bulk upsert + generic-cue skip work), hit recall
+~77ms, zero-hit recall ~350ms, sleep ~6.5s.
+
 ## Independent public benchmark (LongMemEval)
 
 Mnemosis is also validated against an external, non-self-built benchmark:

@@ -261,6 +261,37 @@ class MemoryEngineTest(unittest.TestCase):
         self.assertEqual(len(links), 90)  # 10 * 9 directed edges, no dups
         self.assertEqual(len({(a, b) for a, b, _ in links}), 90)
 
+    def test_remember_many_dedupes_semantic_duplicates_in_batch(self):
+        engine = MemoryEngine()
+        source = SourceRecord(origin=SourceType.USER)
+        engine.remember_many(
+            [
+                {
+                    "content": "重复事实 A",
+                    "kind": MemoryKind.SEMANTIC,
+                    "source": source,
+                },
+                {
+                    "content": "重复事实 A",
+                    "kind": MemoryKind.SEMANTIC,
+                    "source": source,
+                },
+                {
+                    "content": "重复事实 B",
+                    "kind": MemoryKind.SEMANTIC,
+                    "source": source,
+                },
+                {
+                    "content": "独立事件 C",
+                    "kind": MemoryKind.EPISODIC,
+                    "source": source,
+                },
+            ]
+        )
+        stats = engine.stats()
+        self.assertEqual(stats["semantic"], 2)
+        self.assertEqual(stats["episodic"], 1)
+
     def test_remember_many_embeds_in_one_batch_call(self):
         embedder = _BatchCountingEmbedder()
         engine = MemoryEngine(

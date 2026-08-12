@@ -232,12 +232,22 @@ class DualTrackStore:
             for item in prepared
             if item.kind is not MemoryKind.SEMANTIC
         ]
+        semantic = [
+            item
+            for item in prepared
+            if item.kind is MemoryKind.SEMANTIC
+        ]
+        semantic_stored = (
+            self.backend.upsert_many(semantic) if semantic else []
+        )
         if episodic:
             self.backend.add_many(episodic)
         stored: list[MemoryItem] = []
+        semantic_index = 0
         for item in prepared:
             if item.kind is MemoryKind.SEMANTIC:
-                stored.append(self.backend.upsert(item))
+                stored.append(semantic_stored[semantic_index])
+                semantic_index += 1
             else:
                 stored.append(item)
         self.backend.add_cues_many((item.id, item.cues) for item in stored)

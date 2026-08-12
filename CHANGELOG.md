@@ -16,6 +16,9 @@
 - 大库扩展性（50k 真实中文输入 / 25k 活跃）：词频批量统计 + 缓存，REM/
   情感建链批量写入与高频线索跳过，检索 300-400ms → 26-85ms，睡眠
   27s → 2.3s
+- 100k 扩展性：批量语义 upsert（3 万次独立事务 → 一次批量）、批量建链
+  跳过 auto_cues 产生的高频线索（用户/购买等），100k 构建从 2 小时+
+  降到 6.8 分钟；命中检索 ~77ms、零命中 ~350ms、睡眠 ~6.5s
 - 写入：`remember_many` 批量 API（10k 从 70s → 13s）、批量词索引/关联图/
   向量写入、嵌入前置失败不脏库、`rebuild_vectors` 补齐缺失向量
 - 部署与工具：MCP Streamable HTTP transport + Dockerfile（VPS/NAS）、
