@@ -315,6 +315,35 @@ class MemoryEngineTest(unittest.TestCase):
         results = engine.recall("完全不相关的查询词", top_k=5)
         self.assertIn(core.id, {result.item.id for result in results})
 
+    def test_zero_hit_semantic_fallback_reranks_whole_pool(self):
+        """With an embedder, a relevant memory ranked beyond 64 still wins."""
+
+        class _FakeSemanticEmbedder(Embedder):
+            def embed(self, text: str) -> list[float]:
+                if "coffee" in text or "beverage" in text:
+                    return [1.0, 0.0]
+                return [0.0, 1.0]
+
+        engine = MemoryEngine(embedder=_FakeSemanticEmbedder())
+        source = SourceRecord(origin=SourceType.USER)
+        relevant = engine.remember(
+            "coffee morning routine",
+            kind=MemoryKind.SEMANTIC,
+            source=source,
+            importance=0.3,
+            auto_cues=False,
+        )
+        for index in range(200):
+            engine.remember(
+                f"meeting minutes {index} purchase invoice approval",
+                kind=MemoryKind.EPISODIC,
+                source=source,
+                importance=0.3,
+                auto_cues=False,
+            )
+        results = engine.recall("beverage habit", top_k=5)
+        self.assertIn(relevant.id, {result.item.id for result in results})
+
     def test_remember_many_embeds_in_one_batch_call(self):
         embedder = _BatchCountingEmbedder()
         engine = MemoryEngine(

@@ -692,7 +692,10 @@ class DualTrackStore:
                         if entry[1] == 0.0
                     ][:zero_budget]
             else:
-                pool = scored[:_DENSE_RERANK_CANDIDATES]
+                # Zero-hit: re-rank the WHOLE fallback pool semantically so
+                # a relevant memory is not skipped just because its lexical
+                # score ranked it beyond the first 64.
+                pool = scored
             rerank_ids = {entry[2].id for entry in pool}
             for index, (score, overlap, item, reasons, matched) in enumerate(
                 scored
