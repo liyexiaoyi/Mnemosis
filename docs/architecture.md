@@ -27,7 +27,7 @@ Mnemosis 是一个零依赖的 Python 记忆层：公开入口是 `mnemosis.Memo
 | `zh_nlp.py` | 中文同义词扩展与 CJK 检测 |
 | `embedding.py` | 零依赖 `NGramEmbedder` + 外部向量接口 `CallableEmbedder` |
 | `embedding_cache.py` | 向量缓存（按内容哈希 + 字节预算淘汰） |
-| `vector_index.py` | 可选向量索引（近似检索） |
+| `vector_index.py` | 可选向量索引（10 万级内精确扫描，更大规模 LSH 近似） |
 
 ### 检索与推理
 

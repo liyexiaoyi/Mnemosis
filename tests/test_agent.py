@@ -1495,11 +1495,11 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         )
 
     def test_life_story(self) -> None:
-        from datetime import timedelta
+        from datetime import datetime, timedelta, timezone
 
         engine = MemoryEngine()
         user = SourceRecord(origin=SourceType.USER)
-        now = utcnow()
+        now = datetime(2026, 1, 15, 12, 0, tzinfo=timezone.utc)
         themes = ["工作", "生活", "旅行"]
         for offset in (75, 40, 8):
             for slot, theme in enumerate(themes):
@@ -2085,11 +2085,11 @@ class OutcomeAwarePlanningTests(unittest.TestCase):
         self.assertEqual(len(via_mcp["conflicts"]), 1)
 
     def test_topic_drift_report(self) -> None:
-        from datetime import timedelta
+        from datetime import datetime, timedelta, timezone
 
         engine = MemoryEngine()
         user = SourceRecord(origin=SourceType.USER)
-        now = utcnow()
+        now = datetime(2026, 1, 15, 12, 0, tzinfo=timezone.utc)
         for i in range(3):
             engine.remember(
                 f"drift work old {i}",
