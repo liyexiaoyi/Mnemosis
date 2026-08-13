@@ -334,6 +334,7 @@ def main() -> int:
     out = args.out or os.path.join(
         _BENCH, "results", f"plan_reuse_{args.project}.json"
     )
+    os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "w", encoding="utf-8") as handle:
         json.dump(report, handle, ensure_ascii=False, indent=2)
     return 0

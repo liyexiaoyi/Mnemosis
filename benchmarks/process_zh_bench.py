@@ -360,6 +360,7 @@ def main() -> int:
         out = args.out or os.path.join(
             _BENCH, "results", "process_zh_synonym_check.json"
         )
+        os.makedirs(os.path.dirname(out), exist_ok=True)
         with open(out, "w", encoding="utf-8") as handle:
             json.dump(report, handle, ensure_ascii=False, indent=2)
         return 0
@@ -425,6 +426,7 @@ def main() -> int:
     out = args.out or os.path.join(
         _BENCH, "results", f"process_zh_{args.project}.json"
     )
+    os.makedirs(os.path.dirname(out), exist_ok=True)
     with open(out, "w", encoding="utf-8") as handle:
         json.dump(report, handle, ensure_ascii=False, indent=2)
     return 0
