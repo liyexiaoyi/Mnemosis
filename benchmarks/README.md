@@ -42,15 +42,29 @@ does not promise to catch medium regressions).
 
 ### Results (2026-08-13, 100k local build)
 
+The first-query numbers below are honest cold reads: the bulk build only
+writes the terms/links indexes, so the first query must pull those pages
+from disk (this machine's C: drive is slow HDD-class storage). Once the
+pages are in the OS cache -- or after `warmup()` (MCP servers call it at
+startup; library users can pass `auto_warmup=True`) -- the same query is
+~1ms.
+
 | Metric | Value |
 |---|---|
-| Build (`remember_many_chunked`, 100k) | 27.0 s |
-| df lookup for "用户" (100k ids, median of 5) | 81.8 ms |
-| First query right after build | 2853 ms |
-| Cold start (reopen store, first query) | 2898 ms |
-| Warm "用户" p50 / p95 / p99 | 0.42 / 0.89 / 2.16 ms |
-| Warm "用户 投影仪" p50 / p95 / p99 | 0.42 / 0.93 / 2.12 ms |
-| Warm zero-hit p50 / p95 / p99 | 0.77 / 1.47 / 9.20 ms |
+| Build (`remember_many_chunked`, 100k) | 25.2 s |
+| df lookup for "用户" (100k ids, median of 5) | 74.5 ms |
+| First query right after build (cold index read) | 2403 ms |
+| Reopen + immediate first query (no warmup yet) | 2400 ms |
+| Reopen + synchronous `warmup()` then first query | 1.15 ms |
+| OS-cache-hot reopen first query (no warmup needed) | 18.4 ms |
+| Warm "用户" p50 / p95 / p99 | 0.33 / 0.92 / 1.15 ms |
+| Warm "用户 投影仪" p50 / p95 / p99 | 0.29 / 0.71 / 1.83 ms |
+| Warm zero-hit p50 / p95 / p99 | 0.54 / 1.25 / 8.27 ms |
+
+Gate (high_df_recall_bench): warm p99 <= 100ms; preheated first query <=
+min(1000ms, max(100ms, 20% of the cold-start first query)) -- an
+absolute+relative double bound with a floor, so neither a slow disk nor a
+very fast NVMe causes false alarms while a half-working warmup still fails.
 
 History: the old round-13 smoke script imported `mnemosis` from
 site-packages and reported ~1.8-2.3s per high-df query on a 100k store.

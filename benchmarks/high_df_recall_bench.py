@@ -21,6 +21,7 @@ import argparse
 import json
 import os
 import statistics
+import sys
 import time
 
 from bench_utils import assert_local_mnemosis, percentile, pin_local_src
@@ -72,7 +73,11 @@ def main() -> int:
     start = time.perf_counter()
     engine.remember_many_chunked(records, chunk_size=args.chunk)
     build_s = time.perf_counter() - start
-    active = len(engine.store.backend.list_items())
+    # Use the cheap COUNT(*) instead of materialising every MemoryItem:
+    # the full load takes ~1s at 100k and evicts the freshly written pages
+    # from the OS cache, which made the "first query" below measure cache
+    # misses instead of the actual recall path.
+    active = engine.store.backend.count()
 
     def _q(query: str) -> None:
         engine.recall(query, top_k=3)
@@ -81,8 +86,9 @@ def main() -> int:
     # run AFTER this, otherwise it pre-warms the same pages/caches.
     first_after_build_ms = _timed("first 用户", lambda: _q("用户"))
 
-    # Reopen the store and measure the first recall again: this reflects a
-    # fresh engine loading the database (closer to a real cold start).
+    # Reopen the store and measure the first recall again. With the default
+    # auto-warmup this races the background page-cache scan (realistic for a
+    # fresh process); the synchronous warmup below then proves the mitigation.
     engine.close()
     engine = MemoryEngine(db_path)
 
@@ -90,6 +96,12 @@ def main() -> int:
         engine.recall("用户", top_k=3)
 
     cold_start_ms = _timed("reopen 用户", _cold_start)
+
+    # Synchronous warmup + query: the honest "preheated" first-query cost.
+    # Call warm_pages() directly so the scan always runs (engine.warmup()
+    # would be a no-op because the auto-warmup already set _warmed_event).
+    engine.backend.warm_pages()
+    warm_reopen_ms = _timed("reopen+warmup 用户", _cold_start)
 
     def _df() -> None:
         engine.store.backend.find_by_terms(["用户"], None)
@@ -117,6 +129,7 @@ def main() -> int:
         "df_query_ms": round(df_ms, 2),
         "first_after_build_ms": round(first_after_build_ms, 2),
         "cold_start_ms": round(cold_start_ms, 2),
+        "warm_reopen_ms": round(warm_reopen_ms, 2),
         "warm": {
             key: {
                 "p50_ms": round(percentile(values, 0.50), 2),
@@ -127,24 +140,45 @@ def main() -> int:
         },
     }
     guard = summary["warm"]["用户"]["p99_ms"]
-    passed = guard <= WARM_P99_GUARD_MS
+    warm_reopen_limit = min(1000.0, max(100.0, cold_start_ms * 0.2))
+    passed = (
+        guard <= WARM_P99_GUARD_MS
+        and warm_reopen_ms <= warm_reopen_limit
+    )
     summary["gate_passed"] = passed
-    summary["gate"] = f"warm 用户 p99 <= {WARM_P99_GUARD_MS}ms"
+    summary["gate"] = (
+        f"warm 用户 p99 <= {WARM_P99_GUARD_MS}ms; "
+        "warm_reopen <= min(1000ms, max(100ms, 20% of cold_start))"
+    )
 
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     print(
         f"build {build_s:.2f}s, df {df_ms:.2f}ms, "
         f"first {first_after_build_ms:.2f}ms, cold {cold_start_ms:.2f}ms, "
+        f"warm_reopen {warm_reopen_ms:.2f}ms, "
         f"warm 用户 p99 {guard:.2f}ms "
         f"({'PASS' if passed else 'FAIL'})"
     )
     if args.keep_db:
         print(f"db kept at: {db_path}")
     else:
-        try:
-            os.remove(db_path)
-        except OSError:
-            pass
+        # Windows Defender / AV can transiently lock a freshly written
+        # 543MB file even after all SQLite connections are closed; retry
+        # for a few seconds so a clean run does not leave 500MB behind.
+        for attempt in range(25):
+            try:
+                os.remove(db_path)
+                break
+            except FileNotFoundError:
+                break  # already gone; no point retrying
+            except OSError:
+                if attempt == 24:
+                    print(
+                        f"Warning: failed to remove {db_path} after "
+                        "25 retries; deleting it manually.",
+                        file=sys.stderr,
+                    )
+                time.sleep(0.2)
     return 0 if passed else 1
 
 

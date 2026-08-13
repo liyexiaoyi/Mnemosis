@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import math
+import os
 import re
 import statistics
 import threading
@@ -65,6 +66,14 @@ from .zh_nlp import expand_synonyms, has_cjk  # noqa: F401  (public re-exports)
 _LOG = logging.getLogger(__name__)
 
 
+# Stores at or above this size get a background page-cache warmup when the
+# engine opens, so the first recall on a cold machine (fresh boot / NAS / VPS)
+# does not pay the full terms/links index read cost. Tiny databases read in
+# milliseconds and skip the thread entirely.
+_AUTO_WARMUP_MIN_BYTES = 64 * 1024 * 1024
+_AUTO_WARMUP_JOIN_TIMEOUT = 5.0
+
+
 class MemoryEngine(
     RetrievalMixin,
     PlanningMixin,
@@ -119,7 +128,9 @@ class MemoryEngine(
         fallback_cache_max_size: int = 256,
         fallback_cache_auto_grow: bool = True,
         fallback_cache_grow_cooldown_seconds: float = 300.0,
+        auto_warmup: bool = True,
     ) -> None:
+        self._auto_warmup_enabled = auto_warmup
         self.backend: Backend = make_backend(memory_file)
         if decay_rate is None:
             stored = self.backend.get_setting("decay_rate")
@@ -159,12 +170,14 @@ class MemoryEngine(
         self._closed_event = threading.Event()
         self._warmed_event = threading.Event()
         self._warmup_lock = threading.Lock()
+        self._warmup_thread: threading.Thread | None = None
         self._warmup_at: float | None = None
         self._warmup_recalls = 0
         self._warmup_hits = 0
         self._intents: dict[str, dict] = {}
         self._suppressed_ids: dict[str, str] = {}
         self._lock = threading.RLock()
+        self._maybe_auto_warmup()
 
     # -- wake cycle ---------------------------------------------------------
 
@@ -1213,6 +1226,9 @@ class MemoryEngine(
         Scans the main tables/indexes with cheap COUNT(*) queries in a
         background daemon thread (default), so a long-running MCP server
         does not pay the full cold page-load cost on its first recall.
+        File-backed stores at or above ``_AUTO_WARMUP_MIN_BYTES`` start it
+        automatically at open (opt out with ``auto_warmup=False``); smaller
+        stores read in milliseconds and skip the thread entirely.
         """
         with self._warmup_lock:
             if self._warmed_event.is_set():
@@ -1226,18 +1242,59 @@ class MemoryEngine(
                 self.backend.warm_pages(
                     stop=lambda: self._closed_event.is_set()
                 )
-            except Exception:  # noqa: BLE001 - warmup must never break startup
+            except BaseException:  # noqa: BLE001 - warmup must never break
                 _LOG.debug("startup warmup failed", exc_info=True)
+            finally:
+                self._warmed_event.set()
 
         if background:
-            threading.Thread(
-                target=_warm, name="mnemosis-warmup", daemon=True
-            ).start()
+            def _thread_target() -> None:
+                try:
+                    _warm()
+                finally:
+                    with self._warmup_lock:
+                        self._warmup_thread = None
+
+            thread = threading.Thread(
+                target=_thread_target, name="mnemosis-warmup", daemon=True
+            )
+            with self._warmup_lock:
+                if self._closed_event.is_set():
+                    return
+                self._warmup_thread = thread
+                thread.start()
         else:
             _warm()
 
+    def _maybe_auto_warmup(self) -> None:
+        """Start background warmup for large file-backed stores at open."""
+        if not self._auto_warmup_enabled:
+            return
+        path = getattr(self.backend, "_path", None)
+        if not path or path == ":memory:":
+            return
+        try:
+            if os.path.getsize(path) < _AUTO_WARMUP_MIN_BYTES:
+                return
+        except OSError:
+            return
+        self.warmup()
+
     def close(self) -> None:
         self._closed_event.set()
+        # Let an in-flight page-cache scan finish (bounded wait) so the
+        # dedicated SQLite connection is closed before callers delete the
+        # database file (Windows file-lock race).
+        with self._warmup_lock:
+            thread = self._warmup_thread
+            self._warmup_thread = None
+        if thread is not None and thread.is_alive():
+            thread.join(timeout=_AUTO_WARMUP_JOIN_TIMEOUT)
+            if thread.is_alive():
+                _LOG.warning(
+                    "page-cache warmup still running after join timeout; "
+                    "it will exit on its own once the current scan finishes"
+                )
         self.store.shutdown_reinforce_worker()
         if hasattr(self.backend, "close"):
             self.backend.close()

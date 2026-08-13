@@ -32,7 +32,7 @@
 - `memory.db.cache` / `memory.db.vec` 是可选向量副文件，可重建；
 - 100k 级为推荐日常规模：构建约 27s、热查询 p99 ~2ms、睡眠稳态约 1s 级；
 - 100 万级可用：构建约 6 分钟、主库文件约 5GB（不含可选向量副文件）、
-  热查询 p99 ~1.7ms（冷启动需预热）。
+  热查询 p99 ~1.7ms（冷启动预热：MCP 服务启动时自动预热索引页；大库用户可传 auto_warmup=True）。
 
 公开导出（1.0 锁定）：`MemoryEngine`、`fused_recall`、`MemoryItem`、
 `MemoryKind`、`MnemosisError`、`RecallResult`、`SourceRecord`、`SourceType`
