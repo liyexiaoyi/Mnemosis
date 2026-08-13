@@ -18,7 +18,8 @@
 `--max-build-seconds`/`--max-steady-seconds` 时长门禁；最后由
 `nightly_report.py` 汇总成 Markdown 报告并上传 artifact。任何崩溃或
 门禁超限都会让工作流变红报警。LongMemEval 检索回归由既有的
-`nightly-bench.yml` 定时执行（`--skip-mem0 --skip-answers`，无需外部
+`nightly-bench.yml` 定时执行（`--skip-mem0 --skip-answers`，默认 10 题，
+`turn_recall@5 >= 0.3` 门禁——10 题小样本下保留统计余量，无需外部
 服务），两者互补。
 
 ## bench_utils.py

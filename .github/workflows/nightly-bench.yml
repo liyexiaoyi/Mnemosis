@@ -9,7 +9,7 @@ on:
       questions:
         description: "LongMemEval questions to run"
         required: false
-        default: "2"
+        default: "10"
 
 permissions:
   contents: read
@@ -17,7 +17,7 @@ permissions:
 jobs:
   longmemeval:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -31,10 +31,11 @@ jobs:
         run: |
           python benchmarks/longmemeval_bench.py \
             --data work/longmemeval_s_cleaned.json \
-            --questions "${{ github.event.inputs.questions || '2' }}" \
+            --questions "${{ github.event.inputs.questions || '10' }}" \
             --modes kw,ngram \
             --skip-mem0 \
             --skip-answers \
+            --min-rec5 0.3 \
             --out benchmarks/results/longmemeval_nightly.json
       - name: Upload report artifact
         uses: actions/upload-artifact@v4

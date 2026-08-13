@@ -631,6 +631,13 @@ def main() -> int:
         "--out",
         default=os.path.join(_BENCH, "results", "longmemeval_s_compare.json"),
     )
+    parser.add_argument(
+        "--min-rec5",
+        type=float,
+        default=None,
+        help="fail (exit 1) if any system's turn_recall@5 drops below this "
+        "or if a system completed fewer questions than sampled",
+    )
     args = parser.parse_args()
 
     print("loading dataset ...", flush=True)
@@ -856,7 +863,30 @@ def main() -> int:
         json.dump(report, handle, ensure_ascii=False, indent=2)
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     print(f"\nsaved: {args.out}")
-    return 0
+    gate_passed = True
+    gate_failures: list[str] = []
+    if args.min_rec5 is not None:
+        for name, stats in summary.items():
+            if stats["n"] < len(questions):
+                gate_failures.append(
+                    f"{name}: completed {stats['n']}/{len(questions)}"
+                )
+            elif stats["turn_recall@5"] < args.min_rec5:
+                gate_failures.append(
+                    f"{name}: turn_recall@5 {stats['turn_recall@5']} "
+                    f"< {args.min_rec5}"
+                )
+        gate_passed = not gate_failures
+    if args.min_rec5 is not None:
+        print(
+            "GATE:",
+            "PASS" if gate_passed else "FAIL",
+            f"turn_recall@5 >= {args.min_rec5}, n >= {len(questions)}",
+        )
+        if gate_failures:
+            for failure in gate_failures:
+                print(f"  - {failure}")
+    return 0 if gate_passed else 1
 
 
 if __name__ == "__main__":

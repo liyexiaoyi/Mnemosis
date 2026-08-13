@@ -64,9 +64,9 @@
       Release Notes（基于 CHANGELOG v0.3.x 收口）。
 - [ ] **类型检查接入 CI**：pyright/mypy 存量清理 + 门禁（长期减少隐性 bug）。
 - [x] **评测进 CI**：`nightly-bench.yml` 定时跑 LongMemEval 检索回归
-      （kw+ngram、跳过 mem0 与 LLM 判定）；`nightly-benchmarks.yml`
-      定时跑重型扩展性基准（100k 构建、100k 高频词检索、睡眠稳态，
-      含时长门禁与汇总报告）。
+      （kw+ngram、跳过 mem0 与 LLM 判定，默认 10 题且 `turn_recall@5
+      >= 0.3` 门禁）；`nightly-benchmarks.yml` 定时跑重型扩展性基准
+      （100k 构建、100k 高频词检索、睡眠稳态，含时长门禁与汇总报告）。
 - [ ] **基准脚本归档**：一次性渲染脚本移到 `archive/` 并更新相关文档引用。
 - [ ] **架构图与原理文档**：README 已链接存储/架构/入门文档；1.0 前补一张
       Mermaid 架构图与 MCP 多客户端配置示例（Claude / Cursor / Codex / Cherry）。
