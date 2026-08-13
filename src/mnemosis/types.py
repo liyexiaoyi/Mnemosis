@@ -7,13 +7,16 @@ import re
 import uuid
 from collections.abc import Iterable
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Any
 
 
 def utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+_LAST_TOUCH: datetime | None = None
 
 
 STOPWORDS = {
@@ -162,7 +165,15 @@ class MemoryItem:
 
     def touch(self, now: datetime | None = None) -> None:
         """Mark as accessed; used by the forgetting curve reinforcement."""
-        self.last_access_at = now or utcnow()
+        global _LAST_TOUCH
+        stamp = now or utcnow()
+        if _LAST_TOUCH is not None and stamp <= _LAST_TOUCH:
+            # Keep the access timeline strictly monotonic across items:
+            # two touches in the same clock tick would otherwise tie in
+            # "recently used" ordering (working_set).
+            stamp = _LAST_TOUCH + timedelta(microseconds=1)
+        _LAST_TOUCH = stamp
+        self.last_access_at = stamp
         self.access_count += 1
 
     def to_dict(self) -> dict[str, Any]:

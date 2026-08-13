@@ -9,13 +9,18 @@ from mnemosis.cli import main
 
 class CliTest(unittest.TestCase):
     def setUp(self):
-        self.db = os.path.join(tempfile.gettempdir(), "mnemosis_cli_test.db")
-        if os.path.exists(self.db):
-            os.remove(self.db)
+        fd, self.db = tempfile.mkstemp(
+            prefix="mnemosis_cli_", suffix=".db"
+        )
+        os.close(fd)
+        os.remove(self.db)  # let the CLI create a fresh database
 
     def tearDown(self):
-        if os.path.exists(self.db):
-            os.remove(self.db)
+        for suffix in ("", "-wal", "-shm"):
+            try:
+                os.remove(self.db + suffix)
+            except FileNotFoundError:
+                pass
 
     def run_cli(self, *args: str) -> str:
         out = io.StringIO()

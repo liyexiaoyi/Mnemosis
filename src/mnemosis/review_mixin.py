@@ -1222,7 +1222,12 @@ class ReviewMixin:
             for item in self.backend.list_items()
             if item.last_access_at is not None
         ]
-        touched.sort(key=lambda item: item.last_access_at, reverse=True)
+        # Tie-break by seq so two accesses in the same timestamp tick are
+        # still deterministically ordered (newest memory wins).
+        touched.sort(
+            key=lambda item: (item.last_access_at, item.seq),
+            reverse=True,
+        )
         return touched[:limit]
     def working_set_budget(
         self,
