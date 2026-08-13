@@ -29,7 +29,9 @@ import urllib.error
 import urllib.request
 
 _BENCH = os.path.dirname(os.path.abspath(__file__))
-_WORK = os.path.normpath(os.path.join(_BENCH, "..", "..", "work"))
+# Repo-internal work/ (gitignored): the nightly workflow reads the dataset
+# as work/<file> from the checkout root, so fetch and bench must agree.
+_WORK = os.path.normpath(os.path.join(_BENCH, "..", "work"))
 
 FILES = {
     "longmemeval_oracle.json": 500_000,

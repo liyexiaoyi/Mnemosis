@@ -31,7 +31,9 @@ os.environ["MEM0_TELEMETRY"] = "False"
 
 _BENCH = os.path.dirname(os.path.abspath(__file__))
 _SRC = os.path.normpath(os.path.join(_BENCH, "..", "src"))
-_WORK = os.path.normpath(os.path.join(_BENCH, "..", "..", "work"))
+# Repo-internal work/ (gitignored), matching fetch_longmemeval.py so the
+# nightly workflow's `--data work/...` path resolves on a fresh checkout.
+_WORK = os.path.normpath(os.path.join(_BENCH, "..", "work"))
 sys.path.insert(0, _BENCH)
 sys.path.insert(0, _SRC)
 
