@@ -13,7 +13,10 @@ import unittest
 from array import array
 from unittest import mock
 
-import numpy as np
+try:
+    import numpy as np
+except ImportError:  # CI unit-test job has no third-party dependencies
+    np = None
 
 from mnemosis.vector_index import VectorIndex
 
@@ -124,6 +127,7 @@ class VectorIndexTests(unittest.TestCase):
         self.assertEqual(index.size, 500)
         index.close()
 
+    @unittest.skipIf(np is None, "numpy required")
     def test_exact_scan_matches_bruteforce_topk(self) -> None:
         """Medium stores must be exact (regression: LSH recall collapse)."""
         rng = random.Random(42)
@@ -287,6 +291,7 @@ class VectorIndexTests(unittest.TestCase):
         )
         index.close()
 
+    @unittest.skipIf(np is None, "numpy required")
     def test_lsh_fallback_to_full_scan_optin_matches_bruteforce(self) -> None:
         """fallback_to_full_scan=True restores exact recall out of budget."""
         rng = random.Random(7)

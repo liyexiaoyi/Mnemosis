@@ -484,19 +484,19 @@ class VectorIndex:
             payload = b"".join(row[1] for row in rows)
             n = len(rows)
             bytes_per = 4 if len(payload) == n * dim * 4 else 8
-            matrix = np.frombuffer(
+            matrix: Any = np.frombuffer(
                 payload,
                 dtype=np.float32 if bytes_per == 4 else np.float64,
             ).reshape(n, dim)
             if bytes_per != 4:
                 matrix = matrix.astype(np.float32)
-            query = np.asarray(query_vector, dtype=np.float32)
-            norms = np.linalg.norm(matrix, axis=1)
-            qnorm = float(np.linalg.norm(query))
+            query: Any = np.asarray(query_vector, dtype=np.float32)
+            norms: Any = np.linalg.norm(matrix, axis=1)
+            qnorm: float = float(np.linalg.norm(query))
             if qnorm == 0.0:
                 return []
-            scores = matrix @ query / (norms * qnorm + 1e-9)
-            order = np.argsort(-scores)[:top_k]
+            scores: Any = matrix @ query / (norms * qnorm + 1e-9)
+            order: Any = np.argsort(-scores)[:top_k]
             return [
                 (ids[int(index)], float(scores[int(index)]))
                 for index in order
@@ -548,13 +548,13 @@ class VectorIndex:
                     "corrupt vector blobs: length does not match "
                     f"{n} rows x {dim} dims"
                 )
-            matrix = np.frombuffer(
+            matrix: Any = np.frombuffer(
                 payload,
                 dtype=np.float32 if bytes_per == 4 else np.float64,
             ).reshape(n, dim)
             if bytes_per != 4:
                 matrix = matrix.astype(np.float32)
-            norms = np.linalg.norm(matrix, axis=1)
+            norms: Any = np.linalg.norm(matrix, axis=1)
             return ids, matrix, norms
         except ImportError:
             return ids, None, None
