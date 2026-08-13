@@ -170,6 +170,11 @@ def run_chunked_build_snapshot() -> dict[str, int]:
 def check(name: str, ok: bool, detail: str = "") -> None:
     _CHECKS.append((name, bool(ok), detail))
     print(("PASS" if ok else "FAIL"), name, detail)
+    if not ok:
+        # Emit a GitHub Actions annotation so the exact failing check and
+        # its observed values are visible in the API without log access.
+        safe = detail.replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+        print(f"::error::CI REGRESSION FAILED: {name} | {safe}")
 
 
 def main() -> int:
@@ -342,6 +347,9 @@ def main() -> int:
 
     failed = [name for name, ok, _ in _CHECKS if not ok]
     print(f"\nCI REGRESSION: {len(_CHECKS) - len(failed)}/{len(_CHECKS)} passed")
+    if failed:
+        names = ", ".join(failed)
+        print(f"::error::CI REGRESSION FAILED CHECKS: {names}")
     return 1 if failed else 0
 
 
