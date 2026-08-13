@@ -1,0 +1,58 @@
+name: Nightly benchmarks
+
+on:
+  schedule:
+    - cron: "0 20 * * *"  # 20:00 UTC = 04:00 Beijing
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-benchmarks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  heavy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build 100k
+        run: >-
+          python benchmarks/build_bench.py --count 100000 --chunk 5000
+          --out nightly-results/build.json --max-build-seconds 300
+        env:
+          PYTHONPATH: src
+
+      - name: High-df recall 100k
+        run: >-
+          python benchmarks/high_df_recall_bench.py --count 100000 --chunk 5000
+          --out nightly-results/high_df.json
+          --db-dir "${{ runner.temp }}/high_df_db"
+        env:
+          PYTHONPATH: src
+
+      - name: Sleep steady-state 20k
+        run: >-
+          python benchmarks/sleep_bench.py --count 20000 --steady-runs 3
+          --tail-queries 50 --out nightly-results/sleep.json
+          --max-steady-seconds 15
+        env:
+          PYTHONPATH: src
+
+      - name: Collect summary
+        run: |
+          python benchmarks/nightly_report.py \
+            --dir nightly-results --out nightly-results/summary.md
+          cat nightly-results/summary.md >> "$GITHUB_STEP_SUMMARY"
+        env:
+          PYTHONPATH: src
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-benchmarks
+          path: nightly-results/
+          if-no-files-found: error

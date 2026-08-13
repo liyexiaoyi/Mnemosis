@@ -11,6 +11,7 @@ minutes before the incremental-linking + bulk-mode optimizations).
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import random
 import tempfile
@@ -89,6 +90,17 @@ def main() -> int:
         "link graph (quality evidence that the link budget keeps the "
         "graph connected)",
     )
+    parser.add_argument(
+        "--out",
+        default=None,
+        help="path for a JSON summary (used by the nightly CI workflow)",
+    )
+    parser.add_argument(
+        "--max-build-seconds",
+        type=float,
+        default=None,
+        help="fail (exit 1) if the build exceeds this many seconds",
+    )
     args = parser.parse_args()
     db_path = os.path.join(tempfile.gettempdir(), "mnemosis_build_bench.db")
     if os.path.exists(db_path):
@@ -111,8 +123,35 @@ def main() -> int:
     if args.check_graph:
         ratio = giant_component_ratio(engine, len(stored))
         print(f"giant component share: {ratio:.3f}")
+    gate_passed = (
+        args.max_build_seconds is None
+        or elapsed <= args.max_build_seconds
+    )
+    summary = {
+        "count": args.count,
+        "chunk_size": args.chunk_size,
+        "build_s": round(elapsed, 2),
+        "items_per_s": round(len(stored) / elapsed, 1),
+        "peak_python_mb": round(peak / 1e6, 1),
+        "gate_passed": gate_passed,
+        "gate": (
+            None
+            if args.max_build_seconds is None
+            else f"build_s <= {args.max_build_seconds}"
+        ),
+    }
+    if args.out:
+        os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
+        with open(args.out, "w", encoding="utf-8") as handle:
+            json.dump(summary, handle, ensure_ascii=False, indent=2)
     engine.close()
-    return 0
+    gate_note = (
+        ""
+        if args.max_build_seconds is None
+        else f" (<= {args.max_build_seconds}s)"
+    )
+    print(f"build gate: {'PASS' if gate_passed else 'FAIL'}{gate_note}")
+    return 0 if gate_passed else 1
 
 
 if __name__ == "__main__":

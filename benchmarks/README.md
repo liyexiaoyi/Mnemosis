@@ -10,6 +10,16 @@
 > 并打印被测模块路径，禁止静默依赖 site-packages 里的旧安装包——否则会把
 > 旧版本误当成当前代码来测（详见下方 high_df_recall_bench 的历史说明）。
 
+## nightly-benchmarks（定时 CI 门禁）
+
+`.github/workflows/nightly-benchmarks.yml` 每天 20:00 UTC 自动跑重型基准
+（也可手动触发）：100k 批量构建、100k 高频词检索、20k 睡眠稳态。三个
+脚本都支持 `--out` 输出 JSON 汇总，`build_bench`/`sleep_bench` 支持
+`--max-build-seconds`/`--max-steady-seconds` 时长门禁；最后由
+`nightly_report.py` 汇总成 Markdown 报告并上传 artifact。任何崩溃或
+门禁超限都会让工作流变红报警。LongMemEval 因依赖本地 Ollama+mem0，
+不进入 GitHub Actions，保留手动/本地运行。
+
 ## bench_utils.py
 
 统一工具：`pin_local_src()`（把 `benchmarks/` 和本地 `src/` 放进

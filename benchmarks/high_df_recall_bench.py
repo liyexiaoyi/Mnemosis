@@ -59,6 +59,11 @@ def main() -> int:
         action="store_true",
         help="keep the built database file and print its path",
     )
+    parser.add_argument(
+        "--out",
+        default=None,
+        help="path for the JSON summary (used by the nightly CI workflow)",
+    )
     args = parser.parse_args()
 
     os.makedirs(args.db_dir, exist_ok=True)
@@ -150,6 +155,10 @@ def main() -> int:
         f"warm 用户 p99 <= {WARM_P99_GUARD_MS}ms; "
         "warm_reopen <= min(1000ms, max(100ms, 20% of cold_start))"
     )
+    if args.out:
+        os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
+        with open(args.out, "w", encoding="utf-8") as handle:
+            json.dump(summary, handle, ensure_ascii=False, indent=2)
 
     print(json.dumps(summary, ensure_ascii=False, indent=2))
     print(
