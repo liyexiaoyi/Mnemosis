@@ -305,6 +305,14 @@ class RetrievalMixin:
                 exclude_ids=exclude_ids,
             )
         return results
+    def recall_bm25(
+        self, query: str, *, kind: MemoryKind | None = None,
+        top_k: int = 5, exclude_ids: set[str] | None = None,
+    ) -> list[RecallResult]:
+        """Read-only BM25 cue candidates; scores are not truth confidence."""
+        from .bm25 import recall_bm25
+        return recall_bm25(self, query, kind=kind, top_k=top_k, exclude_ids=exclude_ids)
+
     def recall_fused(
         self,
         query: str,
@@ -317,6 +325,8 @@ class RetrievalMixin:
         rrf_k: int = 60,
         kw_weight: float = 1.0,
         ng_weight: float = 1.0,
+        bm25_weight: float = 0.0,
+        normalize_fusion: bool = False,
         dense_embedder=None,
         dense_weight: float = 1.6,
         vector_index=None,
@@ -333,6 +343,10 @@ class RetrievalMixin:
         Combines keyword and character n-gram rankings with reciprocal rank
         fusion, then adds light signals from recency direction, stored cues
         and query date hints (LongMemEval-style time-aware retrieval).
+
+        ``bm25_weight`` enables a read-only term-frequency cue channel;
+        ``normalize_fusion`` bounds auxiliary gains to 25% of normalized
+        relevance. Both are opt-in; neither estimates factual confidence.
 
         ``early_stop`` (default off) returns the keyword pass immediately
         when its top result is confident and clearly ahead; the two
@@ -356,6 +370,8 @@ class RetrievalMixin:
             rrf_k=rrf_k,
             kw_weight=kw_weight,
             ng_weight=ng_weight,
+            bm25_weight=bm25_weight,
+            normalize_fusion=normalize_fusion,
             dense_embedder=dense_embedder,
             dense_weight=dense_weight,
             vector_index=vector_index,

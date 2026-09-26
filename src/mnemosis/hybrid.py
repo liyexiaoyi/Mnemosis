@@ -332,6 +332,8 @@ def fused_recall(
     rrf_k: int = 60,
     kw_weight: float = 1.0,
     ng_weight: float = 1.0,
+    bm25_weight: float = 0.0,
+    normalize_fusion: bool = False,
     dense_embedder=None,
     dense_weight: float = 1.6,
     vector_index=None,
@@ -346,6 +348,17 @@ def fused_recall(
     """Fuse keyword + n-gram recalls with recency / cue / date signals."""
     from .types import tokenize
 
+    import math
+    if not math.isfinite(bm25_weight) or bm25_weight < 0:
+        raise ValueError("bm25_weight must be finite and nonnegative")
+    if normalize_fusion:
+        weights = (kw_weight, ng_weight, dense_weight, cue_weight, date_weight, recency_weight)
+        if any(not math.isfinite(weight) or weight < 0 for weight in weights):
+            raise ValueError("normalized fusion weights must be finite and nonnegative")
+    if top_k <= 0:
+        return []
+    if pass_k <= 0 or rrf_k < 0:
+        raise ValueError("pass_k must be positive and rrf_k nonnegative")
     now = now or utcnow()
     original = set(tokenize(query))
     expanded = set(original)
@@ -374,7 +387,7 @@ def fused_recall(
         passes.append(([r.item.id for r in kw_results], kw_weight))
         all_results.extend(kw_results)
         if (
-            early_stop
+            early_stop and bm25_weight == 0 and not normalize_fusion
             and kw_results
             and kw_results[0].score >= early_stop_min_score
             and (
@@ -405,6 +418,10 @@ def fused_recall(
         )
         passes.append(([r.item.id for r in ng_results], ng_weight))
         all_results.extend(ng_results)
+    if bm25_weight > 0:
+        bm_results = engine.recall_bm25(query, kind=kind, top_k=pass_k)
+        passes.append(([r.item.id for r in bm_results], bm25_weight))
+        all_results.extend(bm_results)
     dense_results = []
     dense_embedder = dense_embedder or getattr(engine, "embedder", None)
     if (vector_index is None and dense_embedder is not None
@@ -446,19 +463,27 @@ def fused_recall(
     oldest_ts = min(stamps)
     newest_ts = max(stamps)
 
+    # Rank score has a known upper bound independent of channel weights.
+    # Auxiliary biomimetic cues may refine relevance, not overwhelm it.
+    ceiling = sum(weight/(rrf_k + 1) for ids, weight in passes if ids and weight > 0)
     scored = []
     for memory_id, fused in ranked.items():
         result = by_id[memory_id]
         item = result.item
+        auxiliary = 0.0
         score = fused
         if hints.get("direction") and recency_weight:
-            score += recency_weight * _recency_score(
+            auxiliary += recency_weight * _recency_score(
                 item, now, hints["direction"], oldest_ts, newest_ts
             )
         if cue_weight:
-            score += cue_weight * _cue_overlap(expanded, item)
+            auxiliary += cue_weight * _cue_overlap(expanded, item)
         if date_weight:
-            score += date_weight * _date_boost(hints, item)
+            auxiliary += date_weight * _date_boost(hints, item)
+        if normalize_fusion:
+            score = fused/max(ceiling, 1e-12) * (1 + max(-0.25, min(0.25, auxiliary)))
+        else:
+            score += auxiliary
         scored.append((score, fused, memory_id))
 
     scored.sort(key=lambda row: (-row[0], -row[1]))

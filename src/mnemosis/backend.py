@@ -88,6 +88,10 @@ def _locked(method):
 class Backend(ABC):
     """Minimal storage contract used by the rest of Mnemosis."""
 
+    def revision_token(self):
+        """Cache invalidation token, or None to disable lexical caching."""
+        return None
+
     @abstractmethod
     def add(self, item: MemoryItem) -> None: ...
 
@@ -288,6 +292,12 @@ class DictBackend(Backend):
         self._memory_terms: dict[str, set[str]] = {}
         self._settings: dict[str, str] = {}
         self._seq = 0
+
+    @_locked
+    def revision_token(self):
+        # Mutable in-memory items may be edited directly by existing callers.
+        return tuple((item.id, item.content, tuple(item.cues), item.kind,
+                      item.status, item.seq) for item in self._items.values())
 
     @_locked
     def add(self, item: MemoryItem) -> None:
@@ -729,9 +739,37 @@ class SQLiteBackend(Backend):
         self._conn.execute("PRAGMA cache_size=-20000")
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._create_schema()
+        self._ensure_lexical_revision()
         self._ensure_runtime_state()
         self._canonicalize_links_if_needed()
         self._json_each_ok = self._json_each_probe()
+
+    def _ensure_lexical_revision(self) -> None:
+        """Add cache metadata without changing memory rows or old API fields.
+
+        Random tokens avoid revision-number reuse after rollback followed by
+        a different write. Triggers also catch writes from older clients.
+        """
+        with self._conn:
+            self._conn.execute("""CREATE TABLE IF NOT EXISTS bm25_lexical_state (
+                id INTEGER PRIMARY KEY CHECK(id=1), revision BLOB NOT NULL
+            )""")
+            self._conn.execute(
+                "INSERT OR IGNORE INTO bm25_lexical_state VALUES (1, randomblob(16))"
+            )
+            for event in ("INSERT", "DELETE"):
+                self._conn.execute(f"""CREATE TRIGGER IF NOT EXISTS bm25_lexical_{event.lower()}
+                    AFTER {event} ON memories BEGIN
+                    UPDATE bm25_lexical_state SET revision=randomblob(16) WHERE id=1;
+                    END""")
+            self._conn.execute("""CREATE TRIGGER IF NOT EXISTS bm25_lexical_update
+                AFTER UPDATE OF content, cues_json, kind, status, seq ON memories
+                WHEN OLD.content IS NOT NEW.content OR OLD.cues_json IS NOT NEW.cues_json
+                  OR OLD.kind IS NOT NEW.kind OR OLD.status IS NOT NEW.status
+                  OR OLD.seq IS NOT NEW.seq
+                BEGIN
+                UPDATE bm25_lexical_state SET revision=randomblob(16) WHERE id=1;
+                END""")
 
     def _create_schema(self) -> None:
         with self._conn:
@@ -883,6 +921,14 @@ class SQLiteBackend(Backend):
                 "CREATE INDEX IF NOT EXISTS idx_memories_status_importance "
                 "ON memories(status, importance)"
             )
+
+    @_locked
+    def revision_token(self):
+        # A transactional token sees committed external writes and rollback,
+        # but does not change on strength, feedback, or association updates.
+        return self._conn.execute(
+            "SELECT revision FROM bm25_lexical_state WHERE id=1"
+        ).fetchone()[0]
 
     @_locked
     def add(self, item: MemoryItem) -> None:
