@@ -212,7 +212,7 @@ class Metacognition:
         """
         query_terms = set(tokenize(query))
         results = self.store.recall(
-            query, top_k=top_k, now=now, embedder=embedder
+            query, top_k=top_k, now=now, embedder=embedder, read_only=True
         )
         recalled = {r.item.id for r in results}
         return [
@@ -237,7 +237,7 @@ class Metacognition:
     ) -> MetacognitiveCheck:
         now = now or utcnow()
         results = self.store.recall(
-            query, top_k=top_k, now=now, embedder=embedder
+            query, top_k=top_k, now=now, embedder=embedder, read_only=True
         )
         items = [(r.item, *self.confidence(r.item, now)) for r in results]
         return MetacognitiveCheck(

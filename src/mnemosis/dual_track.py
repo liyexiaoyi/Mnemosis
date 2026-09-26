@@ -409,6 +409,7 @@ class DualTrackStore:
         top_k: int = 5,
         now: datetime | None = None,
         reinforce: bool = True,
+        read_only: bool = False,
         context: str | None = None,
         context_boost: bool = True,
         elaborate_links: bool = True,
@@ -458,6 +459,10 @@ class DualTrackStore:
         kind_pref: float = 0.03,
         exclude_ids: set[str] | None = None,
     ) -> list[RecallResult]:
+        if read_only:
+            reinforce = False
+            elaborate_links = False
+            suppression_factor = 0.0
         now = now or utcnow()
         candidates: list[MemoryItem] = []
         fallback_mode = False

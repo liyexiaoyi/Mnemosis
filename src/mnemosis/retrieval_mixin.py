@@ -126,6 +126,8 @@ class RetrievalMixin:
         kind: MemoryKind | None = None,
         top_k: int = 5,
         now: datetime | None = None,
+        read_only: bool = False,
+        use_default_embedder: bool = True,
         context: str | None = None,
         context_boost: bool = True,
         elaborate_links: bool = True,
@@ -168,7 +170,8 @@ class RetrievalMixin:
         scope_anchor: bool = True,
         exclude_ids: set[str] | None = None,
     ) -> list[RecallResult]:
-        embedder = embedder or self.embedder
+        if use_default_embedder:
+            embedder = embedder or self.embedder
         with self._lock:
             exclude_ids = set(exclude_ids or ()) | set(self._suppressed_ids)
         results = self.store.recall(
@@ -176,6 +179,7 @@ class RetrievalMixin:
             kind=kind,
             top_k=top_k,
             now=now,
+            read_only=read_only,
             context=context,
             context_boost=context_boost,
             elaborate_links=elaborate_links,
@@ -211,22 +215,23 @@ class RetrievalMixin:
             kind_preference=kind_preference,
             exclude_ids=exclude_ids,
         )
-        with self._lock:
-            self._recall_log.append(
-                {
-                    "query": query,
-                    "top_id": results[0].item.id if results else None,
-                    "top_preview": (
-                        results[0].item.content[:40] if results else None
-                    ),
-                    "confident": results[0].confident if results else None,
-                    "ts": utcnow().isoformat(),
-                }
-            )
-            # Same lock section as the log append: log and warmup
-            # counters are updated atomically (RLock is reentrant).
-            if hasattr(self, "_track_warmup_query"):
-                self._track_warmup_query(query)
+        if not read_only:
+            with self._lock:
+                self._recall_log.append(
+                    {
+                        "query": query,
+                        "top_id": results[0].item.id if results else None,
+                        "top_preview": (
+                            results[0].item.content[:40] if results else None
+                        ),
+                        "confident": results[0].confident if results else None,
+                        "ts": utcnow().isoformat(),
+                    }
+                )
+                # Same lock section as the log append: log and warmup
+                # counters are updated atomically (RLock is reentrant).
+                if hasattr(self, "_track_warmup_query"):
+                    self._track_warmup_query(query)
         if concept_coverage:
             results = self._apply_concept_coverage(
                 query,
@@ -307,6 +312,7 @@ class RetrievalMixin:
         kind: MemoryKind | None = None,
         top_k: int = 5,
         now: datetime | None = None,
+        read_only: bool = False,
         pass_k: int = 24,
         rrf_k: int = 60,
         kw_weight: float = 1.0,
@@ -345,6 +351,7 @@ class RetrievalMixin:
             kind=kind,
             top_k=top_k,
             now=now,
+            read_only=read_only,
             pass_k=pass_k,
             rrf_k=rrf_k,
             kw_weight=kw_weight,

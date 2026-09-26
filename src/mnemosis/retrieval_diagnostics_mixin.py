@@ -32,7 +32,7 @@ class RetrievalDiagnosticsMixin:
         hit_count = 0
         weak_count = 0
         for query in queries:
-            results = self.recall(query, top_k=max(1, int(top_k)), now=now)
+            results = self.recall(query, top_k=max(1, int(top_k)), now=now, read_only=True)
             if not results:
                 weak_count += 1
                 continue
@@ -88,7 +88,7 @@ class RetrievalDiagnosticsMixin:
         per-result reasons, so agents can audit their own retrieval.
         """
         candidates = self.store.all_active()
-        results = self.recall(query, top_k=max(1, int(top_k)))
+        results = self.recall(query, top_k=max(1, int(top_k)), read_only=True)
         traced = [
             {
                 "id": result.item.id,

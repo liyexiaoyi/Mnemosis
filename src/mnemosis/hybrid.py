@@ -321,6 +321,7 @@ def fused_recall(
     kind=None,
     top_k: int = 5,
     now: datetime | None = None,
+    read_only: bool = False,
     pass_k: int = 24,
     rrf_k: int = 60,
     kw_weight: float = 1.0,
@@ -355,6 +356,9 @@ def fused_recall(
             rewritten,
             kind=kind,
             top_k=pass_k,
+            now=now,
+            read_only=True,
+            use_default_embedder=False,
             embedder=None,
             elaborate_links=False,
             suppression_factor=0.0,
@@ -375,12 +379,18 @@ def fused_recall(
         ):
             # An exact, near-perfect keyword match is already the answer;
             # skip the n-gram and dense passes entirely.
-            return kw_results[:top_k]
+            selected = kw_results[:top_k]
+            if not read_only:
+                _reinforce_selected(engine, selected, rewritten, now)
+            return selected
     if ng_weight > 0:
         ng_results = engine.recall(
             rewritten,
             kind=kind,
             top_k=pass_k,
+            now=now,
+            read_only=True,
+            use_default_embedder=False,
             embedder=NGramEmbedder(),
             elaborate_links=False,
             suppression_factor=0.0,
@@ -390,6 +400,8 @@ def fused_recall(
         passes.append(([r.item.id for r in ng_results], ng_weight))
         all_results.extend(ng_results)
     dense_results = []
+    dense_embedder = dense_embedder or getattr(engine, "embedder", None)
+    vector_index = vector_index or getattr(engine, "vector_index", None)
     if dense_embedder is not None:
         try:
             dense_results = _dense_results(
@@ -405,8 +417,12 @@ def fused_recall(
             dense_results = []
         passes.append(([r.item.id for r in dense_results], dense_weight))
         all_results.extend(dense_results)
+    dense_ids = {result.item.id for result in dense_results}
     for result in all_results:
-        by_id.setdefault(result.item.id, result)
+        existing = by_id.setdefault(result.item.id, result)
+        existing.reasons = list(dict.fromkeys(existing.reasons + result.reasons))
+        if result.item.id in dense_ids and "semantic dense channel" not in existing.reasons:
+            existing.reasons.append("semantic dense channel")
 
     ranked = weighted_rrf(passes, k=rrf_k)
     if not ranked:
@@ -438,7 +454,36 @@ def fused_recall(
         scored.append((score, fused, memory_id))
 
     scored.sort(key=lambda row: (-row[0], -row[1]))
-    return [by_id[mid] for _, _, mid in scored[:top_k]]
+    selected = []
+    for score, _, mid in scored[:top_k]:
+        result = by_id[mid]
+        result.score = score
+        selected.append(result)
+    if not read_only:
+        _reinforce_selected(engine, selected, rewritten, now)
+    return selected
+
+
+def _reinforce_selected(engine, results, query: str, now: datetime) -> None:
+    """Only final active lexical matches get one bounded familiarity gain."""
+    from .types import MemoryStatus, tokenize
+
+    terms = set(tokenize(query))
+    seen = set()
+    with engine._lock:
+        for result in results:
+            if result.item.id in seen:
+                continue
+            seen.add(result.item.id)
+            item = engine.backend.get(result.item.id)
+            if item is None or item.status is not MemoryStatus.ACTIVE:
+                continue
+            if not terms.intersection(engine.store._terms(item)):
+                continue
+            engine.curve.reinforce(item, delta=0.05, now=now)
+            engine.backend.update(item)
+            result.item = item
+        engine.store.invalidate_fallback_cache()
 
 
 __all__ = [
