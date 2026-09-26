@@ -232,7 +232,8 @@ class Consolidator:
 
         New information either *assimilates* into an existing schema or forces
         the schema to *accommodate* (change). We emulate accommodation during
-        sleep: when two confident facts share a cue but one is backed by at
+        sleep: when two confident facts share a cue and topic in compatible
+        contexts/event times and one is backed by at
         least 3x the evidence (and at least equal source trust), the weaker
         one is retired instead of lingering as a contradiction. Balanced
         disagreements are left to REM conflict-resolution instead.
@@ -247,27 +248,15 @@ class Consolidator:
             if item.status is MemoryStatus.ACTIVE
             and item.confidence >= 0.5
         ]
-        groups: dict[str, list[MemoryItem]] = {}
-        for item in semantic:
-            for cue in item.cues:
-                groups.setdefault(cue, []).append(item)
         accommodated = 0
-        seen_pairs: set[frozenset[str]] = set()
-        for items in groups.values():
-            for a, b in _bounded_pairs(items):
-                if a.content_hash == b.content_hash:
-                    continue
-                pair = frozenset({a.id, b.id})
-                if pair in seen_pairs:
-                    continue
-                seen_pairs.add(pair)
-                dominant, weaker = self._dominant(a, b)
-                if dominant is None or weaker is None:
-                    continue
-                weaker.status = MemoryStatus.RECYCLED
-                weaker.updated_at = now
-                self.backend.update(weaker)
-                accommodated += 1
+        for _cue, a, b in self._conflict_candidates(semantic):
+            dominant, weaker = self._dominant(a, b)
+            if dominant is None or weaker is None:
+                continue
+            weaker.status = MemoryStatus.RECYCLED
+            weaker.updated_at = now
+            self.backend.update(weaker)
+            accommodated += 1
         return accommodated
 
     @staticmethod
@@ -784,7 +773,8 @@ class Consolidator:
 
         A shared cue alone is not a contradiction (two unrelated facts about
         the same person/tag coexist fine). The contents must also share at
-        least one non-cue token before the pair is flagged.
+        least one non-cue token before the pair is flagged. Known different
+        contexts or event times are retained as separate facts.
         """
         semantic = [
             item
@@ -796,9 +786,26 @@ class Consolidator:
             if item.status is MemoryStatus.ACTIVE
             and item.confidence >= self.conflict_min_confidence
         ]
-        # Tokenize each content once; pair scans then only do set
-        # intersections instead of re-tokenizing the same text per pair.
-        item_tokens: dict[str, frozenset[str]] = {
+        return [
+            Conflict(
+                a=a,
+                b=b,
+                reason=(f"confident facts share cue '{cue}' and topic but differ"),
+            )
+            for cue, a, b in self._conflict_candidates(semantic)
+        ]
+
+    @staticmethod
+    def _conflict_candidates(
+        semantic: list[MemoryItem],
+    ) -> Iterator[tuple[str, MemoryItem, MemoryItem]]:
+        """Shared lexical candidates for detection and accommodation.
+
+        Topic overlap is a heuristic, not proof of contradiction. Known
+        distinct contexts or event times cannot justify suppressing either
+        trace. Missing metadata retains the legacy topic heuristic.
+        """
+        item_tokens = {
             item.id: frozenset(tokenize(item.content)) for item in semantic
         }
         cue_tokens_cache: dict[str, frozenset[str]] = {}
@@ -806,37 +813,37 @@ class Consolidator:
         for item in semantic:
             for cue in item.cues:
                 groups.setdefault(cue, []).append(item)
-
-        conflicts: list[Conflict] = []
         seen_pairs: set[frozenset[str]] = set()
         for cue, items in groups.items():
             for a, b in _bounded_pairs(items):
+                # Callers may retire a trace between yields. A retired trace
+                # must not then compete with or retire another active fact.
+                if (a.status is not MemoryStatus.ACTIVE
+                        or b.status is not MemoryStatus.ACTIVE):
+                    continue
                 if a.content_hash == b.content_hash:
                     continue
                 pair = frozenset({a.id, b.id})
                 if pair in seen_pairs:
                     continue
-                seen_pairs.add(pair)
+                if a.context and b.context and a.context != b.context:
+                    continue
+                if (a.source.occurred_at is not None
+                        and b.source.occurred_at is not None
+                        and a.source.occurred_at != b.source.occurred_at):
+                    continue
                 cue_tokens = cue_tokens_cache.get(cue)
                 if cue_tokens is None:
                     cue_tokens = frozenset(tokenize(cue))
                     cue_tokens_cache[cue] = cue_tokens
-                common = (
-                    item_tokens[a.id] & item_tokens[b.id]
-                ) - cue_tokens
+                common = (item_tokens[a.id] & item_tokens[b.id]) - cue_tokens
                 if not common:
                     continue
-                conflicts.append(
-                    Conflict(
-                        a=a,
-                        b=b,
-                        reason=(
-                            f"confident facts share cue '{cue}' and "
-                            "topic but differ"
-                        ),
-                    )
-                )
-        return conflicts
+                # An earlier cue can consume the only shared topic token;
+                # only accepted pairs are deduplicated across cue groups.
+                seen_pairs.add(pair)
+                yield cue, a, b
+
 
 
 __all__ = ["Conflict", "ConsolidationReport", "Consolidator"]
