@@ -10,6 +10,7 @@ from .embedding import Embedder
 from .types import (
     MemoryItem,
     MemoryKind,
+    MemoryStatus,
     RecallResult,
     tokenize,
     utcnow,
@@ -855,13 +856,22 @@ class RetrievalMixin:
         deliberate retrieval cue survives top-k truncation (ponytail: one
         path for every anchor instead of four copies).
         """
+        existing = next((row for row in results if row.item.id == candidate.id), None)
+        highest = max((row.score for row in results), default=0.0)
+        already_first = bool(results and results[0].item.id == candidate.id)
+        anchored_score = max(score, highest if already_first else highest + 0.01)
+        reasons = list(existing.reasons) if existing is not None else []
+        if reason not in reasons:
+            reasons.append(reason)
         result = RecallResult(
-            candidate, max(score, results[0].score + 0.01)
+            candidate, anchored_score, reasons,
+            confident=existing.confident if existing is not None else True,
         )
-        result.reasons.append(reason)
-        results.append(result)
-        results.sort(key=lambda result: result.score, reverse=True)
-        return results[: max(1, int(top_k))]
+        # Re-ranking must not duplicate the target or mutate caller-owned
+        # results, discard uncertainty, or repeatedly inflate its score.
+        remaining = [row for row in results if row.item.id != candidate.id]
+        remaining.sort(key=lambda row: row.score, reverse=True)
+        return [result, *remaining][: max(1, int(top_k))]
     def _apply_temporal_anchor(
         self,
         query: str,
@@ -940,7 +950,6 @@ class RetrievalMixin:
                     )
             return full, out
 
-        seen = {result.item.id for result in results}
         query_terms = self._concept_terms(query)
         if not query_terms:
             return results
@@ -968,6 +977,19 @@ class RetrievalMixin:
         candidate_terms = self._temporal_candidate_terms(
             query, query_terms, query_finals, verb_stems, action_groups
         )
+        # One pool for both seen and unseen records. Skipping already
+        # recalled rows made the temporal winner depend on top_k.
+        pool = {
+            row.item.id: row.item for row in results
+            if row.item.id not in exclude_ids
+            and row.item.status is MemoryStatus.ACTIVE
+            and (kind is None or row.item.kind is kind)
+        }
+        pool.update({
+            item.id: item for item in self._anchor_items(
+                candidate_terms, kind, exclude_ids
+            )
+        })
 
         if date_marker:
             month, day = (
@@ -980,11 +1002,7 @@ class RetrievalMixin:
                 f"{int(year.group(1))}年{date_frag}" if year else date_frag
             )
             candidates: list[tuple[float, MemoryItem]] = []
-            for item in self._anchor_items(
-                candidate_terms, kind, exclude_ids
-            ):
-                if item.id in seen:
-                    continue
+            for item in pool.values():
                 text = item.content + " " + " ".join(item.cues)
                 if target_frag not in "".join(text.split()):
                     continue
@@ -1020,9 +1038,7 @@ class RetrievalMixin:
             re.search(r"第一次|首次|头一回", query)
         )
         date_candidates: list[tuple[float, tuple, MemoryItem]] = []
-        for item in self._anchor_items(candidate_terms, kind, exclude_ids):
-            if item.id in seen:
-                continue
+        for item in pool.values():
             text = item.content + " " + " ".join(item.cues)
             full, dates = _dates(text)
             if not dates:
@@ -1116,9 +1132,6 @@ class RetrievalMixin:
             )
         )
         score, target, candidate = date_candidates[0]
-        candidate_terms = set(
-            tokenize(candidate.content + " " + " ".join(candidate.cues))
-        )
         # For past questions about the event itself, notices (预约/通知/
         # 提醒/调时间) only confuse the answer model: the "latest class"
         # row with no content makes it answer 不知道. Drop them when
@@ -1173,94 +1186,6 @@ class RetrievalMixin:
                 future_rows.append(result)
             if future_rows:
                 results = future_rows
-        # If some result already present is a relevant dated record at
-        # least as strong in the asked direction, keep the current list.
-        for result in results:
-            if result.item.id in exclude_ids:
-                continue
-            text = result.item.content + " " + " ".join(result.item.cues)
-            full, all_dates = _dates(text)
-            if not all_dates:
-                continue
-            if (
-                want_past
-                and not notice_q
-                and self._TEMPORAL_NOTICE_RE.search(text)
-                and not any(
-                    word in text
-                    for stem in verb_stems
-                    for word in _TEMPORAL_STEM_WORDS.get(stem, (stem,))
-                )
-            ):
-                continue
-            # A seen record only "covers" the question when its own
-            # content (not just cues) carries a query term: "新规则生效"
-            # with a 截单 cue must not block the 公告 that actually says
-            # 每日截单.
-            if not self._temporal_relevant(
-                query_terms,
-                result.item.content,
-                topic_len,
-                query_finals,
-                verb_stems,
-                action_groups,
-                excluded_terms,
-            ):
-                continue
-            if _MONEY_Q_RE.search(query) and not _MONEY_PAT_RE.search(
-                result.item.content
-            ):
-                continue
-            if not self._temporal_relevant(
-                query_terms,
-                text,
-                topic_len,
-                query_finals,
-                verb_stems,
-                action_groups,
-                excluded_terms,
-            ):
-                continue
-            if hours_q and not _HOURS_WORD_RE.search(text):
-                continue
-            # A seen record only "covers" the question when it is about
-            # the same event as the candidate, not merely the same domain:
-            # 钟点工保险 record must not block 考核完成 because both mention
-            # 钟点工. Require a shared query-relevant term with the
-            # candidate (the distinctive action/noun), except for
-            # earliest-event questions where the covering record may be a
-            # different but earlier instance.
-            if (
-                not want_earliest
-                and not (set(tokenize(text)) & query_terms & candidate_terms)
-            ):
-                continue
-            is_notice = bool(self._TEMPORAL_NOTICE_RE.search(text))
-            event_dates = [d for d in all_dates if d not in set(full)]
-            pool = (
-                event_dates
-                if not want_past and is_notice and event_dates
-                else (full if want_past else all_dates)
-            )
-            side = [d for d in pool if d <= today] if want_past else [
-                d for d in pool if d > today
-            ]
-            if not side:
-                continue
-            if want_earliest:
-                seen_best = min(side)
-            else:
-                seen_best = max(side) if want_past else min(side)
-            if (want_earliest and seen_best <= target) or (
-                want_past and not want_earliest and seen_best >= target
-            ) or (
-                not want_past and seen_best <= target
-            ):
-                # The blocking record is already the strongest answer;
-                # move it to the front so the answer model cannot miss it.
-                results.remove(result)
-                results.insert(0, result)
-                return results
         return self._append_anchor(
             results,
             candidate,
@@ -1605,7 +1530,7 @@ class RetrievalMixin:
         questions surface the record carrying the requested date
         (ordinal-time processing; Gauthier et al., 2020). Read-only.
         """
-        final = self.recall(query, top_k=top_k, kind=kind, now=now)
+        final = self.recall(query, top_k=top_k, kind=kind, now=now, read_only=True)
         anchored = [
             {
                 "id": result.item.id,

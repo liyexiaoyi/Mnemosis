@@ -967,10 +967,12 @@ class DualTrackStore:
             max_expansion_neighbors,
             fallback_mode=fallback_mode,
         )
+        self._filter_expanded_candidates(scored, kind, exclude_ids)
         if event_chain is not None:
             self._follow_event_chain(
                 scored, event_chain, temporal_boost
             )
+        self._filter_expanded_candidates(scored, kind, exclude_ids)
         if temporal_reason:
             apply_time_cell_reasoning(
                 scored,
@@ -997,6 +999,7 @@ class DualTrackStore:
                 max_neighbors=pc_max_neighbors,
                 max_appended=pc_max_appended,
             )
+        self._filter_expanded_candidates(scored, kind, exclude_ids)
         if separation:
             self._separate_near_duplicates(
                 scored,
@@ -1441,6 +1444,26 @@ class DualTrackStore:
         if changed:
             # a protected rival may now outrank the previous top item
             scored.sort(key=lambda entry: entry[0], reverse=True)
+
+    @staticmethod
+    def _filter_expanded_candidates(
+        scored: list[tuple[float, float, MemoryItem, list[str], bool]],
+        kind: MemoryKind | None,
+        exclude_ids: set[str] | None,
+    ) -> None:
+        """Apply the retrieval boundary after each graph expansion.
+
+        Neighbours and cached event successors need not belong to the
+        original filtered pool. Reject them before they become roots for
+        another expansion, compete in ranking, or receive learning updates.
+        """
+        excluded = exclude_ids or set()
+        scored[:] = [
+            row for row in scored
+            if row[2].status is MemoryStatus.ACTIVE
+            and (kind is None or row[2].kind is kind)
+            and row[2].id not in excluded
+        ]
 
     def _pattern_completion(
         self,
