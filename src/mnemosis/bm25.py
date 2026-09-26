@@ -18,14 +18,38 @@ class BM25Index:
         self.lengths = {}
         self.order = {}
         self.postings = defaultdict(dict)
+        self.terms = {}
+        self.total_length = 0
+        self.n = 0
+        self.avg_length = 0.0
         for item in items:
-            counts = Counter(tokenize(item.content) + list(item.cues))
-            self.lengths[item.id] = sum(counts.values())
-            self.order[item.id] = item.seq
-            for term, count in counts.items():
-                self.postings[term][item.id] = count
+            self.upsert(item)
+
+    def remove(self, ident):
+        if ident not in self.lengths:
+            return
+        self.total_length -= self.lengths.pop(ident)
+        self.order.pop(ident)
+        for term in self.terms.pop(ident):
+            posting = self.postings[term]
+            posting.pop(ident)
+            if not posting:
+                del self.postings[term]
         self.n = len(self.lengths)
-        self.avg_length = sum(self.lengths.values()) / max(1, self.n)
+        self.avg_length = self.total_length / max(1, self.n)
+
+    def upsert(self, item):
+        self.remove(item.id)
+        counts = Counter(tokenize(item.content) + list(item.cues))
+        length = sum(counts.values())
+        self.lengths[item.id] = length
+        self.total_length += length
+        self.order[item.id] = item.seq
+        self.terms[item.id] = tuple(counts)
+        for term, count in counts.items():
+            self.postings[term][item.id] = count
+        self.n = len(self.lengths)
+        self.avg_length = self.total_length / max(1, self.n)
 
     def search(self, query, top_k, excluded):
         scores = defaultdict(float)
@@ -46,7 +70,7 @@ class BM25Index:
 def recall_bm25(engine, query, *, kind=None, top_k=5, exclude_ids=None):
     """Find lexical candidates without rehearsal, log updates or new links.
 
-    Cold queries build an index; writes invalidate it conservatively. Only
+    Cold queries build an index; known changes update it incrementally. Only
     one corpus/kind is cached, bounding duplicate index storage. Callers
     needing familiarity reinforcement use the fused retrieval entry point.
     """
@@ -58,11 +82,23 @@ def recall_bm25(engine, query, *, kind=None, top_k=5, exclude_ids=None):
         if token is not None and cached is not None and cached[:2] == (kind, token):
             index = cached[2]
         else:
-            index = BM25Index(engine.store.all_active(kind=kind))
+            changes = None
+            if token is not None and cached is not None and cached[0] == kind:
+                changes = engine.backend.lexical_changes_since(cached[1])
+            # Never leave a partially mutated index reachable under an old
+            # token if a backend read or tokenization raises an exception.
+            engine._bm25_cache = None
+            if changes is not None:
+                index = cached[2]
+                for ident in changes:
+                    index.remove(ident)
+                for item in engine.backend.get_many(changes):
+                    if item.status is MemoryStatus.ACTIVE and (kind is None or item.kind == kind):
+                        index.upsert(item)
+            else:
+                index = BM25Index(engine.store.all_active(kind=kind))
             if token is not None and engine.backend.revision_token() == token:
                 engine._bm25_cache = (kind, token, index)
-            else:
-                engine._bm25_cache = None
         excluded = set(exclude_ids or ()) | set(engine._suppressed_ids)
         ranked = index.search(query, top_k, excluded)
         fresh = {item.id: item for item in engine.backend.get_many(ident for ident, _ in ranked)}

@@ -92,6 +92,10 @@ class Backend(ABC):
         """Cache invalidation token, or None to disable lexical caching."""
         return None
 
+    def lexical_changes_since(self, token):
+        """Changed memory IDs, or None if a complete rebuild is required."""
+        return None
+
     @abstractmethod
     def add(self, item: MemoryItem) -> None: ...
 
@@ -298,6 +302,13 @@ class DictBackend(Backend):
         # Mutable in-memory items may be edited directly by existing callers.
         return tuple((item.id, item.content, tuple(item.cues), item.kind,
                       item.status, item.seq) for item in self._items.values())
+
+    @_locked
+    def lexical_changes_since(self, token):
+        previous = {row[0]: row[1:] for row in token}
+        current = {row[0]: row[1:] for row in self.revision_token()}
+        return sorted(ident for ident in previous.keys() | current.keys()
+                      if previous.get(ident) != current.get(ident))
 
     @_locked
     def add(self, item: MemoryItem) -> None:
@@ -745,10 +756,10 @@ class SQLiteBackend(Backend):
         self._json_each_ok = self._json_each_probe()
 
     def _ensure_lexical_revision(self) -> None:
-        """Add cache metadata without changing memory rows or old API fields.
+        """Install bounded, transactional lexical change tracking.
 
-        Random tokens avoid revision-number reuse after rollback followed by
-        a different write. Triggers also catch writes from older clients.
+        Random revision tokens distinguish rollback branches; old clients
+        still fire these triggers. Missing/discontinuous history rebuilds.
         """
         with self._conn:
             self._conn.execute("""CREATE TABLE IF NOT EXISTS bm25_lexical_state (
@@ -757,19 +768,36 @@ class SQLiteBackend(Backend):
             self._conn.execute(
                 "INSERT OR IGNORE INTO bm25_lexical_state VALUES (1, randomblob(16))"
             )
-            for event in ("INSERT", "DELETE"):
-                self._conn.execute(f"""CREATE TRIGGER IF NOT EXISTS bm25_lexical_{event.lower()}
-                    AFTER {event} ON memories BEGIN
-                    UPDATE bm25_lexical_state SET revision=randomblob(16) WHERE id=1;
+            self._conn.execute("""CREATE TABLE IF NOT EXISTS bm25_lexical_changes (
+                seq INTEGER PRIMARY KEY AUTOINCREMENT,
+                before_revision BLOB NOT NULL, after_revision BLOB NOT NULL,
+                memory_id TEXT NOT NULL
+            )""")
+            self._conn.execute("""CREATE INDEX IF NOT EXISTS bm25_changes_before
+                ON bm25_lexical_changes(before_revision)""")
+            for event in ("INSERT", "DELETE", "UPDATE"):
+                # Replace only our previous version's three triggers.
+                self._conn.execute(f"DROP TRIGGER IF EXISTS bm25_lexical_{event.lower()}")
+                operation = event
+                condition = ""
+                memory_id = "OLD.id" if event == "DELETE" else "NEW.id"
+                if event == "UPDATE":
+                    operation = "UPDATE OF content, cues_json, kind, status, seq"
+                    condition = """WHEN OLD.content IS NOT NEW.content
+                        OR OLD.cues_json IS NOT NEW.cues_json OR OLD.kind IS NOT NEW.kind
+                        OR OLD.status IS NOT NEW.status OR OLD.seq IS NOT NEW.seq"""
+                self._conn.execute(f"""CREATE TRIGGER IF NOT EXISTS bm25_lexical_{event.lower()}_v2
+                    AFTER {operation} ON memories {condition} BEGIN
+                    INSERT INTO bm25_lexical_changes(before_revision,after_revision,memory_id)
+                        SELECT revision,randomblob(16),{memory_id}
+                        FROM bm25_lexical_state WHERE id=1;
+                    UPDATE bm25_lexical_state SET revision=(
+                        SELECT after_revision FROM bm25_lexical_changes ORDER BY seq DESC LIMIT 1
+                    ) WHERE id=1;
+                    DELETE FROM bm25_lexical_changes
+                        WHERE seq <= (SELECT MAX(seq)-4096 FROM bm25_lexical_changes)
+                        AND (SELECT MAX(seq)%256 FROM bm25_lexical_changes)=0;
                     END""")
-            self._conn.execute("""CREATE TRIGGER IF NOT EXISTS bm25_lexical_update
-                AFTER UPDATE OF content, cues_json, kind, status, seq ON memories
-                WHEN OLD.content IS NOT NEW.content OR OLD.cues_json IS NOT NEW.cues_json
-                  OR OLD.kind IS NOT NEW.kind OR OLD.status IS NOT NEW.status
-                  OR OLD.seq IS NOT NEW.seq
-                BEGIN
-                UPDATE bm25_lexical_state SET revision=randomblob(16) WHERE id=1;
-                END""")
 
     def _create_schema(self) -> None:
         with self._conn:
@@ -929,6 +957,32 @@ class SQLiteBackend(Backend):
         return self._conn.execute(
             "SELECT revision FROM bm25_lexical_state WHERE id=1"
         ).fetchone()[0]
+
+    @_locked
+    def lexical_changes_since(self, token):
+        """Return a verified chain of at most 1024 lexical events."""
+        if token == self.revision_token():
+            return []
+        start = self._conn.execute(
+            "SELECT seq FROM bm25_lexical_changes WHERE before_revision=? ORDER BY seq LIMIT 1",
+            (token,),
+        ).fetchone()
+        if start is None:
+            return None
+        rows = self._conn.execute("""SELECT before_revision,after_revision,memory_id
+            FROM bm25_lexical_changes WHERE seq>=? ORDER BY seq LIMIT 1025""", (start[0],)).fetchall()
+        if len(rows) > 1024:
+            return None
+        previous = token
+        changed = {}
+        for before, after, memory_id in rows:
+            if before != previous:
+                return None
+            previous = after
+            changed[memory_id] = None
+        if previous != self.revision_token():
+            return None
+        return list(changed)
 
     @_locked
     def add(self, item: MemoryItem) -> None:
