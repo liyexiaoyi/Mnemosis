@@ -128,6 +128,7 @@ class RetrievalMixin:
         top_k: int = 5,
         now: datetime | None = None,
         read_only: bool = False,
+        learning_policy: str = "legacy",
         use_default_embedder: bool = True,
         context: str | None = None,
         context_boost: bool = True,
@@ -171,6 +172,15 @@ class RetrievalMixin:
         scope_anchor: bool = True,
         exclude_ids: set[str] | None = None,
     ) -> list[RecallResult]:
+        """Recall with legacy learning or opt-in final-result familiarity.
+
+        ``final`` keeps all candidate passes read-only and reinforces only
+        returned lexical matches once, after re-ranking. It does not infer
+        verified usefulness, add evidence, or record retrieval success.
+        ``read_only`` overrides learning under either policy.
+        """
+        if learning_policy not in ("legacy", "final"):
+            raise ValueError("learning_policy must be 'legacy' or 'final'")
         if use_default_embedder:
             embedder = embedder or self.embedder
         with self._lock:
@@ -180,7 +190,7 @@ class RetrievalMixin:
             kind=kind,
             top_k=top_k,
             now=now,
-            read_only=read_only,
+            read_only=read_only or learning_policy == "final",
             context=context,
             context_boost=context_boost,
             elaborate_links=elaborate_links,
@@ -216,23 +226,6 @@ class RetrievalMixin:
             kind_preference=kind_preference,
             exclude_ids=exclude_ids,
         )
-        if not read_only:
-            with self._lock:
-                self._recall_log.append(
-                    {
-                        "query": query,
-                        "top_id": results[0].item.id if results else None,
-                        "top_preview": (
-                            results[0].item.content[:40] if results else None
-                        ),
-                        "confident": results[0].confident if results else None,
-                        "ts": utcnow().isoformat(),
-                    }
-                )
-                # Same lock section as the log append: log and warmup
-                # counters are updated atomically (RLock is reentrant).
-                if hasattr(self, "_track_warmup_query"):
-                    self._track_warmup_query(query)
         if concept_coverage:
             results = self._apply_concept_coverage(
                 query,
@@ -305,6 +298,28 @@ class RetrievalMixin:
                 kind=kind,
                 exclude_ids=exclude_ids,
             )
+        if not read_only and learning_policy == "final":
+            # Reuse the same bounded familiarity contract as fused recall.
+            from .hybrid import _reinforce_selected
+
+            _reinforce_selected(self, results, query, now or utcnow())
+        if not read_only:
+            with self._lock:
+                self._recall_log.append(
+                    {
+                        "query": query,
+                        "top_id": results[0].item.id if results else None,
+                        "top_preview": (
+                            results[0].item.content[:40] if results else None
+                        ),
+                        "confident": results[0].confident if results else None,
+                        "ts": (now or utcnow()).isoformat(),
+                    }
+                )
+                # Same lock section as the log append: log and warmup
+                # counters are updated atomically (RLock is reentrant).
+                if hasattr(self, "_track_warmup_query"):
+                    self._track_warmup_query(query)
         return results
     def recall_bm25(
         self, query: str, *, kind: MemoryKind | None = None,

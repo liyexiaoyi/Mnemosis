@@ -102,6 +102,8 @@ class MCPHandlersMixin:
             top_k=_bounded(args, "top_k", 5, 1, 500),
             context=args.get("context"),
             embedder=embedder,
+            learning_policy=args.get("learning_policy", "legacy"),
+            read_only=args.get("read_only", False),
         )
         return [
             {

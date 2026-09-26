@@ -91,6 +91,17 @@ TOOL_DEFINITIONS: list[dict] = [
                         },
                         "context": {"type": "string"},
                         "embedder": {"type": "string", "enum": ["ngram"]},
+                        "learning_policy": {
+                            "type": "string",
+                            "enum": ["legacy", "final"],
+                            "default": "legacy",
+                            "description": "final learns familiarity only from returned matches after re-ranking; legacy preserves prior learning.",
+                        },
+                        "read_only": {
+                            "type": "boolean",
+                            "default": False,
+                            "description": "Skip learning and recall logging under either policy.",
+                        },
                     },
                     "required": ["query"],
                 },
