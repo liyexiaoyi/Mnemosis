@@ -26,6 +26,7 @@ from .temporal_reason import apply_time_cell_reasoning
 from .types import (
     STOPWORDS,
     MemoryItem,
+    evidence_sources_for,
     MemoryKind,
     MemoryStatus,
     RecallResult,
@@ -291,6 +292,7 @@ class DualTrackStore:
         affect: str | None = None,
         evidence_count: int = 1,
         storage_strength: float = 1.0,
+        evidence_sources: dict[str, int] | None = None,
     ) -> MemoryItem:
         if importance is None:
             importance = self.scorer.score(content, source=source)
@@ -307,7 +309,10 @@ class DualTrackStore:
             affect=affect,
             evidence_count=evidence_count,
             storage_strength=storage_strength,
+            evidence_sources=dict(evidence_sources or {}),
         )
+        if kind is MemoryKind.EPISODIC and not item.evidence_sources:
+            item.evidence_sources = evidence_sources_for(item)
         if kind is MemoryKind.SEMANTIC:
             stored = self.backend.upsert(item)
         else:
@@ -354,6 +359,9 @@ class DualTrackStore:
                     storage_strength=record.get("storage_strength", 1.0),
                 )
             )
+        for item in prepared:
+            if item.kind is MemoryKind.EPISODIC:
+                item.evidence_sources = evidence_sources_for(item)
         episodic = [
             item
             for item in prepared
@@ -463,6 +471,7 @@ class DualTrackStore:
             reinforce = False
             elaborate_links = False
             suppression_factor = 0.0
+        explicit_clock = now is not None
         now = now or utcnow()
         candidates: list[MemoryItem] = []
         fallback_mode = False
@@ -499,7 +508,7 @@ class DualTrackStore:
         idf_weights: dict[str, float] = {}
         idf_sum = 0.0
         fallback_cache_key: tuple | None = None
-        if self.fallback_cache_ttl > 0:
+        if self.fallback_cache_ttl > 0 and not read_only and not explicit_clock:
             embedder_key = (
                 "none"
                 if embedder is None
@@ -1220,7 +1229,7 @@ class DualTrackStore:
                         seen.add(item.id)
                         merged.append(item)
             try:
-                self.backend.update_many(merged)
+                self.backend.update_reinforcement(merged)
                 with self._worker_lock:
                     self.reinforce_written += len(merged)
             except Exception as exc:  # noqa: BLE001
@@ -1265,7 +1274,7 @@ class DualTrackStore:
             self.reinforce_received += len(items)
             self.reinforce_sync_fallback += 1
         try:
-            self.backend.update_many(
+            self.backend.update_reinforcement(
                 items,
                 busy_timeout_ms=_REINFORCE_SYNC_TIMEOUT_MS,
             )

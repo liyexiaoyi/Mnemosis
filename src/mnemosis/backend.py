@@ -109,6 +109,24 @@ class Backend(ABC):
     @abstractmethod
     def update(self, item: MemoryItem) -> None: ...
 
+    def update_reinforcement(
+        self, items: Iterable[MemoryItem], *, busy_timeout_ms: int | None = None
+    ) -> None:
+        """Write only access reinforcement, never stale content or evidence.
+
+        Persistent backends should override this with an atomic conditional
+        update. The default supports the single-threaded in-memory backend.
+        Feedback/revision after queueing supersedes the queued rehearsal.
+        """
+        for pending in items:
+            current = self.get(pending.id)
+            if current is None or not _reinforcement_compatible(current, pending):
+                continue
+            for field in ("last_access_at", "access_count", "strength",
+                          "storage_strength", "retrieval_successes"):
+                setattr(current, field, getattr(pending, field))
+            self.update(current)
+
     @abstractmethod
     def delete(self, memory_id: str) -> None: ...
 
@@ -845,6 +863,9 @@ class SQLiteBackend(Backend):
             "review_streak": "review_streak INTEGER NOT NULL DEFAULT 0",
             "retrieval_successes": "retrieval_successes INTEGER NOT NULL DEFAULT 0",
             "retrieval_failures": "retrieval_failures INTEGER NOT NULL DEFAULT 0",
+            "verified_successes": "verified_successes INTEGER NOT NULL DEFAULT 0",
+            "verified_failures": "verified_failures INTEGER NOT NULL DEFAULT 0",
+            "evidence_sources": "evidence_sources TEXT NOT NULL DEFAULT '{}'",
         }
         with self._conn:
             for name, ddl in additions.items():
@@ -1347,6 +1368,9 @@ class SQLiteBackend(Backend):
                     item.review_streak,
                     item.retrieval_successes,
                     item.retrieval_failures,
+                    item.verified_successes,
+                    item.verified_failures,
+                    json.dumps(item.evidence_sources),
                     item.id,
                 )
             )
@@ -1373,7 +1397,8 @@ class SQLiteBackend(Backend):
                             storage_strength = ?, updated_at = ?,
                             revision_count = ?,
                             seq = ?, last_review_at = ?, review_streak = ?,
-                            retrieval_successes = ?, retrieval_failures = ?
+                            retrieval_successes = ?, retrieval_failures = ?,
+                            verified_successes = ?, verified_failures = ?, evidence_sources = ?
                         WHERE id = ?
                         """,
                         rows[start : start + _UPDATE_BATCH],
@@ -1387,6 +1412,35 @@ class SQLiteBackend(Backend):
                 except sqlite3.Error:
                     # Restoring the pragma must not mask the original error.
                     pass
+
+    @_locked
+    def update_reinforcement(
+        self, items: Iterable[MemoryItem], *, busy_timeout_ms: int | None = None
+    ) -> None:
+        rows = [(
+            item.last_access_at.isoformat() if item.last_access_at else None,
+            item.access_count, item.strength, item.storage_strength,
+            item.retrieval_successes, item.id, item.content_hash,
+            item.revision_count, item.verified_successes, item.verified_failures,
+            item.access_count,
+        ) for item in items]
+        previous_timeout = None
+        if busy_timeout_ms is not None:
+            previous_timeout = self._conn.execute("PRAGMA busy_timeout").fetchone()[0]
+            self._conn.execute(f"PRAGMA busy_timeout={int(busy_timeout_ms)}")
+        try:
+            for start in range(0, len(rows), _UPDATE_BATCH):
+                with self._conn:
+                    self._conn.executemany("""
+                        UPDATE memories SET last_access_at=?, access_count=?,
+                            strength=?, storage_strength=?, retrieval_successes=?
+                        WHERE id=? AND content_hash=? AND revision_count=?
+                            AND verified_successes=? AND verified_failures=?
+                            AND access_count<=? AND status='active'
+                    """, rows[start:start + _UPDATE_BATCH])
+        finally:
+            if previous_timeout is not None:
+                self._conn.execute(f"PRAGMA busy_timeout={previous_timeout}")
 
     @_locked
     def delete(self, memory_id: str) -> None:
@@ -2065,6 +2119,17 @@ class SQLiteBackend(Backend):
         self.close()
 
 
+def _reinforcement_compatible(current: MemoryItem, pending: MemoryItem) -> bool:
+    return (
+        current.status is MemoryStatus.ACTIVE
+        and current.content_hash == pending.content_hash
+        and current.revision_count == pending.revision_count
+        and current.verified_successes == pending.verified_successes
+        and current.verified_failures == pending.verified_failures
+        and current.access_count <= pending.access_count
+    )
+
+
 def _merge_stats(target: MemoryItem, incoming: MemoryItem) -> None:
     """Merge an incoming duplicate into the stored item (semantic dedupe)."""
     target.importance = max(target.importance, incoming.importance)
@@ -2073,6 +2138,8 @@ def _merge_stats(target: MemoryItem, incoming: MemoryItem) -> None:
     target.access_count += incoming.access_count
     target.cues = normalize_cues(target.cues + incoming.cues)
     target.evidence_count = max(target.evidence_count, incoming.evidence_count)
+    for key, count in incoming.evidence_sources.items():
+        target.evidence_sources[key] = max(target.evidence_sources.get(key, 0), count)
     target.storage_strength = max(
         target.storage_strength, incoming.storage_strength
     )
@@ -2116,6 +2183,9 @@ def _item_row(item: MemoryItem) -> tuple:
         item.review_streak,
         item.retrieval_successes,
         item.retrieval_failures,
+        item.verified_successes,
+        item.verified_failures,
+        json.dumps(item.evidence_sources),
     )
 
 
@@ -2150,6 +2220,9 @@ def _update_row(item: MemoryItem) -> tuple:
         item.review_streak,
         item.retrieval_successes,
         item.retrieval_failures,
+        item.verified_successes,
+        item.verified_failures,
+        json.dumps(item.evidence_sources),
         item.id,
     )
 
@@ -2161,9 +2234,9 @@ INSERT INTO memories (
     strength, confidence, status, context, affect, evidence_count,
     storage_strength, updated_at, revision_count, seq,
     last_review_at, review_streak, retrieval_successes,
-    retrieval_failures
+    retrieval_failures, verified_successes, verified_failures, evidence_sources
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-          ?, ?, ?, ?)
+          ?, ?, ?, ?, ?, ?, ?)
 """
 
 _INSERT_SELECT_SQL = """
@@ -2173,9 +2246,9 @@ INSERT INTO memories (
     strength, confidence, status, context, affect, evidence_count,
     storage_strength, updated_at, revision_count, seq,
     last_review_at, review_streak, retrieval_successes,
-    retrieval_failures
+    retrieval_failures, verified_successes, verified_failures, evidence_sources
 ) SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-         COALESCE(MAX(seq), 0) + 1, ?, ?, ?, ?
+         COALESCE(MAX(seq), 0) + 1, ?, ?, ?, ?, ?, ?, ?
   FROM memories
 """
 
@@ -2187,7 +2260,8 @@ UPDATE memories SET
     context = ?, affect = ?, evidence_count = ?,
     storage_strength = ?, updated_at = ?, revision_count = ?,
     seq = ?, last_review_at = ?, review_streak = ?,
-    retrieval_successes = ?, retrieval_failures = ?
+    retrieval_successes = ?, retrieval_failures = ?,
+    verified_successes = ?, verified_failures = ?, evidence_sources = ?
 WHERE id = ?
 """
 
@@ -2225,6 +2299,9 @@ def _row_to_item(row: sqlite3.Row | None) -> MemoryItem | None:
     item.review_streak = row["review_streak"]
     item.retrieval_successes = row["retrieval_successes"]
     item.retrieval_failures = row["retrieval_failures"]
+    item.verified_successes = row["verified_successes"]
+    item.verified_failures = row["verified_failures"]
+    item.evidence_sources = json.loads(row["evidence_sources"])
     return item
 
 

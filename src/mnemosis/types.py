@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import uuid
 from collections.abc import Iterable
@@ -142,6 +143,9 @@ class MemoryItem:
     review_streak: int = 0
     retrieval_successes: int = 0
     retrieval_failures: int = 0
+    verified_successes: int = 0
+    verified_failures: int = 0
+    evidence_sources: dict[str, int] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self.content_hash = self.content_hash or hash_content(self.content)
@@ -162,17 +166,23 @@ class MemoryItem:
         self.review_streak = max(0, int(self.review_streak))
         self.retrieval_successes = max(0, int(self.retrieval_successes))
         self.retrieval_failures = max(0, int(self.retrieval_failures))
+        self.verified_successes = max(0, int(self.verified_successes))
+        self.verified_failures = max(0, int(self.verified_failures))
+        self.evidence_sources = {
+            str(key): max(1, int(count)) for key, count in self.evidence_sources.items()
+        }
 
     def touch(self, now: datetime | None = None) -> None:
         """Mark as accessed; used by the forgetting curve reinforcement."""
         global _LAST_TOUCH
         stamp = now or utcnow()
-        if _LAST_TOUCH is not None and stamp <= _LAST_TOUCH:
+        if now is None and _LAST_TOUCH is not None and stamp <= _LAST_TOUCH:
             # Keep the access timeline strictly monotonic across items:
             # two touches in the same clock tick would otherwise tie in
             # "recently used" ordering (working_set).
             stamp = _LAST_TOUCH + timedelta(microseconds=1)
-        _LAST_TOUCH = stamp
+        if now is None:
+            _LAST_TOUCH = stamp
         self.last_access_at = stamp
         self.access_count += 1
 
@@ -202,6 +212,9 @@ class MemoryItem:
             "review_streak": self.review_streak,
             "retrieval_successes": self.retrieval_successes,
             "retrieval_failures": self.retrieval_failures,
+            "verified_successes": self.verified_successes,
+            "verified_failures": self.verified_failures,
+            "evidence_sources": dict(self.evidence_sources),
         }
 
     @classmethod
@@ -231,6 +244,9 @@ class MemoryItem:
             review_streak=int(data.get("review_streak", 0)),
             retrieval_successes=int(data.get("retrieval_successes", 0)),
             retrieval_failures=int(data.get("retrieval_failures", 0)),
+            verified_successes=int(data.get("verified_successes", 0)),
+            verified_failures=int(data.get("verified_failures", 0)),
+            evidence_sources=data.get("evidence_sources", {}),
         )
 
 
@@ -416,3 +432,19 @@ class MnemosisError(Exception):
     Catch this base class for any Mnemosis-specific failure; specific
     subclasses can be added later without breaking callers.
     """
+
+def evidence_sources_for(item: MemoryItem) -> dict[str, int]:
+    """Stable original-event identity; replay is not an independent source.
+
+    A caller ref should identify an event/turn, not just an entire document.
+    Without a ref, the persisted memory id supplies a conservative identity.
+    Content and occurrence distinguish revisions/events sharing a ref.
+    """
+    if item.evidence_sources:
+        return dict(item.evidence_sources)
+    key = json.dumps([
+        item.source.origin.value, item.source.ref or item.id,
+        item.source.occurred_at.isoformat() if item.source.occurred_at else None,
+        item.content_hash,
+    ], ensure_ascii=False, separators=(",", ":"))
+    return {key: item.evidence_count}

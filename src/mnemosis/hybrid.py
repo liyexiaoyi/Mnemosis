@@ -254,6 +254,7 @@ def _dense_results(
     with the external embedder, reusing the store's per-content cache.
     """
     store = getattr(engine, "store", None)
+    suppressed = set(getattr(engine, "_suppressed_ids", ()))
     if vector_index is not None:
         query_vector = embedder.embed(query)
         # Start with a generous candidate budget so small top_k values do
@@ -267,7 +268,9 @@ def _dense_results(
                 item = (
                     store.backend.get(memory_id) if store is not None else None
                 )
-                if item is not None and item.status is MemoryStatus.ACTIVE:
+                if (item is not None and item.status is MemoryStatus.ACTIVE
+                        and (kind is None or item.kind == kind)
+                        and item.id not in suppressed):
                     results.append(
                         RecallResult(
                             item=item, score=score, reasons=["dense:index"]
@@ -284,6 +287,9 @@ def _dense_results(
         # Without a vector index every active memory would be embedded on
         # every query; beyond the safety threshold we skip the dense pass and
         # keep the lexical routes (keyword/cue/temporal) as the answer.
+        return []
+    items = [item for item in items if item.id not in suppressed]
+    if not items:
         return []
     query_vector = embedder.embed(query)
     vectors = [embedder.embed(item.content) for item in items]
@@ -401,7 +407,9 @@ def fused_recall(
         all_results.extend(ng_results)
     dense_results = []
     dense_embedder = dense_embedder or getattr(engine, "embedder", None)
-    vector_index = vector_index or getattr(engine, "vector_index", None)
+    if (vector_index is None and dense_embedder is not None
+            and dense_embedder is getattr(engine, "index_embedder", None)):
+        vector_index = getattr(engine, "vector_index", None)
     if dense_embedder is not None:
         try:
             dense_results = _dense_results(

@@ -20,6 +20,7 @@ from .types import (
     MemoryKind,
     MemoryStatus,
     hash_content,
+    evidence_sources_for as _evidence_sources,
     tokenize,
     utcnow,
 )
@@ -149,6 +150,7 @@ class Consolidator:
         # scan it; each phase filters ACTIVE status in memory, which matches
         # the fresh-load semantics while avoiding ~5 full SQLite loads.
         episodes = self.store.all_active(MemoryKind.EPISODIC)
+        self._adopt_legacy_sources(episodes)
         merged = self._merge_duplicates(now, episodes)
         promoted = self._promote_episodic(now, episodes)
         recycled = self._prune_noise(now, episodes)
@@ -367,6 +369,28 @@ class Consolidator:
             self.backend.add_links_many(pending_links)
         return boosted, links
 
+    def _adopt_legacy_sources(self, episodes: list[MemoryItem]) -> None:
+        """Capture known old contributions before merging new experiences."""
+        legacy: dict[str, MemoryItem] = {}
+        for episode in episodes:
+            if episode.evidence_sources:
+                continue
+            semantic = self.backend.find_by_hash(MemoryKind.SEMANTIC, episode.content_hash)
+            if semantic is None:
+                continue
+            if semantic.id not in legacy:
+                if semantic.evidence_sources:
+                    continue
+                legacy[semantic.id] = semantic
+            if self.backend.link_weight(episode.id, semantic.id) <= 0:
+                continue
+            target = legacy[semantic.id]
+            for key, count in _evidence_sources(episode).items():
+                target.evidence_sources[key] = max(target.evidence_sources.get(key, 0), count)
+        for semantic in legacy.values():
+            if semantic.evidence_sources:
+                self.backend.update(semantic)
+
     def _merge_duplicates(
         self, now: datetime, episodes: list[MemoryItem] | None = None
     ) -> int:
@@ -395,11 +419,16 @@ class Consolidator:
                 continue
             items.sort(key=lambda i: (i.seq, i.id))
             keep = items[0]
-            keep.evidence_count = max(
-                keep.evidence_count, sum(i.evidence_count for i in items)
-            )
+            sources = _evidence_sources(keep)
+            before = sum(sources.values())
+            for duplicate in items[1:]:
+                for key, count in _evidence_sources(duplicate).items():
+                    sources[key] = max(sources.get(key, 0), count)
+            keep.evidence_sources = sources
+            keep.evidence_count = sum(sources.values())
             keep.importance = max(i.importance for i in items)
-            keep.confidence = min(1.0, keep.confidence + 0.05 * (len(items) - 1))
+            added = keep.evidence_count - before
+            keep.confidence = min(1.0, keep.confidence + 0.05 * added)
             self.backend.update(keep)
             for dup in items[1:]:
                 dup.status = MemoryStatus.RECYCLED
@@ -691,11 +720,18 @@ class Consolidator:
             existing = self.backend.find_by_hash(
                 MemoryKind.SEMANTIC, hash_content(item.content)
             )
-            evidence = (
-                existing.evidence_count + item.evidence_count
-                if existing
-                else item.evidence_count
-            )
+            incoming = _evidence_sources(item)
+            sources = dict(existing.evidence_sources) if existing else {}
+            added = 0
+            for key, count in incoming.items():
+                added += max(0, count - sources.get(key, 0))
+                sources[key] = max(sources.get(key, 0), count)
+            if existing and added == 0:
+                if sources != existing.evidence_sources:
+                    existing.evidence_sources = sources
+                    self.backend.update(existing)
+                continue
+            evidence = (existing.evidence_count if existing else 0) + added
             semantic = self.store.remember(
                 item.content,
                 MemoryKind.SEMANTIC,
@@ -710,6 +746,7 @@ class Consolidator:
                 context=item.context,
                 affect=item.affect,
                 evidence_count=evidence,
+                evidence_sources=sources,
                 storage_strength=item.storage_strength,
             )
             self.backend.add_link(item.id, semantic.id)

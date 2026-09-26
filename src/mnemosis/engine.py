@@ -48,6 +48,7 @@ from .schema import EventChainIndex
 from .snapshot_mixin import SnapshotMixin
 from .types import (
     MemoryItem,
+    evidence_sources_for,
     MemoryKind,
     MemoryStatus,
     MnemosisError,
@@ -563,6 +564,14 @@ class MemoryEngine(
                     )
             item.content = content
             item.content_hash = new_hash
+            # A revised claim has not inherited the previous claim's evidence
+            # or externally judged usefulness. Historical semantic traces
+            # retain their original ledger; this revision starts a new one.
+            item.evidence_sources = {}
+            item.evidence_count = 1
+            item.evidence_sources = evidence_sources_for(item)
+            item.verified_successes = 0
+            item.verified_failures = 0
             item.revision_count += 1
             item.updated_at = now
             item.confidence = (item.confidence + 0.4) / 2.0
@@ -1116,6 +1125,44 @@ class MemoryEngine(
         self, item: MemoryItem, now: datetime | None = None
     ) -> tuple[ConfidenceLabel, float]:
         return self.meta.confidence(item, now)
+
+    def record_feedback(
+        self, memory_id: str, *, useful: bool, now: datetime | None = None,
+    ) -> MemoryItem | None:
+        """Record one caller-verified use, never an internal search hit.
+
+        Each call is one externally judged event. Usefulness is not factual
+        truth: evidence_count and source confidence remain unchanged. Unknown
+        outcomes should not call this method. Calls are serialized per engine.
+        """
+        if type(useful) is not bool:
+            raise ValueError("useful must be a bool from a verified outcome")
+        with self._lock:
+            item = self.backend.get(memory_id)
+            if item is None or item.status is not MemoryStatus.ACTIVE:
+                return None
+            if useful:
+                item.verified_successes += 1
+                self.curve.reinforce_review(item, delta=0.1, now=now)
+            else:
+                item.verified_failures += 1
+                item.strength = max(0.0, item.strength - 0.1)
+            self.backend.update(item)
+            self.store.invalidate_fallback_cache()
+            return item
+
+    def verified_retrieval_confidence(
+        self, item: MemoryItem, min_evidence: int = 2,
+    ) -> float | None:
+        """Beta-smoothed usefulness from explicit feedback, not fact truth.
+
+        Unknown/legacy retrieval counters are deliberately not migrated to
+        verified outcomes. No calibrated estimate is given without evidence.
+        """
+        trials = item.verified_successes + item.verified_failures
+        if trials < max(1, min_evidence):
+            return None
+        return (item.verified_successes + 1.0) / (trials + 2.0)
 
     def calibrated_confidence(
         self, item: MemoryItem, now: datetime | None = None
