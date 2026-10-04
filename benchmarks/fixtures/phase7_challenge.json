@@ -1,0 +1,1359 @@
+{
+  "version": 1,
+  "authored_at": "2026-10-04",
+  "cases": [
+    {
+      "id": "time_last_visit",
+      "category": "time",
+      "query": "上次小林复诊结果怎么样？",
+      "items": [
+        {
+          "content": "小林复诊：体脂24%。",
+          "occurred_at": "2026-01-01T10:00:00+00:00"
+        },
+        {
+          "content": "小林复诊：体脂21%。",
+          "occurred_at": "2026-09-01T10:00:00+00:00"
+        }
+      ],
+      "expected_top": 1,
+      "required_evidence": [
+        1
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "time_first_class",
+      "category": "time",
+      "query": "第一次私教课练了什么？",
+      "items": [
+        {
+          "content": "私教课练腿。",
+          "occurred_at": "2026-09-01T10:00:00+00:00"
+        },
+        {
+          "content": "私教课练胸。",
+          "occurred_at": "2026-01-01T10:00:00+00:00"
+        }
+      ],
+      "expected_top": 1,
+      "required_evidence": [
+        1
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "acceptance"
+    },
+    {
+      "id": "time_next_class",
+      "category": "time",
+      "query": "下次私教课练什么？",
+      "items": [
+        {
+          "content": "私教课练腿。",
+          "occurred_at": "2026-01-01T10:00:00+00:00"
+        },
+        {
+          "content": "私教课练胸。",
+          "occurred_at": "2026-11-01T10:00:00+00:00"
+        }
+      ],
+      "expected_top": 1,
+      "required_evidence": [
+        1
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "time_exact_zh",
+      "category": "time",
+      "query": "2026年1月1日小林复诊结果怎么样？",
+      "items": [
+        {
+          "content": "小林复诊：体脂21%。",
+          "occurred_at": "2026-09-01T10:00:00+00:00"
+        },
+        {
+          "content": "小林复诊：体脂24%。",
+          "occurred_at": "2026-01-01T10:00:00+00:00"
+        }
+      ],
+      "expected_top": 1,
+      "required_evidence": [
+        1
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "acceptance"
+    },
+    {
+      "id": "time_exact_iso",
+      "category": "time",
+      "query": "2026-01-01 私教课练了什么？",
+      "items": [
+        {
+          "content": "私教课练腿。",
+          "occurred_at": "2026-09-01T10:00:00+00:00"
+        },
+        {
+          "content": "私教课练胸。",
+          "occurred_at": "2026-01-01T10:00:00+00:00"
+        }
+      ],
+      "expected_top": 1,
+      "required_evidence": [
+        1
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "time_same_day_past",
+      "category": "time",
+      "query": "上次私教课练了什么？",
+      "items": [
+        {
+          "content": "私教课练腿。",
+          "occurred_at": "2026-10-04T08:00:00+00:00"
+        },
+        {
+          "content": "私教课练胸。",
+          "occurred_at": "2026-10-04T10:00:00+00:00"
+        }
+      ],
+      "expected_top": 1,
+      "required_evidence": [
+        1
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "acceptance"
+    },
+    {
+      "id": "time_same_day_future",
+      "category": "time",
+      "query": "下次私教课练什么？",
+      "items": [
+        {
+          "content": "私教课练腿。",
+          "occurred_at": "2026-10-04T10:00:00+00:00"
+        },
+        {
+          "content": "私教课练胸。",
+          "occurred_at": "2026-10-04T15:00:00+00:00"
+        }
+      ],
+      "expected_top": 1,
+      "required_evidence": [
+        1
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "time_offset_positive",
+      "category": "time",
+      "query": "下次私教课练什么？",
+      "items": [
+        {
+          "content": "私教课练腿。",
+          "occurred_at": "2026-10-05T00:30:00+14:00"
+        },
+        {
+          "content": "私教课练胸。",
+          "occurred_at": "2026-10-04T15:00:00+00:00"
+        }
+      ],
+      "expected_top": 1,
+      "required_evidence": [
+        1
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "time_offset_negative",
+      "category": "time",
+      "query": "上次私教课练了什么？",
+      "items": [
+        {
+          "content": "私教课练腿。",
+          "occurred_at": "2026-10-03T23:00:00-10:00"
+        },
+        {
+          "content": "私教课练胸。",
+          "occurred_at": "2026-10-04T10:00:00+00:00"
+        }
+      ],
+      "expected_top": 1,
+      "required_evidence": [
+        1
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "acceptance"
+    },
+    {
+      "id": "time_content_agrees",
+      "category": "time",
+      "query": "上次私教课练了什么？",
+      "items": [
+        {
+          "content": "2026年1月1日私教课练腿。",
+          "occurred_at": "2026-01-01T10:00:00+00:00"
+        },
+        {
+          "content": "2026年9月1日私教课练胸。",
+          "occurred_at": "2026-09-01T10:00:00+00:00"
+        }
+      ],
+      "expected_top": 1,
+      "required_evidence": [
+        1
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "acceptance"
+    },
+    {
+      "id": "time_source_conflict",
+      "category": "time",
+      "query": "上次私教课练了什么？",
+      "items": [
+        {
+          "content": "2026年9月1日私教课练腿。",
+          "occurred_at": "2026-01-01T10:00:00+00:00"
+        }
+      ],
+      "expected_top": null,
+      "required_evidence": [],
+      "expected_uncertain": true,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "time_multiple_dates",
+      "category": "time",
+      "query": "上次私教课练了什么？",
+      "items": [
+        {
+          "content": "2026年1月1日私教课练腿，2026年9月1日私教课练胸。",
+          "occurred_at": "2026-09-01T10:00:00+00:00"
+        }
+      ],
+      "expected_top": null,
+      "required_evidence": [],
+      "expected_uncertain": true,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "acceptance"
+    },
+    {
+      "id": "time_invalid_date",
+      "category": "time",
+      "query": "上次私教课练了什么？",
+      "items": [
+        {
+          "content": "2026年2月30日私教课练腿。",
+          "occurred_at": "2026-09-01T10:00:00+00:00"
+        }
+      ],
+      "expected_top": null,
+      "required_evidence": [],
+      "expected_uncertain": true,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "acceptance"
+    },
+    {
+      "id": "time_birthday_reference",
+      "category": "time",
+      "query": "上次私教课练了什么？",
+      "items": [
+        {
+          "content": "私教课练腿，生日是2026年9月1日。",
+          "occurred_at": "2026-09-01T10:00:00+00:00"
+        }
+      ],
+      "expected_top": null,
+      "required_evidence": [],
+      "expected_uncertain": true,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "time_yearless",
+      "category": "time",
+      "query": "上次私教课练了什么？",
+      "items": [
+        {
+          "content": "1月1日私教课练腿。",
+          "occurred_at": "2026-01-01T10:00:00+00:00"
+        },
+        {
+          "content": "9月1日私教课练胸。",
+          "occurred_at": "2026-09-01T10:00:00+00:00"
+        }
+      ],
+      "expected_top": 1,
+      "required_evidence": [
+        1
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "time_no_timestamp",
+      "category": "time",
+      "query": "上次私教课练了什么？",
+      "items": [
+        {
+          "content": "私教课练腿。",
+          "occurred_at": null
+        }
+      ],
+      "expected_top": null,
+      "required_evidence": [],
+      "expected_uncertain": true,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "acceptance"
+    },
+    {
+      "id": "time_naive_source",
+      "category": "time",
+      "query": "上次私教课练了什么？",
+      "items": [
+        {
+          "content": "私教课练腿。",
+          "occurred_at": "2026-09-01T10:00:00"
+        }
+      ],
+      "expected_top": null,
+      "required_evidence": [],
+      "expected_uncertain": true,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "time_semantic_source",
+      "category": "time",
+      "query": "现在小林住在哪里？",
+      "items": [
+        {
+          "content": "小林住在北京。",
+          "occurred_at": "2026-01-01T10:00:00+00:00",
+          "kind": "semantic"
+        },
+        {
+          "content": "小林住在上海。",
+          "occurred_at": "2026-09-01T10:00:00+00:00",
+          "kind": "semantic"
+        }
+      ],
+      "expected_top": null,
+      "required_evidence": [],
+      "expected_uncertain": true,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "time_spaced_content",
+      "category": "time",
+      "query": "上次私教课练了什么？",
+      "items": [
+        {
+          "content": "2026 年 1 月 1 日私教课练腿。",
+          "occurred_at": "2026-01-01T10:00:00+00:00"
+        },
+        {
+          "content": "2026 年 9 月 1 日私教课练胸。",
+          "occurred_at": "2026-09-01T10:00:00+00:00"
+        }
+      ],
+      "expected_top": 1,
+      "required_evidence": [
+        1
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "time_cue_conflict",
+      "category": "time",
+      "query": "上次私教课练了什么？",
+      "items": [
+        {
+          "content": "私教课练腿。",
+          "occurred_at": "2026-09-01T10:00:00+00:00",
+          "cues": [
+            "2026-01-01",
+            "私教课"
+          ]
+        }
+      ],
+      "expected_top": null,
+      "required_evidence": [],
+      "expected_uncertain": true,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "entity_01",
+      "category": "entity",
+      "query": "小林的偏好的茶是什么？",
+      "items": [
+        {
+          "content": "小周的偏好的茶是选项甲。",
+          "occurred_at": null
+        },
+        {
+          "content": "小林的偏好的茶是选项乙。",
+          "occurred_at": null
+        }
+      ],
+      "expected_top": 1,
+      "required_evidence": [
+        1
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "entity_02",
+      "category": "entity",
+      "query": "Alice的project codename是什么？",
+      "items": [
+        {
+          "content": "Bob的project codename是选项甲。",
+          "occurred_at": null
+        },
+        {
+          "content": "Alice的project codename是选项乙。",
+          "occurred_at": null
+        }
+      ],
+      "expected_top": 1,
+      "required_evidence": [
+        1
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "entity_03",
+      "category": "entity",
+      "query": "张明的服务端口是什么？",
+      "items": [
+        {
+          "content": "张敏的服务端口是选项甲。",
+          "occurred_at": null
+        },
+        {
+          "content": "张明的服务端口是选项乙。",
+          "occurred_at": null
+        }
+      ],
+      "expected_top": 1,
+      "required_evidence": [
+        1
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "acceptance"
+    },
+    {
+      "id": "entity_04",
+      "category": "entity",
+      "query": "陈雨的会议地点是什么？",
+      "items": [
+        {
+          "content": "陈宇的会议地点是选项甲。",
+          "occurred_at": null
+        },
+        {
+          "content": "陈雨的会议地点是选项乙。",
+          "occurred_at": null
+        }
+      ],
+      "expected_top": 1,
+      "required_evidence": [
+        1
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "acceptance"
+    },
+    {
+      "id": "entity_05",
+      "category": "entity",
+      "query": "林晨的负责项目是什么？",
+      "items": [
+        {
+          "content": "林辰的负责项目是选项甲。",
+          "occurred_at": null
+        },
+        {
+          "content": "林晨的负责项目是选项乙。",
+          "occurred_at": null
+        }
+      ],
+      "expected_top": 1,
+      "required_evidence": [
+        1
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "acceptance"
+    },
+    {
+      "id": "entity_06",
+      "category": "entity",
+      "query": "Ada的favorite color是什么？",
+      "items": [
+        {
+          "content": "Grace的favorite color是选项甲。",
+          "occurred_at": null
+        },
+        {
+          "content": "Ada的favorite color是选项乙。",
+          "occurred_at": null
+        }
+      ],
+      "expected_top": 1,
+      "required_evidence": [
+        1
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "entity_07",
+      "category": "entity",
+      "query": "小郑的出差城市是什么？",
+      "items": [
+        {
+          "content": "小赵的出差城市是选项甲。",
+          "occurred_at": null
+        },
+        {
+          "content": "小郑的出差城市是选项乙。",
+          "occurred_at": null
+        }
+      ],
+      "expected_top": 1,
+      "required_evidence": [
+        1
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "entity_08",
+      "category": "entity",
+      "query": "田青的工位位置是什么？",
+      "items": [
+        {
+          "content": "田清的工位位置是选项甲。",
+          "occurred_at": null
+        },
+        {
+          "content": "田青的工位位置是选项乙。",
+          "occurred_at": null
+        }
+      ],
+      "expected_top": 1,
+      "required_evidence": [
+        1
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "entity_09",
+      "category": "entity",
+      "query": "吴凯的订餐偏好是什么？",
+      "items": [
+        {
+          "content": "吴楷的订餐偏好是选项甲。",
+          "occurred_at": null
+        },
+        {
+          "content": "吴凯的订餐偏好是选项乙。",
+          "occurred_at": null
+        }
+      ],
+      "expected_top": 1,
+      "required_evidence": [
+        1
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "entity_10",
+      "category": "entity",
+      "query": "苏宁的交付日期是什么？",
+      "items": [
+        {
+          "content": "苏凝的交付日期是选项甲。",
+          "occurred_at": null
+        },
+        {
+          "content": "苏宁的交付日期是选项乙。",
+          "occurred_at": null
+        }
+      ],
+      "expected_top": 1,
+      "required_evidence": [
+        1
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "version_01",
+      "category": "version",
+      "query": "目前服务端口是什么？",
+      "items": [
+        {
+          "content": "服务端口是选项甲。",
+          "occurred_at": "2026-01-01T10:00:00+00:00",
+          "kind": "semantic"
+        },
+        {
+          "content": "服务端口已明确更正为选项乙，替代之前的选项甲。",
+          "occurred_at": "2026-09-01T10:00:00+00:00",
+          "kind": "semantic"
+        }
+      ],
+      "expected_top": 1,
+      "required_evidence": [
+        1
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "version_02",
+      "category": "version",
+      "query": "目前项目负责人是什么？",
+      "items": [
+        {
+          "content": "项目负责人是选项甲。",
+          "occurred_at": "2026-01-01T10:00:00+00:00",
+          "kind": "semantic"
+        },
+        {
+          "content": "项目负责人已明确更正为选项乙，替代之前的选项甲。",
+          "occurred_at": "2026-09-01T10:00:00+00:00",
+          "kind": "semantic"
+        }
+      ],
+      "expected_top": 1,
+      "required_evidence": [
+        1
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "acceptance"
+    },
+    {
+      "id": "version_03",
+      "category": "version",
+      "query": "目前办公室地址是什么？",
+      "items": [
+        {
+          "content": "办公室地址是选项甲。",
+          "occurred_at": "2026-01-01T10:00:00+00:00",
+          "kind": "semantic"
+        },
+        {
+          "content": "办公室地址已明确更正为选项乙，替代之前的选项甲。",
+          "occurred_at": "2026-09-01T10:00:00+00:00",
+          "kind": "semantic"
+        }
+      ],
+      "expected_top": 1,
+      "required_evidence": [
+        1
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "acceptance"
+    },
+    {
+      "id": "version_04",
+      "category": "version",
+      "query": "目前会议地点是什么？",
+      "items": [
+        {
+          "content": "会议地点是选项甲。",
+          "occurred_at": "2026-01-01T10:00:00+00:00",
+          "kind": "semantic"
+        },
+        {
+          "content": "会议地点已明确更正为选项乙，替代之前的选项甲。",
+          "occurred_at": "2026-09-01T10:00:00+00:00",
+          "kind": "semantic"
+        }
+      ],
+      "expected_top": 1,
+      "required_evidence": [
+        1
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "version_05",
+      "category": "version",
+      "query": "目前值班时间是什么？",
+      "items": [
+        {
+          "content": "值班时间是选项甲。",
+          "occurred_at": "2026-01-01T10:00:00+00:00",
+          "kind": "semantic"
+        },
+        {
+          "content": "值班时间已明确更正为选项乙，替代之前的选项甲。",
+          "occurred_at": "2026-09-01T10:00:00+00:00",
+          "kind": "semantic"
+        }
+      ],
+      "expected_top": 1,
+      "required_evidence": [
+        1
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "version_06",
+      "category": "version",
+      "query": "目前交付日期是什么？",
+      "items": [
+        {
+          "content": "交付日期是选项甲。",
+          "occurred_at": "2026-01-01T10:00:00+00:00",
+          "kind": "semantic"
+        },
+        {
+          "content": "交付日期已明确更正为选项乙，替代之前的选项甲。",
+          "occurred_at": "2026-09-01T10:00:00+00:00",
+          "kind": "semantic"
+        }
+      ],
+      "expected_top": 1,
+      "required_evidence": [
+        1
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "version_07",
+      "category": "version",
+      "query": "目前联系号码是什么？",
+      "items": [
+        {
+          "content": "联系号码是选项甲。",
+          "occurred_at": "2026-01-01T10:00:00+00:00",
+          "kind": "semantic"
+        },
+        {
+          "content": "联系号码已明确更正为选项乙，替代之前的选项甲。",
+          "occurred_at": "2026-09-01T10:00:00+00:00",
+          "kind": "semantic"
+        }
+      ],
+      "expected_top": 1,
+      "required_evidence": [
+        1
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "acceptance"
+    },
+    {
+      "id": "version_08",
+      "category": "version",
+      "query": "目前仓库分支是什么？",
+      "items": [
+        {
+          "content": "仓库分支是选项甲。",
+          "occurred_at": "2026-01-01T10:00:00+00:00",
+          "kind": "semantic"
+        },
+        {
+          "content": "仓库分支已明确更正为选项乙，替代之前的选项甲。",
+          "occurred_at": "2026-09-01T10:00:00+00:00",
+          "kind": "semantic"
+        }
+      ],
+      "expected_top": 1,
+      "required_evidence": [
+        1
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "version_09",
+      "category": "version",
+      "query": "目前偏好的茶是什么？",
+      "items": [
+        {
+          "content": "偏好的茶是选项甲。",
+          "occurred_at": "2026-01-01T10:00:00+00:00",
+          "kind": "semantic"
+        },
+        {
+          "content": "偏好的茶已明确更正为选项乙，替代之前的选项甲。",
+          "occurred_at": "2026-09-01T10:00:00+00:00",
+          "kind": "semantic"
+        }
+      ],
+      "expected_top": 1,
+      "required_evidence": [
+        1
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "version_10",
+      "category": "version",
+      "query": "目前默认语言是什么？",
+      "items": [
+        {
+          "content": "默认语言是选项甲。",
+          "occurred_at": "2026-01-01T10:00:00+00:00",
+          "kind": "semantic"
+        },
+        {
+          "content": "默认语言已明确更正为选项乙，替代之前的选项甲。",
+          "occurred_at": "2026-09-01T10:00:00+00:00",
+          "kind": "semantic"
+        }
+      ],
+      "expected_top": 1,
+      "required_evidence": [
+        1
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "unknown_01",
+      "category": "unknown",
+      "query": "航班号是什么？",
+      "items": [
+        {
+          "content": "小林参加了内部项目例会。",
+          "occurred_at": null
+        },
+        {
+          "content": "小周喜欢喝绿茶。",
+          "occurred_at": null
+        }
+      ],
+      "expected_top": null,
+      "required_evidence": [],
+      "expected_uncertain": true,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "unknown_02",
+      "category": "unknown",
+      "query": "门禁密码是什么？",
+      "items": [
+        {
+          "content": "小林参加了内部项目例会。",
+          "occurred_at": null
+        },
+        {
+          "content": "小周喜欢喝绿茶。",
+          "occurred_at": null
+        }
+      ],
+      "expected_top": null,
+      "required_evidence": [],
+      "expected_uncertain": true,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "unknown_03",
+      "category": "unknown",
+      "query": "报销额度是什么？",
+      "items": [
+        {
+          "content": "小林参加了内部项目例会。",
+          "occurred_at": null
+        },
+        {
+          "content": "小周喜欢喝绿茶。",
+          "occurred_at": null
+        }
+      ],
+      "expected_top": null,
+      "required_evidence": [],
+      "expected_uncertain": true,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "unknown_04",
+      "category": "unknown",
+      "query": "备用联系人是什么？",
+      "items": [
+        {
+          "content": "小林参加了内部项目例会。",
+          "occurred_at": null
+        },
+        {
+          "content": "小周喜欢喝绿茶。",
+          "occurred_at": null
+        }
+      ],
+      "expected_top": null,
+      "required_evidence": [],
+      "expected_uncertain": true,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "unknown_05",
+      "category": "unknown",
+      "query": "取消原因是什么？",
+      "items": [
+        {
+          "content": "小林参加了内部项目例会。",
+          "occurred_at": null
+        },
+        {
+          "content": "小周喜欢喝绿茶。",
+          "occurred_at": null
+        }
+      ],
+      "expected_top": null,
+      "required_evidence": [],
+      "expected_uncertain": true,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "acceptance"
+    },
+    {
+      "id": "unknown_06",
+      "category": "unknown",
+      "query": "丢失地点是什么？",
+      "items": [
+        {
+          "content": "小林参加了内部项目例会。",
+          "occurred_at": null
+        },
+        {
+          "content": "小周喜欢喝绿茶。",
+          "occurred_at": null
+        }
+      ],
+      "expected_top": null,
+      "required_evidence": [],
+      "expected_uncertain": true,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "acceptance"
+    },
+    {
+      "id": "unknown_07",
+      "category": "unknown",
+      "query": "审批状态是什么？",
+      "items": [
+        {
+          "content": "小林参加了内部项目例会。",
+          "occurred_at": null
+        },
+        {
+          "content": "小周喜欢喝绿茶。",
+          "occurred_at": null
+        }
+      ],
+      "expected_top": null,
+      "required_evidence": [],
+      "expected_uncertain": true,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "acceptance"
+    },
+    {
+      "id": "unknown_08",
+      "category": "unknown",
+      "query": "房间编号是什么？",
+      "items": [
+        {
+          "content": "小林参加了内部项目例会。",
+          "occurred_at": null
+        },
+        {
+          "content": "小周喜欢喝绿茶。",
+          "occurred_at": null
+        }
+      ],
+      "expected_top": null,
+      "required_evidence": [],
+      "expected_uncertain": true,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "unknown_09",
+      "category": "unknown",
+      "query": "培训日期是什么？",
+      "items": [
+        {
+          "content": "小林参加了内部项目例会。",
+          "occurred_at": null
+        },
+        {
+          "content": "小周喜欢喝绿茶。",
+          "occurred_at": null
+        }
+      ],
+      "expected_top": null,
+      "required_evidence": [],
+      "expected_uncertain": true,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "unknown_10",
+      "category": "unknown",
+      "query": "设备序列号是什么？",
+      "items": [
+        {
+          "content": "小林参加了内部项目例会。",
+          "occurred_at": null
+        },
+        {
+          "content": "小周喜欢喝绿茶。",
+          "occurred_at": null
+        }
+      ],
+      "expected_top": null,
+      "required_evidence": [],
+      "expected_uncertain": true,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "noise_01",
+      "category": "noise",
+      "query": "项目丙的预算是什么？",
+      "items": [
+        {
+          "content": "项目甲的预算是选项甲。",
+          "occurred_at": null,
+          "ref": "replay:1"
+        },
+        {
+          "content": "项目甲的预算是选项甲。",
+          "occurred_at": null,
+          "ref": "replay:1"
+        },
+        {
+          "content": "项目丙的预算是选项乙。",
+          "occurred_at": null,
+          "ref": "project:c:0"
+        }
+      ],
+      "expected_top": 2,
+      "required_evidence": [
+        2
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "acceptance"
+    },
+    {
+      "id": "noise_02",
+      "category": "noise",
+      "query": "项目丙的负责人是什么？",
+      "items": [
+        {
+          "content": "项目甲的负责人是选项甲。",
+          "occurred_at": null,
+          "ref": "replay:1"
+        },
+        {
+          "content": "项目甲的负责人是选项甲。",
+          "occurred_at": null,
+          "ref": "replay:1"
+        },
+        {
+          "content": "项目丙的负责人是选项乙。",
+          "occurred_at": null,
+          "ref": "project:c:1"
+        }
+      ],
+      "expected_top": 2,
+      "required_evidence": [
+        2
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "noise_03",
+      "category": "noise",
+      "query": "项目丙的交付地点是什么？",
+      "items": [
+        {
+          "content": "项目甲的交付地点是选项甲。",
+          "occurred_at": null,
+          "ref": "replay:1"
+        },
+        {
+          "content": "项目甲的交付地点是选项甲。",
+          "occurred_at": null,
+          "ref": "replay:1"
+        },
+        {
+          "content": "项目丙的交付地点是选项乙。",
+          "occurred_at": null,
+          "ref": "project:c:2"
+        }
+      ],
+      "expected_top": 2,
+      "required_evidence": [
+        2
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "acceptance"
+    },
+    {
+      "id": "noise_04",
+      "category": "noise",
+      "query": "项目丙的支持语言是什么？",
+      "items": [
+        {
+          "content": "项目甲的支持语言是选项甲。",
+          "occurred_at": null,
+          "ref": "replay:1"
+        },
+        {
+          "content": "项目甲的支持语言是选项甲。",
+          "occurred_at": null,
+          "ref": "replay:1"
+        },
+        {
+          "content": "项目丙的支持语言是选项乙。",
+          "occurred_at": null,
+          "ref": "project:c:3"
+        }
+      ],
+      "expected_top": 2,
+      "required_evidence": [
+        2
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "noise_05",
+      "category": "noise",
+      "query": "项目丙的访问端口是什么？",
+      "items": [
+        {
+          "content": "项目甲的访问端口是选项甲。",
+          "occurred_at": null,
+          "ref": "replay:1"
+        },
+        {
+          "content": "项目甲的访问端口是选项甲。",
+          "occurred_at": null,
+          "ref": "replay:1"
+        },
+        {
+          "content": "项目丙的访问端口是选项乙。",
+          "occurred_at": null,
+          "ref": "project:c:4"
+        }
+      ],
+      "expected_top": 2,
+      "required_evidence": [
+        2
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "noise_06",
+      "category": "noise",
+      "query": "项目丙的备用方案是什么？",
+      "items": [
+        {
+          "content": "项目甲的备用方案是选项甲。",
+          "occurred_at": null,
+          "ref": "replay:1"
+        },
+        {
+          "content": "项目甲的备用方案是选项甲。",
+          "occurred_at": null,
+          "ref": "replay:1"
+        },
+        {
+          "content": "项目丙的备用方案是选项乙。",
+          "occurred_at": null,
+          "ref": "project:c:5"
+        }
+      ],
+      "expected_top": 2,
+      "required_evidence": [
+        2
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "acceptance"
+    },
+    {
+      "id": "noise_07",
+      "category": "noise",
+      "query": "项目丙的服务名称是什么？",
+      "items": [
+        {
+          "content": "项目甲的服务名称是选项甲。",
+          "occurred_at": null,
+          "ref": "replay:1"
+        },
+        {
+          "content": "项目甲的服务名称是选项甲。",
+          "occurred_at": null,
+          "ref": "replay:1"
+        },
+        {
+          "content": "项目丙的服务名称是选项乙。",
+          "occurred_at": null,
+          "ref": "project:c:6"
+        }
+      ],
+      "expected_top": 2,
+      "required_evidence": [
+        2
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "noise_08",
+      "category": "noise",
+      "query": "项目丙的值班人是什么？",
+      "items": [
+        {
+          "content": "项目甲的值班人是选项甲。",
+          "occurred_at": null,
+          "ref": "replay:1"
+        },
+        {
+          "content": "项目甲的值班人是选项甲。",
+          "occurred_at": null,
+          "ref": "replay:1"
+        },
+        {
+          "content": "项目丙的值班人是选项乙。",
+          "occurred_at": null,
+          "ref": "project:c:7"
+        }
+      ],
+      "expected_top": 2,
+      "required_evidence": [
+        2
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "noise_09",
+      "category": "noise",
+      "query": "项目丙的会议主题是什么？",
+      "items": [
+        {
+          "content": "项目甲的会议主题是选项甲。",
+          "occurred_at": null,
+          "ref": "replay:1"
+        },
+        {
+          "content": "项目甲的会议主题是选项甲。",
+          "occurred_at": null,
+          "ref": "replay:1"
+        },
+        {
+          "content": "项目丙的会议主题是选项乙。",
+          "occurred_at": null,
+          "ref": "project:c:8"
+        }
+      ],
+      "expected_top": 2,
+      "required_evidence": [
+        2
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    },
+    {
+      "id": "noise_10",
+      "category": "noise",
+      "query": "项目丙的颜色偏好是什么？",
+      "items": [
+        {
+          "content": "项目甲的颜色偏好是选项甲。",
+          "occurred_at": null,
+          "ref": "replay:1"
+        },
+        {
+          "content": "项目甲的颜色偏好是选项甲。",
+          "occurred_at": null,
+          "ref": "replay:1"
+        },
+        {
+          "content": "项目丙的颜色偏好是选项乙。",
+          "occurred_at": null,
+          "ref": "project:c:9"
+        }
+      ],
+      "expected_top": 2,
+      "required_evidence": [
+        2
+      ],
+      "expected_uncertain": false,
+      "now": "2026-10-04T12:00:00+00:00",
+      "split": "dev"
+    }
+  ],
+  "note": "60 authored synthetic trajectories; acceptance is frozen regression, not external blind evaluation or answer accuracy."
+}

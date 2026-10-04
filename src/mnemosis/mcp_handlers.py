@@ -103,6 +103,7 @@ class MCPHandlersMixin:
             context=args.get("context"),
             embedder=embedder,
             learning_policy=args.get("learning_policy", "legacy"),
+            temporal_policy=args.get("temporal_policy", "content"),
             read_only=args.get("read_only", False),
         )
         return [
@@ -112,6 +113,8 @@ class MCPHandlersMixin:
                 "kind": r.item.kind.value,
                 "content": r.item.content,
                 "confidence": r.item.confidence,
+                "confident": r.confident,
+                "reasons": r.reasons,
             }
             for r in results
         ]
@@ -982,6 +985,7 @@ class MCPHandlersMixin:
         return self.engine.temporal_anchor(
             query=str(args.get("query", "")),
             top_k=_bounded(args, "top_k", 4, 1, 500),
+            temporal_policy=args.get("temporal_policy", "content"),
         )
 
     @_tool("retrieval_snapshot")

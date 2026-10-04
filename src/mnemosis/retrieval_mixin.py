@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 
 from .embedding import Embedder
+from .event_time import resolve_event_time
+from .schema import EventChainIndex
 from .types import (
     MemoryItem,
     MemoryKind,
@@ -129,6 +131,7 @@ class RetrievalMixin:
         now: datetime | None = None,
         read_only: bool = False,
         learning_policy: str = "legacy",
+        temporal_policy: str = "content",
         use_default_embedder: bool = True,
         context: str | None = None,
         context_boost: bool = True,
@@ -178,9 +181,20 @@ class RetrievalMixin:
         returned lexical matches once, after re-ranking. It does not infer
         verified usefulness, add evidence, or record retrieval success.
         ``read_only`` overrides learning under either policy.
+        ``temporal_policy="source"`` opts into conservative event-time
+        resolution (body dates + aware episodic sources) and shared chains;
+        the default ``content`` preserves legacy time behavior.
         """
         if learning_policy not in ("legacy", "final"):
             raise ValueError("learning_policy must be 'legacy' or 'final'")
+        if temporal_policy not in ("content", "source"):
+            raise ValueError("temporal_policy must be 'content' or 'source'")
+        if temporal_policy == "source":
+            now = now or utcnow()
+            if now.tzinfo is None or now.utcoffset() is None:
+                raise ValueError("source temporal policy requires an aware query clock")
+        chain = (EventChainIndex(self.backend, date_policy="source", event_timezone=now.tzinfo)
+                 if temporal_policy == "source" else self.event_chain)
         if use_default_embedder:
             embedder = embedder or self.embedder
         with self._lock:
@@ -216,7 +230,7 @@ class RetrievalMixin:
             suppression_floor=suppression_floor,
             embedder=embedder,
             expansion_discount=expansion_discount,
-            event_chain=self.event_chain,
+            event_chain=chain,
             temporal_boost=temporal_boost,
             temporal_reason=temporal_reason,
             reasoning_pack=reasoning_pack,
@@ -257,7 +271,7 @@ class RetrievalMixin:
                 kind=kind,
                 exclude_ids=exclude_ids,
             )
-        if temporal_anchor:
+        if temporal_anchor and temporal_policy == "content":
             results = self._apply_temporal_anchor(
                 query,
                 results,
@@ -297,6 +311,11 @@ class RetrievalMixin:
                 top_k=top_k,
                 kind=kind,
                 exclude_ids=exclude_ids,
+            )
+        if temporal_anchor and temporal_policy == "source":
+            results = self._apply_source_temporal_anchor(
+                query, results, top_k=top_k, kind=kind,
+                exclude_ids=exclude_ids, now=now,
             )
         if not read_only and learning_policy == "final":
             # Reuse the same bounded familiarity contract as fused recall.
@@ -887,6 +906,112 @@ class RetrievalMixin:
         remaining = [row for row in results if row.item.id != candidate.id]
         remaining.sort(key=lambda row: row.score, reverse=True)
         return [result, *remaining][: max(1, int(top_k))]
+    def _apply_source_temporal_anchor(
+        self, query: str, results: list[RecallResult], *, top_k: int,
+        kind: MemoryKind | None, exclude_ids: set[str], now: datetime,
+    ) -> list[RecallResult]:
+        """Conservative opt-in event-time selection after all other anchors."""
+        past = self._TEMPORAL_PAST_RE.search(query)
+        future = self._TEMPORAL_FUTURE_RE.search(query)
+        exact = self._TEMPORAL_DATE_Q_RE.search(query)
+        iso = re.search(r"(?<!\d)(\d{4})-(\d{1,2})-(\d{1,2})(?!\d)", query)
+        if not (past or future or exact or iso):
+            return results
+        zone = now.tzinfo
+        now_utc = now.astimezone(timezone.utc)
+        terms = self._concept_terms(query)
+        if not terms:
+            return results
+        topic_len, finals, stems, actions, excluded = self._temporal_probe(query)
+        candidate_terms = self._temporal_candidate_terms(query, terms, finals, stems, actions)
+        pool = {r.item.id: r.item for r in results if r.item.id not in exclude_ids
+                and r.item.status is MemoryStatus.ACTIVE and (kind is None or r.item.kind is kind)}
+        pool.update({i.id: i for i in self._anchor_items(candidate_terms, kind, exclude_ids)})
+        resolved = {ident: resolve_event_time(item, zone=zone) for ident, item in pool.items()}
+        # Copy explanations: diagnostics never mutate result rows or memory.
+        annotated = []
+        for row in results:
+            if row.item.id not in pool:
+                continue
+            event = resolved[row.item.id]
+            reasons = list(row.reasons)
+            reason = (f"事件时间不确定: {event.issue}" if event.day is None
+                      else f"事件时间依据: {event.basis} ({event.day.isoformat()})")
+            if reason not in reasons:
+                reasons.append(reason)
+            annotated.append(RecallResult(row.item, row.score, reasons,
+                                          row.confident and event.day is not None))
+        want_past = bool(past) and (not future or past.start() <= future.start())
+        earliest = bool(re.search(r"第一次|首次|头一回", query))
+        target_year = target_md = None
+        if iso:
+            target_year, month, day = map(int, iso.groups())
+            target_md = (month, day)
+        elif exact:
+            target_md = tuple(map(int, exact.groups()))
+            year = self._TEMPORAL_YEAR_RE.search(query)
+            target_year = int(year.group(1)) if year else None
+        candidates = []
+        notice_query = self._TEMPORAL_NOTICE_RE.search(query)
+        for ident, item in pool.items():
+            event = resolved[ident]
+            if event.day is None:
+                continue
+            if not self._temporal_relevant(terms, item.content, topic_len, finals,
+                                          stems, actions, excluded):
+                continue
+            if _HOURS_Q_RE.search(query) and not _HOURS_WORD_RE.search(item.content):
+                continue
+            if _MONEY_Q_RE.search(query) and not _MONEY_PAT_RE.search(item.content):
+                continue
+            if target_md is not None:
+                if (event.day.month, event.day.day) != target_md:
+                    continue
+                if target_year is not None and event.day.year != target_year:
+                    continue
+            else:
+                is_past = event.order_key(zone) <= now_utc if event.instant else event.day <= now.date()
+                if want_past != is_past:
+                    continue
+                if (want_past and not notice_query and self._TEMPORAL_NOTICE_RE.search(item.content)
+                        and not any(word in item.content for stem in stems
+                                    for word in _TEMPORAL_STEM_WORDS.get(stem, (stem,)))):
+                    continue
+            candidates.append((event.order_key(zone), item, event))
+        if not candidates:
+            # A known event date still does not answer an unmatched date or
+            # direction. Keep contextual rows, but make the missing temporal
+            # evidence explicit; never label an expired event as next.
+            return [RecallResult(row.item, row.score,
+                    row.reasons + ["事件时间不确定: 没有符合查询时间条件的事件"], False)
+                    for row in annotated]
+        # A generic shared bigram (e.g. 课练) must not let another class
+        # outrank 私教课 solely by timestamp. When the pool has more
+        # specific lexical support, require it; otherwise keep the existing
+        # synonym/topic gate. This is not entity extraction.
+        hits = [terms & set(tokenize(item.content)) for _, item, _ in candidates]
+        common = set.intersection(*hits)
+        if any(hit - common for hit in hits):
+            candidates = [candidate for candidate, hit in zip(candidates, hits)
+                          if hit - common]
+        # Exact-date matches can share a day: no claim that their relevance
+        # establishes event order. Use chronology and stable sequence ties.
+        candidates.sort(key=lambda value: (value[0], value[1].seq),
+                        reverse=target_md is None and want_past and not earliest)
+        _, winner, event = candidates[0]
+        if not want_past and target_md is None:
+            annotated = [r for r in annotated if resolved[r.item.id].day is None
+                         or (resolved[r.item.id].order_key(zone) > now_utc if resolved[r.item.id].instant
+                             else resolved[r.item.id].day > now.date())]
+        reason = (f"时间锚点(日期:{target_md[0]}月{target_md[1]}日)" if target_md else
+                  "时间锚点(最早)" if earliest else "时间锚点(上次)" if want_past else "时间锚点(下次)")
+        # Include an explanation even when the winner came from outside the
+        # original top-k, so source selection remains reviewable.
+        if not any(r.item.id == winner.id for r in annotated):
+            annotated.append(RecallResult(winner, 0.0,
+                [f"事件时间依据: {event.basis} ({event.day.isoformat()})"]))
+        return self._append_anchor(annotated, winner, 0.62, reason, top_k)
+
     def _apply_temporal_anchor(
         self,
         query: str,
@@ -1537,15 +1662,17 @@ class RetrievalMixin:
         top_k: int = 4,
         kind: MemoryKind | None = None,
         now: datetime | None = None,
+        temporal_policy: str = "content",
     ) -> dict:
         """Expose the temporal-anchor retrieval path to agents (round 265).
 
-        Runs a normal recall and reports which memories were inserted by
+        Runs a read-only recall and reports which memories were inserted by
         the time-anchor pass, so an agent can verify that "上次/下次" style
         questions surface the record carrying the requested date
         (ordinal-time processing; Gauthier et al., 2020). Read-only.
         """
-        final = self.recall(query, top_k=top_k, kind=kind, now=now, read_only=True)
+        final = self.recall(query, top_k=top_k, kind=kind, now=now, read_only=True,
+                            temporal_policy=temporal_policy)
         anchored = [
             {
                 "id": result.item.id,
@@ -1565,6 +1692,7 @@ class RetrievalMixin:
                     "preview": result.item.content[:60],
                     "score": round(result.score, 3),
                     "reasons": result.reasons,
+                    "confident": result.confident,
                 }
                 for result in final
             ],

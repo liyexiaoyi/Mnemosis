@@ -91,6 +91,12 @@ TOOL_DEFINITIONS: list[dict] = [
                         },
                         "context": {"type": "string"},
                         "embedder": {"type": "string", "enum": ["ngram"]},
+                        "temporal_policy": {
+                            "type": "string",
+                            "enum": ["content", "source"],
+                            "default": "content",
+                            "description": "source uses unambiguous body dates and aware episodic source times; occurrence is not factual validity.",
+                        },
                         "learning_policy": {
                             "type": "string",
                             "enum": ["legacy", "final"],
@@ -1974,6 +1980,10 @@ TOOL_DEFINITIONS: list[dict] = [
                     "properties": {
                         "query": {"type": "string"},
                         "top_k": {"type": "integer"},
+                        "temporal_policy": {
+                            "type": "string", "enum": ["content", "source"],
+                            "default": "content",
+                        },
                     },
                     "required": ["query"],
                 },
