@@ -193,11 +193,17 @@ class RetrievalMixin:
             now = now or utcnow()
             if now.tzinfo is None or now.utcoffset() is None:
                 raise ValueError("source temporal policy requires an aware query clock")
-        chain = (EventChainIndex(self.backend, date_policy="source", event_timezone=now.tzinfo)
-                 if temporal_policy == "source" else self.event_chain)
         if use_default_embedder:
             embedder = embedder or self.embedder
         with self._lock:
+            chain = self.event_chain
+            if temporal_policy == "source":
+                chain = self._source_event_chain
+                if chain is None or chain.event_timezone != now.tzinfo:
+                    # One cached timezone bounds memory; a query keeps its
+                    # own index reference if a later query switches zones.
+                    chain = EventChainIndex(self.backend, date_policy="source", event_timezone=now.tzinfo)
+                    self._source_event_chain = chain
             exclude_ids = set(exclude_ids or ()) | set(self._suppressed_ids)
         results = self.store.recall(
             query,

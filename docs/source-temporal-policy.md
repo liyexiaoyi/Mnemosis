@@ -38,16 +38,22 @@ For a learning query, set `learning_policy="final"` alongside the source policy 
 
 ## Event chains and entry points
 
-Source-policy recall creates a source-aware event chain using the same resolver and query timezone. `EventChainIndex(backend, date_policy="source", event_timezone=...)` also supports direct use. It excludes ambiguous events and fingerprints grouping/source fields so source updates refresh a reused chain. Person/session grouping still follows the existing cue convention; formal entity and context boundaries are future work.
+Source-policy recall reuses one source-aware event chain for the current query timezone. `EventChainIndex(backend, date_policy="source", event_timezone=...)` also supports direct use. Both share the resolver and exclude ambiguous events. Person/session grouping still follows the existing cue convention; formal entity and context boundaries are future work.
 
-The source chain scans episodic records; it is not an incremental temporal index. The small synthetic timings are insufficient for a scale or Rust migration decision.
+SQLite tracks event fields independently of the lexical index: content, cues, source JSON, kind, status and sequence. An unchanged revision reuses the chain without loading all episodes. A continuous history of at most 1024 changes loads the changed rows and rebuilds only their old/new groups. Source-only edits, other connections, rollback branches and recycling are tracked; reinforcement/evidence counters alone do not invalidate the chain. A source JSON change may conservatively invalidate even if only an unrelated source field changed.
+
+First use, a timezone switch, explicit invalidation or missing/excessive/discontinuous change history still requires a full rebuild. A write racing with a delta read falls back to one full row snapshot; continuous writes cannot cause unlimited retries. Updates sort the affected groups, so a large group may still cost more than a small one. This does not make every temporal query constant-time: candidate search and temporal anchoring have separate costs.
+
+Dict and custom backends without an event revision contract retain field fingerprints, including nested source and cue edits and offset changes during repeated daylight-saving hours. They still inspect the active episodic records on reuse. An engine caches only one source timezone to bound duplicate index storage.
 
 MCP `recall` and `temporal_anchor` accept `temporal_policy`. Python `temporal_anchor` also accepts an explicit query clock. BM25, fused recall, search_batch and other convenience paths have not globally adopted this policy. MCP remember still has its existing input contract; timestamped episodes can be supplied through Python or import.
 
-No storage migration is required. Existing same-content deduplication is unchanged: identical repeated events may still merge, so this batch does not provide a full fact-version or repeated-event model.
+SQLite automatically adds source-event revision/change metadata and triggers when an existing database opens; existing memory rows and API fields are preserved. Old clients writing the same database still fire these triggers. No bulk rewrite of memory content is required. Existing same-content deduplication is unchanged: identical repeated events may still merge, so this batch does not provide a full fact-version or repeated-event model.
 
 ## Verification
 
 The 2026-10-04 batch adds 24 behavioral tests, with 639 full tests and the 18 existing capability checks passing. Frozen authored synthetic time trajectories improve known-target first-result selection from 1/12 to 12/12 and produce uncertainty signals for all 8 time-unknown/conflict trajectories. The acceptance portion contains 5 known and 3 uncertain time trajectories. These are regression scenarios with related templates, not an external blind benchmark or answer-accuracy estimate.
 
 All three previous modes replayed exactly over 720 synthetic executions. Ten previously used LongMemEval questions × four modes retain identical returned references, scores and retrieval metrics. That historical regression does not measure source-policy LongMemEval gains. BM25's `confident=False` channel convention is not calibrated abstention.
+
+The subsequent event-index batch adds 20 regression tests (659 full tests and 60 subtests passing). All 1200 executions across the five frozen retrieval modes preserve returned content, uncertainty, reasons and retrieval metrics. This is a historical authored regression, not a new blind evaluation or an accuracy gain. Before/after scale timings are archived separately on E:\Mnemosis. Rust has not been introduced in this batch.

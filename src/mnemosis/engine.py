@@ -163,6 +163,7 @@ class MemoryEngine(
         )
         self.associations = AssociationIndex(self.backend)
         self.event_chain = EventChainIndex(self.backend)
+        self._source_event_chain: EventChainIndex | None = None
         self.consolidator = Consolidator(self.store, self.backend)
         self.meta = Metacognition(self.store, self.curve, self.consolidator)
         self.recycle = RecycleBin(self.backend)

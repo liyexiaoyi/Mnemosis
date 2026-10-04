@@ -96,6 +96,14 @@ class Backend(ABC):
         """Changed memory IDs, or None if a complete rebuild is required."""
         return None
 
+    def event_revision_token(self):
+        """Source/grouping token, or None to retain fingerprint compatibility."""
+        return None
+
+    def event_changes_since(self, token):
+        """Changed event IDs, or None when a full timeline rebuild is needed."""
+        return None
+
     @abstractmethod
     def add(self, item: MemoryItem) -> None: ...
 
@@ -751,6 +759,7 @@ class SQLiteBackend(Backend):
         self._conn.execute("PRAGMA foreign_keys=ON")
         self._create_schema()
         self._ensure_lexical_revision()
+        self._ensure_event_revision()
         self._ensure_runtime_state()
         self._canonicalize_links_if_needed()
         self._json_each_ok = self._json_each_probe()
@@ -797,6 +806,50 @@ class SQLiteBackend(Backend):
                     DELETE FROM bm25_lexical_changes
                         WHERE seq <= (SELECT MAX(seq)-4096 FROM bm25_lexical_changes)
                         AND (SELECT MAX(seq)%256 FROM bm25_lexical_changes)=0;
+                    END""")
+
+    def _ensure_event_revision(self) -> None:
+        """Track event fields transactionally, including writes by old clients.
+
+        Independent of lexical/learning state: source edits change the time
+        index; rehearsal and evidence counts alone do not. Random tokens
+        distinguish transaction rollback branches. History is bounded.
+        """
+        with self._conn:
+            self._conn.execute("""CREATE TABLE IF NOT EXISTS source_event_state (
+                id INTEGER PRIMARY KEY CHECK(id=1), revision BLOB NOT NULL
+            )""")
+            self._conn.execute(
+                "INSERT OR IGNORE INTO source_event_state VALUES (1, randomblob(16))"
+            )
+            self._conn.execute("""CREATE TABLE IF NOT EXISTS source_event_changes (
+                seq INTEGER PRIMARY KEY AUTOINCREMENT,
+                before_revision BLOB NOT NULL, after_revision BLOB NOT NULL,
+                memory_id TEXT NOT NULL
+            )""")
+            self._conn.execute("""CREATE INDEX IF NOT EXISTS source_event_changes_before
+                ON source_event_changes(before_revision)""")
+            for event in ("INSERT", "DELETE", "UPDATE"):
+                operation = event
+                condition = ""
+                memory_id = "OLD.id" if event == "DELETE" else "NEW.id"
+                if event == "UPDATE":
+                    operation = "UPDATE OF content, cues_json, source_json, kind, status, seq"
+                    condition = """WHEN OLD.content IS NOT NEW.content
+                        OR OLD.cues_json IS NOT NEW.cues_json OR OLD.source_json IS NOT NEW.source_json
+                        OR OLD.kind IS NOT NEW.kind OR OLD.status IS NOT NEW.status
+                        OR OLD.seq IS NOT NEW.seq"""
+                self._conn.execute(f"""CREATE TRIGGER IF NOT EXISTS source_event_{event.lower()}_v1
+                    AFTER {operation} ON memories {condition} BEGIN
+                    INSERT INTO source_event_changes(before_revision,after_revision,memory_id)
+                        SELECT revision,randomblob(16),{memory_id}
+                        FROM source_event_state WHERE id=1;
+                    UPDATE source_event_state SET revision=(
+                        SELECT after_revision FROM source_event_changes ORDER BY seq DESC LIMIT 1
+                    ) WHERE id=1;
+                    DELETE FROM source_event_changes
+                        WHERE seq <= (SELECT MAX(seq)-4096 FROM source_event_changes)
+                        AND (SELECT MAX(seq)%256 FROM source_event_changes)=0;
                     END""")
 
     def _create_schema(self) -> None:
@@ -981,6 +1034,38 @@ class SQLiteBackend(Backend):
             previous = after
             changed[memory_id] = None
         if previous != self.revision_token():
+            return None
+        return list(changed)
+
+    @_locked
+    def event_revision_token(self):
+        return self._conn.execute(
+            "SELECT revision FROM source_event_state WHERE id=1"
+        ).fetchone()[0]
+
+    @_locked
+    def event_changes_since(self, token):
+        """Verify a continuous chain of at most 1024 event field changes."""
+        if token == self.event_revision_token():
+            return []
+        start = self._conn.execute(
+            "SELECT seq FROM source_event_changes WHERE before_revision=? ORDER BY seq LIMIT 1",
+            (token,),
+        ).fetchone()
+        if start is None:
+            return None
+        rows = self._conn.execute("""SELECT before_revision,after_revision,memory_id
+            FROM source_event_changes WHERE seq>=? ORDER BY seq LIMIT 1025""", (start[0],)).fetchall()
+        if len(rows) > 1024:
+            return None
+        previous = token
+        changed = {}
+        for before, after, memory_id in rows:
+            if before != previous:
+                return None
+            previous = after
+            changed[memory_id] = None
+        if previous != self.event_revision_token():
             return None
         return list(changed)
 
