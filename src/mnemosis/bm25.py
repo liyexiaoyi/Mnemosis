@@ -13,6 +13,8 @@ from .types import MemoryStatus, RecallResult, tokenize
 
 
 class BM25Index:
+    backend_name = "python"
+
     def __init__(self, items, k1=1.5, b=0.75):
         self.k1, self.b = k1, b
         self.lengths = {}
@@ -67,6 +69,52 @@ class BM25Index:
                               key=lambda row: (-row[1], self.order[row[0]], row[0]))
 
 
+class RustBM25Index:
+    """Optional resident scoring kernel; all tokenization stays in Python."""
+    backend_name = "rust"
+
+    def __init__(self, items, k1=1.5, b=0.75):
+        try:
+            import _mnemosis_rust as native
+        except ImportError as exc:
+            raise ImportError("Rust BM25 extension unavailable; install mnemosis-bm25-native "
+                              "or set bm25_backend='python'") from exc
+        if getattr(native, "API_VERSION", None) != 1:
+            raise ImportError("Rust BM25 extension incompatible; reinstall mnemosis-bm25-native "
+                              "or set bm25_backend='python'")
+        self.kernel = native.BM25Kernel(k1, b)
+        self.build_profile = native.BUILD_PROFILE
+        batch = []
+        for item in items:
+            batch.append(self._record(item))
+            if len(batch) == 1024:
+                self.kernel.upsert_batch(batch)
+                batch.clear()
+        if batch:
+            self.kernel.upsert_batch(batch)
+
+    @staticmethod
+    def _record(item):
+        return (item.id, item.seq, dict(Counter(tokenize(item.content) + list(item.cues))))
+
+    def remove(self, ident):
+        self.remove_batch([ident])
+
+    def remove_batch(self, ids):
+        self.kernel.remove_batch(list(ids))
+
+    def upsert(self, item):
+        self.upsert_batch([item])
+
+    def upsert_batch(self, items):
+        self.kernel.upsert_batch([self._record(item) for item in items])
+
+    def search(self, query, top_k, excluded):
+        if top_k <= 0:
+            return []
+        return self.kernel.search(sorted(set(tokenize(query))), top_k, set(excluded))
+
+
 def recall_bm25(engine, query, *, kind=None, top_k=5, exclude_ids=None):
     """Find lexical candidates without rehearsal, log updates or new links.
 
@@ -77,8 +125,14 @@ def recall_bm25(engine, query, *, kind=None, top_k=5, exclude_ids=None):
     if top_k <= 0 or not query.strip():
         return []
     with engine._lock:
+        implementation = getattr(engine, "bm25_backend", "python")
+        if implementation not in ("python", "rust"):
+            raise ValueError("bm25_backend must be 'python' or 'rust'")
+        index_type = RustBM25Index if implementation == "rust" else BM25Index
         token = engine.backend.revision_token()
         cached = getattr(engine, "_bm25_cache", None)
+        if cached is not None and cached[2].backend_name != implementation:
+            cached = None
         if token is not None and cached is not None and cached[:2] == (kind, token):
             index = cached[2]
         else:
@@ -90,13 +144,19 @@ def recall_bm25(engine, query, *, kind=None, top_k=5, exclude_ids=None):
             engine._bm25_cache = None
             if changes is not None:
                 index = cached[2]
-                for ident in changes:
-                    index.remove(ident)
-                for item in engine.backend.get_many(changes):
-                    if item.status is MemoryStatus.ACTIVE and (kind is None or item.kind == kind):
-                        index.upsert(item)
+                if implementation == "rust":
+                    index.remove_batch(changes)
+                    index.upsert_batch(item for item in engine.backend.get_many(changes)
+                                       if item.status is MemoryStatus.ACTIVE
+                                       and (kind is None or item.kind == kind))
+                else:
+                    for ident in changes:
+                        index.remove(ident)
+                    for item in engine.backend.get_many(changes):
+                        if item.status is MemoryStatus.ACTIVE and (kind is None or item.kind == kind):
+                            index.upsert(item)
             else:
-                index = BM25Index(engine.store.all_active(kind=kind))
+                index = index_type(engine.store.all_active(kind=kind))
             if token is not None and engine.backend.revision_token() == token:
                 engine._bm25_cache = (kind, token, index)
         excluded = set(exclude_ids or ()) | set(engine._suppressed_ids)

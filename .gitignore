@@ -16,3 +16,6 @@ build/
 outputs/
 benchmarks/results/
 
+
+# Optional Rust build products
+native/bm25/target/

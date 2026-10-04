@@ -130,7 +130,11 @@ class MemoryEngine(
         fallback_cache_auto_grow: bool = True,
         fallback_cache_grow_cooldown_seconds: float = 300.0,
         auto_warmup: bool = True,
+        bm25_backend: str = "python",
     ) -> None:
+        if bm25_backend not in ("python", "rust"):
+            raise ValueError("bm25_backend must be 'python' or 'rust'")
+        self.bm25_backend = bm25_backend
         self._auto_warmup_enabled = auto_warmup
         self.backend: Backend = make_backend(memory_file)
         if decay_rate is None:
