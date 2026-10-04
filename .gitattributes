@@ -1,2 +1,5 @@
 # Frozen fixture checksums must survive archive/checkout newline conversion.
 benchmarks/fixtures/phase7_challenge.json -text
+
+# Keep the historical tokenizer oracle checksum stable in Git archives.
+tests/fixtures/tokenize_a2199c2.py -text

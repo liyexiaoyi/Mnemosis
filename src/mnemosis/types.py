@@ -46,6 +46,18 @@ CJK_STOPWORDS = frozenset(
 # kept module-level so benchmarks can A/B it.
 ZH_DATE_NORMALIZE = True
 
+# Compile fixed lexical rules once. Required-marker guards below avoid scans
+# which cannot match, while preserving Python Unicode/regex semantics.
+_TOKEN_COMPOUND = re.compile(r"[a-z0-9]+(?:[-_][a-z0-9]+)+")
+_TOKEN_ZH_NUMERAL_DATE = re.compile(
+    r"(\d{4})年([一二三四五六七八九十零]+)月"
+    r"([一二三四五六七八九十零]+)日"
+)
+_TOKEN_ZH_NUMERIC_DATE = re.compile(r"(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日")
+_TOKEN_ZH_MEASURE = re.compile(r"([一二三四五六七八九十零两]+)(元|块|本|个|台|条|张|件|杯|瓶)")
+_TOKEN_WORD = re.compile(r"[a-z0-9]+")
+_TOKEN_CJK = re.compile(r"[\u4e00-\u9fff]")
+
 
 def hash_content(content: str) -> str:
     """Stable content hash used for semantic deduplication."""
@@ -282,19 +294,16 @@ def tokenize(text: str) -> list[str]:
     """
     lowered = text.lower()
     tokens: list[str] = []
-    compound_pattern = r"[a-z0-9]+(?:[-_][a-z0-9]+)+"
-    for token in re.findall(compound_pattern, lowered):
-        if token not in STOPWORDS:
-            tokens.append(token)
+    has_compound_marker = "-" in lowered or "_" in lowered
+    if has_compound_marker:
+        for token in _TOKEN_COMPOUND.findall(lowered):
+            if token not in STOPWORDS:
+                tokens.append(token)
     # Chinese dates "2026年3月1日" also emit the canonical ISO token so
     # "2026-03-01" queries match Chinese-dated memories and vice versa.
-    if ZH_DATE_NORMALIZE:
+    if ZH_DATE_NORMALIZE and "年" in lowered:
         # Chinese numeral dates: "2026年五月二日" -> "2026-05-02"
-        for zh_date in re.findall(
-            r"(\d{4})年([一二三四五六七八九十零]+)月"
-            r"([一二三四五六七八九十零]+)日",
-            lowered,
-        ):
+        for zh_date in _TOKEN_ZH_NUMERAL_DATE.findall(lowered):
             year, zh_m, zh_d = zh_date
             month = _zh_numeral(zh_m)
             day = _zh_numeral(zh_d)
@@ -306,34 +315,25 @@ def tokenize(text: str) -> list[str]:
                     lowered,
                     count=1,
                 )
-        zh_dates = re.findall(
-            r"(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日", lowered
-        )
+        zh_dates = _TOKEN_ZH_NUMERIC_DATE.findall(lowered)
         for y, m, d in zh_dates:
             tokens.append(f"{int(y):04d}-{int(m):02d}-{int(d):02d}")
         # Remove the matched Chinese-date spans (年月日 chars) from the CJK
         # stream: the normalized ISO token carries the date, and the bare
         # 年/月/日 chars would otherwise make ANY zh-dated memory match any
         # zh-date query regardless of the actual day.
-        lowered = re.sub(
-            r"\d{4}\s*年\s*\d{1,2}\s*月\s*\d{1,2}\s*日",
-            lambda m: " " * len(m.group(0)),
-            lowered,
-        )
+        lowered = _TOKEN_ZH_NUMERIC_DATE.sub(lambda m: " " * len(m.group(0)), lowered)
     # Chinese numeral + money/measure unit: "三百元" also emits "300元",
     # "三本" also emits "3本" (numeric normalization for zh content).
-    for zh_num, unit in re.findall(
-        r"([一二三四五六七八九十零两]+)(元|块|本|个|台|条|张|件|杯|瓶)",
-        lowered,
-    ):
+    for zh_num, unit in _TOKEN_ZH_MEASURE.findall(lowered):
         value = _zh_numeral(zh_num)
         if value:
             tokens.append(f"{value}{unit}")
-    rest = re.sub(compound_pattern, " ", lowered)
-    for word in re.findall(r"[a-z0-9]+", rest):
+    rest = _TOKEN_COMPOUND.sub(" ", lowered) if has_compound_marker else lowered
+    for word in _TOKEN_WORD.findall(rest):
         if len(word) > 1 and word not in STOPWORDS:
             tokens.append(word)
-    cjk = "".join(re.findall(r"[\u4e00-\u9fff]", lowered))
+    cjk = "".join(_TOKEN_CJK.findall(lowered))
     for ch in cjk:
         if ch not in CJK_STOPWORDS:
             tokens.append(ch)
