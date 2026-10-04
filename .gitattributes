@@ -1,0 +1,2 @@
+# Frozen fixture checksums must survive archive/checkout newline conversion.
+benchmarks/fixtures/phase7_challenge.json -text
