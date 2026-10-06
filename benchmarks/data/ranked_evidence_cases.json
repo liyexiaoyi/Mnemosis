@@ -1,0 +1,499 @@
+{
+  "schema": 1,
+  "scope": "Six predeclared constructed trajectories; supplied support, not automatic factual inference or blind public evaluation.",
+  "cases": [
+    {
+      "name": "complementary",
+      "aspects": [
+        {
+          "id": "X",
+          "weight": 0.6
+        },
+        {
+          "id": "Y",
+          "weight": 0.4
+        }
+      ],
+      "support": {
+        "A": {
+          "X": 1
+        },
+        "B": {
+          "X": 1
+        },
+        "C": {
+          "Y": 1
+        }
+      },
+      "lambda_": 0.5,
+      "necessary_ids": [
+        "A",
+        "C"
+      ],
+      "limit": 2,
+      "channels": [
+        {
+          "channel_id": "L",
+          "memory_ids": [
+            "A",
+            "B",
+            "C"
+          ],
+          "weight": 1,
+          "status": "ok"
+        },
+        {
+          "channel_id": "D",
+          "memory_ids": [
+            "A",
+            "C",
+            "B"
+          ],
+          "weight": 1,
+          "status": "ok"
+        }
+      ],
+      "records": [
+        {
+          "id": "A",
+          "content": "Mina visited Osaka.",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "complementary",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        },
+        {
+          "id": "B",
+          "content": "Osaka was the destination.",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "complementary",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        },
+        {
+          "id": "C",
+          "content": "The trip occurred in October.",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "complementary",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        }
+      ]
+    },
+    {
+      "name": "same_support_distinct_ids",
+      "aspects": [
+        {
+          "id": "X",
+          "weight": 1
+        }
+      ],
+      "support": {
+        "A": {
+          "X": 1
+        },
+        "B": {
+          "X": 1
+        },
+        "C": {
+          "X": 0
+        }
+      },
+      "lambda_": 1,
+      "necessary_ids": [
+        "A",
+        "B"
+      ],
+      "limit": 2,
+      "channels": [
+        {
+          "channel_id": "L",
+          "memory_ids": [
+            "A",
+            "B",
+            "C"
+          ],
+          "weight": 1,
+          "status": "ok"
+        },
+        {
+          "channel_id": "D",
+          "memory_ids": [
+            "A",
+            "B",
+            "C"
+          ],
+          "weight": 1,
+          "status": "ok"
+        }
+      ],
+      "records": [
+        {
+          "id": "A",
+          "content": "Mina recorded same_support_distinct_ids item A.",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "same_support_distinct_ids",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        },
+        {
+          "id": "B",
+          "content": "Mina recorded same_support_distinct_ids item B.",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "same_support_distinct_ids",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        },
+        {
+          "id": "C",
+          "content": "Mina recorded same_support_distinct_ids item C.",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "same_support_distinct_ids",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        }
+      ]
+    },
+    {
+      "name": "partial_support",
+      "aspects": [
+        {
+          "id": "X",
+          "weight": 0.5
+        },
+        {
+          "id": "Y",
+          "weight": 0.5
+        }
+      ],
+      "support": {
+        "A": {
+          "X": 0.6
+        },
+        "B": {
+          "X": 0.9
+        },
+        "C": {
+          "Y": 0.8
+        }
+      },
+      "lambda_": 0,
+      "necessary_ids": [
+        "B",
+        "C"
+      ],
+      "limit": 2,
+      "channels": [
+        {
+          "channel_id": "L",
+          "memory_ids": [
+            "A",
+            "B",
+            "C"
+          ],
+          "weight": 1,
+          "status": "ok"
+        },
+        {
+          "channel_id": "D",
+          "memory_ids": [
+            "A",
+            "C",
+            "B"
+          ],
+          "weight": 1,
+          "status": "ok"
+        }
+      ],
+      "records": [
+        {
+          "id": "A",
+          "content": "Mina recorded partial_support item A.",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "partial_support",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        },
+        {
+          "id": "B",
+          "content": "Mina recorded partial_support item B.",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "partial_support",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        },
+        {
+          "id": "C",
+          "content": "Mina recorded partial_support item C.",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "partial_support",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        }
+      ]
+    },
+    {
+      "name": "support_not_supplied",
+      "aspects": [
+        {
+          "id": "X",
+          "weight": 0.6
+        },
+        {
+          "id": "Y",
+          "weight": 0.4
+        }
+      ],
+      "support": null,
+      "lambda_": 1,
+      "necessary_ids": null,
+      "limit": 2,
+      "channels": [
+        {
+          "channel_id": "L",
+          "memory_ids": [
+            "A",
+            "B",
+            "C"
+          ],
+          "weight": 1,
+          "status": "ok"
+        },
+        {
+          "channel_id": "D",
+          "memory_ids": [
+            "A",
+            "C",
+            "B"
+          ],
+          "weight": 1,
+          "status": "ok"
+        }
+      ],
+      "records": [
+        {
+          "id": "A",
+          "content": "Mina recorded support_not_supplied item A.",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "support_not_supplied",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        },
+        {
+          "id": "B",
+          "content": "Mina recorded support_not_supplied item B.",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "support_not_supplied",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        },
+        {
+          "id": "C",
+          "content": "Mina recorded support_not_supplied item C.",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "support_not_supplied",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        }
+      ]
+    },
+    {
+      "name": "necessary_time_chain_negative",
+      "aspects": [
+        {
+          "id": "X",
+          "weight": 0.6
+        },
+        {
+          "id": "Y",
+          "weight": 0.4
+        }
+      ],
+      "support": {
+        "A": {
+          "X": 1,
+          "Y": 1
+        },
+        "B": {
+          "X": 1
+        },
+        "C": {
+          "Y": 1
+        }
+      },
+      "lambda_": 0.5,
+      "necessary_ids": [
+        "B",
+        "C"
+      ],
+      "limit": 2,
+      "channels": [
+        {
+          "channel_id": "L",
+          "memory_ids": [
+            "B",
+            "C",
+            "A"
+          ],
+          "weight": 1,
+          "status": "ok"
+        },
+        {
+          "channel_id": "D",
+          "memory_ids": [
+            "B",
+            "C",
+            "A"
+          ],
+          "weight": 1,
+          "status": "ok"
+        }
+      ],
+      "records": [
+        {
+          "id": "A",
+          "content": "Mina discussed an October trip.",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "necessary_time_chain_negative",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        },
+        {
+          "id": "B",
+          "content": "Mina arrived on October 1.",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "necessary_time_chain_negative",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        },
+        {
+          "id": "C",
+          "content": "Mina departed on October 4.",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "necessary_time_chain_negative",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        }
+      ]
+    },
+    {
+      "name": "greedy_nonoptimal",
+      "aspects": [
+        {
+          "id": "1",
+          "weight": 1
+        },
+        {
+          "id": "2",
+          "weight": 1
+        },
+        {
+          "id": "3",
+          "weight": 1
+        },
+        {
+          "id": "4",
+          "weight": 1
+        },
+        {
+          "id": "5",
+          "weight": 1
+        },
+        {
+          "id": "6",
+          "weight": 1
+        }
+      ],
+      "support": {
+        "A": {
+          "1": 1,
+          "2": 1,
+          "3": 1,
+          "4": 1
+        },
+        "B": {
+          "1": 1,
+          "2": 1,
+          "5": 1
+        },
+        "C": {
+          "3": 1,
+          "4": 1,
+          "6": 1
+        }
+      },
+      "lambda_": 0,
+      "necessary_ids": [
+        "B",
+        "C"
+      ],
+      "limit": 2,
+      "channels": [
+        {
+          "channel_id": "L",
+          "memory_ids": [
+            "A",
+            "B",
+            "C"
+          ],
+          "weight": 1,
+          "status": "ok"
+        },
+        {
+          "channel_id": "D",
+          "memory_ids": [
+            "B",
+            "C",
+            "A"
+          ],
+          "weight": 1,
+          "status": "ok"
+        }
+      ],
+      "records": [
+        {
+          "id": "A",
+          "content": "Mina recorded greedy_nonoptimal item A.",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "greedy_nonoptimal",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        },
+        {
+          "id": "B",
+          "content": "Mina recorded greedy_nonoptimal item B.",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "greedy_nonoptimal",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        },
+        {
+          "id": "C",
+          "content": "Mina recorded greedy_nonoptimal item C.",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "greedy_nonoptimal",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        }
+      ]
+    }
+  ]
+}
