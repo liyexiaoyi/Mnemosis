@@ -736,6 +736,9 @@ class DualTrackStore:
                 overlap = hits / max(
                     1.0, math.sqrt(max(1, denominator) * capped)
                 )
+                if cue_groups:
+                    # Expanded aliases share a bounded overlap budget.
+                    overlap = min(1.0, overlap)
             else:
                 overlap = 0.0
             if idf_sum and cue_groups:
