@@ -166,3 +166,63 @@ GREEN172项/180子场景，完整1174项/374子场景、CI18/18通过。
 粗支持资料可给泛泛摘要满覆盖分，仍遗漏实际必要事件；优化目标不能替代资料质量。
 新接口没有自动支持标注、事实核验、时间版本裁决或必须共同出现的证据约束。
 验证日志、固定输入与恢复证明：`E:/Mnemosis/evaluation/ranked-evidence-refinement/2026-10-07/implementation-01/`。
+
+
+## 可选原文引用核验（2026-10-07）
+
+串联入口新增两个可选关键字 `source_texts`、`support_spans`，必须同时提供。
+两者均为 `None` 时沿用原行为和报告结构。核验通过不会增加支持分或改变排序；
+不匹配时在排名与证据选择前显式报错，不把问题静默改成0分。
+
+```python
+from mnemosis.evidence_selection import QueryAspect
+from mnemosis.ranked_evidence import RankedChannel
+from mnemosis.ranked_evidence_refinement import SupportSpan, refine_ranked_evidence
+
+report = refine_ranked_evidence(
+    [RankedChannel("L", ["A"])],
+    [QueryAspect("arrival")],
+    support={"A": {"arrival": 1}}, limit=1,
+    source_texts={"A": "李明😀到了北京。"},
+    support_spans={"A": {"arrival": SupportSpan(3, 8, "到了北京。")}},
+)
+assert report.refinement.selected_ids == ("A",)
+assert report.refinement.objective == 1
+```
+
+`SupportSpan(start, end, quote)` 为 frozen/slots 数据对象。偏移使用 Python 字符串
+的 Unicode 码点，采用左闭右开区间；不是字节或 UTF-16 单元。中文例中的表情计1个
+码点，组合字符可占多个码点。`0 <= start < end <= len(text)` 且
+`text[start:end] == quote`；偏移须为非 bool 整数，引用须非空。大小写、空格、
+换行（包括 CRLF）和 Unicode 均不自动规范化。
+
+每个原始严格正的显式支持值均须提供对应引用，包括数值转换后下溢为0的极小正值。
+明确0无需引用；如果提供，仍须核验。未提供的支持对不能附加引用。即使容量为0，
+所有给出的资料仍完整核验。正文与引用的记忆ID必须属于原始正权重通道的候选并集；
+正文可以包含尚未提供支持的候选。原通道失败、禁用、资料缺失等规则仍然有效。
+
+资料上限：100条正文、每候选32个引用、每正文65536码点、正文总计1048576码点。
+原100候选/32要点边界不变；输入不能在调用中并发修改。调用方负责提供正文，接口
+不会读取存储、生成引用、调整支持或核实正文的来源。返回仍只有 `ranked_report`
+和 `refinement`，两份报告的原含义不变。
+
+这是引用一致性检查：只能证明引用与调用方提供的正文逐字一致。它不能证明引用
+蕴含要点、来源真实或事实正确。保留的粗支持反例中，泛泛摘要引用合法，仍获得满
+覆盖却遗漏必要事件；不能以该检查替代语义支持评价，也未接入默认检索链路。
+
+### 引用核验验证
+
+新增48项永久测试配置，包括错绑、越界、缺失、0支持、极小正值、Unicode、容量0、
+资源边界与两实际后端完整只读检查。有效输入保持原结果；非法引用在评分前被拒绝。
+真实RED48失败后实施，定向180项通过，完整1222项/374子场景和CI18/18通过。
+初期测试准备错误的日志保留，不能归因产品故障。
+
+300组历史数学输入与14组后端报告精确复现；新增100组冻结Unicode输入的有效结果
+与关闭核验时相同，300次非法调用均拒绝。14组实际后端另拒绝36次非法调用，全部
+记忆、链接、召回日志、SQLite逻辑状态保持一致。原有其余49个产品源文件逐字不变。
+文档示例已执行；由作者自行审查，没有独立审查者。
+
+这些是正确性与历史回归检查，不是实际问答成绩或新的横向排名。代码和评测在
+`E:/Mnemosis/evaluation/support-grounding/2026-10-07/implementation-01/`；
+备份恢复完成与否以 `E:/Mnemosis/backups/2026-10-07-support-grounding/manifest.json`
+为准，恢复使用外部已安装的本机运行时。
