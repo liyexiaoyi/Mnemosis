@@ -76,13 +76,20 @@ def _sequence(value: Sequence, name: str, maximum: int) -> None:
         raise ValueError(f"{name} exceeds {maximum}")
 
 
+def _exact_weight(value: Real) -> Fraction:
+    # as_integer_ratio also supports NumPy float scalars on Python 3.10,
+    # where Fraction does not yet accept arbitrary ratio-bearing objects.
+    ratio = getattr(value, "as_integer_ratio", None)
+    return Fraction(*ratio()) if ratio is not None else Fraction(value)
+
+
 def _scaled_weight(value: Real, maximum: Real) -> float:
     try:
         return float(value / maximum)
     except OverflowError:
         # A mixed float / large rational division can convert the denominator
         # before taking a bounded ratio. Take that ratio exactly instead.
-        return float(Fraction(value) / Fraction(maximum))
+        return float(_exact_weight(value) / _exact_weight(maximum))
 
 
 def _score_subset(
@@ -153,7 +160,11 @@ def select_evidence(
         raise ValueError("at least one aspect weight must be positive")
     weights: dict[str, float] = {}
     if raw_weights:
-        maximum = max(raw_weights.values())
+        try:
+            maximum = max(raw_weights.values())
+        except OverflowError:
+            # Some Real scalars coerce a large integer during comparison.
+            maximum = max(raw_weights.values(), key=_exact_weight)
         scaled = {key: _scaled_weight(weight, maximum) for key, weight in raw_weights.items()}
         total = math.fsum(scaled.values())
         weights = {key: value / total for key, value in scaled.items()}

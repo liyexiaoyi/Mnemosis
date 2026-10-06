@@ -182,6 +182,27 @@ class EvidenceSelectionTest(unittest.TestCase):
                                             1e-92, rel_tol=1e-12, abs_tol=0))
                 self.assertEqual(r.uncovered_aspect_ids, ("small",))
 
+    def test_numpy_real_and_huge_rational_weights(self):
+        try:
+            import numpy as np
+        except ImportError:
+            import os
+            if os.environ.get("MNEMOSIS_TEST_NUMPY") == "1":
+                raise
+            self.skipTest("optional NumPy is not installed")
+        for value in (np.float32(1e30), np.float64(1e308)):
+            for maximum in (10**400, F(10**400)):
+                with self.subTest(value_type=type(value).__name__,
+                                  maximum_type=type(maximum).__name__):
+                    r = self.select([self.C("A", 0, {"big": 1})],
+                        [self.A("big", maximum), self.A("small", value)],
+                        limit=1, relevance_weight=0)
+                    exact = float(F(*value.as_integer_ratio()) / F(maximum))
+                    self.assertTrue(math.isclose(r.normalized_aspect_weights["small"],
+                                                exact, rel_tol=1e-12, abs_tol=0))
+                    self.assertEqual(r.selected_ids, ("A",))
+                    self.assertEqual(r.uncovered_aspect_ids, ("small",))
+
     def test_underflow_does_not_hide_original_positive_aspect(self):
         r = self.select([self.C("A", 0, {"big": 1})],
             [self.A("tiny", 1e-308), self.A("big", 1e308), self.A("ignored", 0)],
