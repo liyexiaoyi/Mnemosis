@@ -116,6 +116,23 @@ _STORAGE_WORD_RE = re.compile(r"存放|放入|存了|装了|收纳|放进|搁置
 
 
 class RetrievalMixin:
+    def recall_evidence(
+        self, query: str, *, annotator, top_k: int = 5, candidate_limit: int = 100,
+        relevance_weight: float = .5, search_budget: int = 10000,
+        kind: MemoryKind | None = None, now: datetime | None = None,
+        context: str | None = None, exclude_ids: set[str] | None = None,
+        temporal_policy: str = "content", lexical_policy: str = "literal",
+        candidate_policy: str = "legacy", rerank_policy: str = "legacy",
+    ):
+        """Experimental read-only evidence combination; original recall is unchanged."""
+        from .evidence_recall import recall_evidence
+        return recall_evidence(self, query, annotator=annotator, top_k=top_k,
+            candidate_limit=candidate_limit, relevance_weight=relevance_weight,
+            search_budget=search_budget, kind=kind, now=now, context=context,
+            exclude_ids=exclude_ids, temporal_policy=temporal_policy,
+            lexical_policy=lexical_policy, candidate_policy=candidate_policy,
+            rerank_policy=rerank_policy)
+
     _ENTITY_QUESTION_RE: re.Pattern[str] | None = None
     _ENTITY_RECORD_RE: re.Pattern[str] | None = None
     _VALUE_QUESTION_RE: re.Pattern[str] | None = None
