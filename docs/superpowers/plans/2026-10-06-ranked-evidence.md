@@ -1,6 +1,6 @@
 # Ranked Evidence Selection Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking. 用户已确定主助手单人实施与审查，禁止子智能体，不再询问执行方式。
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking. 用户已确定主助手单人实施与审查，禁止子智能体，不再询问执行方式。
 
 **Goal:** 实现独立的归一化排名融合到显式证据选择接口，验证分数边界、互补覆盖及失败行为。
 
@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python >=3.10与标准库；现有Dict/SQLite、pytest、可选Rust/NumPy仅用于既有验证环境，不新增依赖。
 
-**Spec:** [已确认的书面规格](E:/Mnemosis/repo/docs/superpowers/specs/2026-10-06-ranked-evidence-design.md)，设计提交5273a3962efc92cbd3e157bb0b8e69a0dcaf3859。用户于2026-10-06回复“ok”批准书面规格。当前本计划待审查，未实现产品功能。
+**Spec:** [已确认的书面规格](E:/Mnemosis/repo/docs/superpowers/specs/2026-10-06-ranked-evidence-design.md)，设计提交5273a3962efc92cbd3e157bb0b8e69a0dcaf3859。用户于2026-10-06回复“ok”批准书面规格。用户于2026-10-06回复“实施”批准本计划。任务1/2及任务3用法、完整回归、作者自审已完成；E盘恢复包待核验，末两步骤保留未勾选。
 
 ## Global Constraints
 
@@ -71,8 +71,8 @@ $env:TMP=$env:TEMP
 - Produces：RankedEvidenceReport字段channels:tuple[ChannelSummary,...]、candidate_ids:tuple[str,...]、relevance_by_id:dict[str,float]、contributions_by_id:dict[str,tuple[RankContribution,...]]、support_state:str、supplied_support_pairs:tuple[tuple[str,str],...]、underflow_channel_ids:tuple[str,...]、selection:EvidenceSelectionReport。
 - Produces：select_ranked_evidence(channels: Sequence[RankedChannel], aspects: Sequence[QueryAspect], *, support: Mapping[str,Mapping[str,Real]]|None=None, limit:int=5, relevance_weight:Real=.5) -> RankedEvidenceReport。dataclass构造器承载值，函数做完整校验。
 
-- [ ] **Step 1: 保存基线和冻结构造输入。** 核对工作区与批准规格/计划，保存源码提交和恢复说明；git archive当前已提交源码到新的E:/Mnemosis/backups/2026-10-06-ranked-evidence-before，核验后才编辑产品。按下方6条定义写fixture并复制到implementation-01/frozen-cases.json；参数、必要ID和支持均提前固定。
-- [ ] **Step 2: 写真实API失败测试。** 延迟导入mnemosis.ranked_evidence，只将该模块缺失转为明确失败，其他ImportError照常抛出。test_complementary_selection_matches_fraction断言：
+- [x] **Step 1: 保存基线和冻结构造输入。** 核对工作区与批准规格/计划，保存源码提交和恢复说明；git archive当前已提交源码到新的E:/Mnemosis/backups/2026-10-06-ranked-evidence-before，核验后才编辑产品。按下方6条定义写fixture并复制到implementation-01/frozen-cases.json；参数、必要ID和支持均提前固定。
+- [x] **Step 2: 写真实API失败测试。** 延迟导入mnemosis.ranked_evidence，只将该模块缺失转为明确失败，其他ImportError照常抛出。test_complementary_selection_matches_fraction断言：
 
 ~~~python
 channels = [RankedChannel("L", ["A", "B", "C"]),
@@ -88,7 +88,7 @@ assert report.support_state == "supplied"
 assert report.supplied_support_pairs == (("A", "X"), ("B", "X"), ("C", "Y"))
 ~~~
 
-- [ ] **Step 3: 补齐校验和Review Focus失败测试。** 名称与预期如下；用subTest表覆盖输入类，预期错误类型固定，错误文本不固定：
+- [x] **Step 3: 补齐校验和Review Focus失败测试。** 名称与预期如下；用subTest表覆盖输入类，预期错误类型固定，错误文本不固定：
 
 ~~~python
 # test_empty_inner_maps_require_explicit_relevance
@@ -112,7 +112,7 @@ assert r.selection.uncovered_aspect_ids == ("X",)
 
 同时固定测试：1/8/0/9通道；单通道100/101ID；8通道相同100ID并集100合法、两通道合计101唯一ID拒绝；空或未trim ID、重复channel_id、错误status和failed非空；非Sequence/generator/字符串、非RankedChannel；负数/NaN/Inf/bool/string/Decimal权重；全零权重；支持外/内层错误类型、未知ID或要点及0–1错误支持；lambda和limit错误，包括limit0仍校验；空aspects规则；None/空外层/全空内层分别要求lambda1。
 
-- [ ] **Step 4: 写数值/排序/隔离失败测试并实际运行RED。** 运行test_ranked_evidence.py，保存缺少真实模块的失败日志，不造测试替代算法。独立断言覆盖：
+- [x] **Step 4: 写数值/排序/隔离失败测试并实际运行RED。** 运行test_ranked_evidence.py，保存缺少真实模块的失败日志，不造测试替代算法。独立断言覆盖：
   - test_empty_channel_keeps_denominator：L=["A"]/D=[]同权，r_A=.5；将D显式weight0/statusfailed后r_A=1、D仍在报告enabledFalse。
   - test_weight_scaling_and_mixed_reals：权重2/3，共同乘1e-200或1e200，相关性在1e-12内一致；两个1e308或两个10**400同权各.5；float与巨型Fraction混合不溢出；MNEMOSIS_TEST_NUMPY启用时实际np.int64/np.float64路径通过。
   - test_underflow_keeps_enabled_candidates：L=["A"],weight=1e308；D=["B"],weight=1e-308；支持A:X=0/B:X=1，lambda0/K1应选B，r_B=0但D.enabledTrue、underflow=("D",)。
@@ -120,9 +120,9 @@ assert r.selection.uncovered_aspect_ids == ("X",)
   - test_tail_append_and_shared_id：末尾追加新ID不改旧排名分；同ID跨通道归一化贡献相加但仅一候选；同支持不同ID不合并。
   - test_fraction_contributions_and_fixed_capacity：用独立Fraction从固定排名核算全部r和每通道贡献；支持公式与最终三分量独立核算，K=0/1/100、候选不足、lambda0/1及零贡献停止遵守原选择器。
   - test_input_and_report_isolation：deepcopy输入，多次调用相同；改report.relevance_by_id和selection.aspect_coverage不改输入/下一次输出；supplied_support_pairs按融合候选及要点顺序，含0且不含缺项。
-- [ ] **Step 5: 最小实现函数并GREEN。** 完整快照和校验；按原始正权重建立并集；最大权重缩放+fsum，必要时精确比值解决混合Real比较/除法溢出，保存下溢ID。每项贡献p_j*61/(60+rank)，累计r、按r降序/首次出现位置排序；完整支持校验与资料状态后构造EvidenceCandidate并调用公开select_evidence。错误类型和所有输出字段按规格，不修改旧模块。
-- [ ] **Step 6: 验证和单人审查。** 运行 `C:/Python314/python.exe -m pytest tests/test_ranked_evidence.py tests/test_evidence_selection.py tests/test_api_surface.py -q -p no:cacheprovider`；预期零失败/退出0。核对公式/数值范围/输入不变/没有新存储或模型依赖，独立oracle不调用产品评分助手。
-- [ ] **Step 7: 本地提交任务1。** diff --check，只暂存新模块、测试和已冻结fixture；提交“Add normalized ranked evidence selection”，不推送。
+- [x] **Step 5: 最小实现函数并GREEN。** 完整快照和校验；按原始正权重建立并集；最大权重缩放+fsum，必要时精确比值解决混合Real比较/除法溢出，保存下溢ID。每项贡献p_j*61/(60+rank)，累计r、按r降序/首次出现位置排序；完整支持校验与资料状态后构造EvidenceCandidate并调用公开select_evidence。错误类型和所有输出字段按规格，不修改旧模块。
+- [x] **Step 6: 验证和单人审查。** 运行 `C:/Python314/python.exe -m pytest tests/test_ranked_evidence.py tests/test_evidence_selection.py tests/test_api_surface.py -q -p no:cacheprovider`；预期零失败/退出0。核对公式/数值范围/输入不变/没有新存储或模型依赖，独立oracle不调用产品评分助手。
+- [x] **Step 7: 本地提交任务1。** diff --check，只暂存新模块、测试和已冻结fixture；提交“Add normalized ranked evidence selection”，不推送。
 
 ### Task 2: 两后端只读与固定构造对照
 
@@ -144,12 +144,12 @@ assert r.selection.uncovered_aspect_ids == ("X",)
 负例time_chain的B正文“Mina arrived on October 1.”、C“Mina departed on October 4.”，A“Mina discussed an October trip.”；A的粗粒度支持故意不能代表必要事件。必要ID在描述中声明，不能修正矩阵使例子变成收益。
 complementary正文A“Mina visited Osaka.”、B“Osaka was the destination.”、C“The trip occurred in October.”。其他条正文按明确ID区分；same_support的A/B是不同记录，不能以同支持形状去重。
 
-- [ ] **Step 1: 写真实两后端集成测试。** 固定UTC2026-10-06T12:00:00，显式MemoryItem/来源/关系，带非零access、retrieval及verified计数和已有日志。get_many读取实际ID，构造两通道ABC/ACB与支持；断言选AC和精确目标。选择前后比较所有to_dict、all_links、_recall_log；SQLite完整iterdump与ReadOnlyGuard；多通道共享ID不能增加证据来源或计数。
-- [ ] **Step 2: 运行集成验证。** `C:/Python314/python.exe -m pytest tests/test_ranked_evidence_integration.py tests/test_evidence_selection_integration.py -q -p no:cacheprovider`，预期两个后端无状态变更/零失败。若需改旧召回或后端，报告范围变化，不把改动混入本任务。
-- [ ] **Step 3: 实现评测脚本。** 6轨迹×2后端×2主方法=24重复配置：normalized_rrf_topk与ranked_coverage共享同一候选并集/相关性/K。另6×2×2通道=24逐通道TopK消融，候选池不同，另报池覆盖；共48配置，不算48独立题。无必要ID的轨迹不计完整证据成功，5条可评价构造轨迹分别报，不做统计领先。
-- [ ] **Step 4: 独立审计评测输出。** 脚本内独立Fraction计算相关性和目标，不用产品私有函数做预期；所有方法记录原始ID/必要ID找全/缺口/分量/通道贡献。complementary应coverage选AC；time_chain应coverage选AB、漏C而融合TopK选BC，保留退步；greedy_nonoptimal应覆盖5/6、独立枚举最优BC为1。重算全部配置、主方法收益/退步和只读标志，保留null金标排除。
-- [ ] **Step 5: 记录有界耗时。** 固定8通道每条100同ID集合的排名、并集100、32要点、K5，7次真实函数调用；保存每次ns/中位数和输入/输出大小。包含归一化与选择、不含模型/数据库，不称端到端提速，不新增全量SDK性能测试。
-- [ ] **Step 6: 单人审查与本地提交。** 核对候选池差别、构造支持标签、负例保留与真实状态验证；提交新集成测试/评测脚本，不改fixture凑分，不推送。
+- [x] **Step 1: 写真实两后端集成测试。** 固定UTC2026-10-06T12:00:00，显式MemoryItem/来源/关系，带非零access、retrieval及verified计数和已有日志。get_many读取实际ID，构造两通道ABC/ACB与支持；断言选AC和精确目标。选择前后比较所有to_dict、all_links、_recall_log；SQLite完整iterdump与ReadOnlyGuard；多通道共享ID不能增加证据来源或计数。
+- [x] **Step 2: 运行集成验证。** `C:/Python314/python.exe -m pytest tests/test_ranked_evidence_integration.py tests/test_evidence_selection_integration.py -q -p no:cacheprovider`，预期两个后端无状态变更/零失败。若需改旧召回或后端，报告范围变化，不把改动混入本任务。
+- [x] **Step 3: 实现评测脚本。** 6轨迹×2后端×2主方法=24重复配置：normalized_rrf_topk与ranked_coverage共享同一候选并集/相关性/K。另6×2×2通道=24逐通道TopK消融，候选池不同，另报池覆盖；共48配置，不算48独立题。无必要ID的轨迹不计完整证据成功，5条可评价构造轨迹分别报，不做统计领先。
+- [x] **Step 4: 独立审计评测输出。** 脚本内独立Fraction计算相关性和目标，不用产品私有函数做预期；所有方法记录原始ID/必要ID找全/缺口/分量/通道贡献。complementary应coverage选AC；time_chain应coverage选AB、漏C而融合TopK选BC，保留退步；greedy_nonoptimal应覆盖5/6、独立枚举最优BC为1。重算全部配置、主方法收益/退步和只读标志，保留null金标排除。
+- [x] **Step 5: 记录有界耗时。** 固定8通道每条100同ID集合的排名、并集100、32要点、K5，7次真实函数调用；保存每次ns/中位数和输入/输出大小。包含归一化与选择、不含模型/数据库，不称端到端提速，不新增全量SDK性能测试。
+- [x] **Step 6: 单人审查与本地提交。** 核对候选池差别、构造支持标签、负例保留与真实状态验证；提交新集成测试/评测脚本，不改fixture凑分，不推送。
 
 ### Task 3: 用法、完整回归与E盘交付
 
@@ -157,9 +157,9 @@ complementary正文A“Mina visited Osaka.”、B“Osaka was the destination.�
 
 **Interfaces:** 使用任务1API和任务2结果；文档示例为实际执行输出，不更改调用方。
 
-- [ ] **Step 1: 写用法与限制。** 展示实际AC例子、通道贡献、固定分母、no-support显式lambda1、failed显式禁用、极小权重下溢、输入顺序平局、支持0/缺失区别。说明不是自动事实核验、没有接入recall及token预算，不把构造代理收益写成检索提升。
-- [ ] **Step 2: 完整回归。** 上述Rust/NumPy环境执行 `C:/Python314/python.exe -m pytest -q -p no:cacheprovider` 和 `C:/Python314/python.exe benchmarks/ci_regression.py`。预期零失败/退出0与18/18门槛；保存实际测试/子场景数、耗时和原日志。只在新问题/新改动时重跑相关验证。
-- [ ] **Step 3: 最终单人审查与提交。** diff --check；检查只新增独立接口，旧默认/存储无变化，数学界不等于任务成功；实际通过后更新完成复选框、规格状态和文档，本地提交。
+- [x] **Step 1: 写用法与限制。** 展示实际AC例子、通道贡献、固定分母、no-support显式lambda1、failed显式禁用、极小权重下溢、输入顺序平局、支持0/缺失区别。说明不是自动事实核验、没有接入recall及token预算，不把构造代理收益写成检索提升。
+- [x] **Step 2: 完整回归。** 上述Rust/NumPy环境执行 `C:/Python314/python.exe -m pytest -q -p no:cacheprovider` 和 `C:/Python314/python.exe benchmarks/ci_regression.py`。预期零失败/退出0与18/18门槛；保存实际测试/子场景数、耗时和原日志。只在新问题/新改动时重跑相关验证。
+- [x] **Step 3: 最终单人审查与提交。** diff --check；检查只新增独立接口，旧默认/存储无变化，数学界不等于任务成功；实际通过后更新完成复选框、规格状态和文档，本地提交。
 - [ ] **Step 4: 报告与恢复存档。** 报告实际源码、定向/完整测试、6轨迹/48重复配置、5可评价轨迹、收益与退步、纯函数耗时和限制。归档提交源码ZIP、冻结fixture、原始结果/日志/脚本、规格/计划、WORKLOG及恢复说明；静态copy_verified核验包，包外manifest保存实际完成情况。
 - [ ] **Step 5: 关闭交付。** 检查Git干净、产物与恢复说明可读，交付E盘链接；不宣称未来MemoryEngine自动融合已经完成，保留单人/无推送约束。
 
@@ -168,4 +168,4 @@ complementary正文A“Mina visited Osaka.”、B“Osaka was the destination.�
 规格§1–2目标/范围对应全部任务；§3–6输入、数学、输出与数值契约对应Task1及Task2状态测试；§7精确例子对应Task1/Task2独立oracle；§8验收对应三项任务；§9负例和边界对应Task2/Task3；§10审查存档对应Task3。
 五项Review Focus均有明确测试；后续接口名与字段均在Task1定义，没有未定义的产品函数、默认切换或子智能体任务。计划只包含测试断言和必要实现决策，不预写产品函数体。
 
-执行方式已确定为主助手使用executing-plans单人完成。用户审查本计划并确认捕捉了期望后，才创建实施目录/产品备份、写失败测试及实现；本文件创建不表示任务已经完成。
+执行方式已确定为主助手使用executing-plans单人完成。用户已批准实施；实施前恢复档与失败测试已实际执行。当前功能和回归已完成，交付包核验完成后才关闭末两步骤。
