@@ -20,6 +20,7 @@ from .backend import Backend
 from .embedding import Embedder
 from .forgetting import ForgettingCurve
 from .importance import ImportanceScorer
+from .lexical_cues import inflection_groups
 from .reasoning import apply_premise_pack
 from .schema import EventChainIndex
 from .temporal_reason import apply_time_cell_reasoning
@@ -452,6 +453,7 @@ class DualTrackStore:
         temporal_reason: bool = True,
         reasoning_pack: bool = True,
         zh_synonyms: bool = True,
+        lexical_policy: str = "literal",
         pattern_completion: bool = True,
         pc_min_overlap: float = 0.25,
         pc_max_overlap: float = 0.95,
@@ -469,6 +471,8 @@ class DualTrackStore:
         kind_pref: float = 0.03,
         exclude_ids: set[str] | None = None,
     ) -> list[RecallResult]:
+        if lexical_policy not in ("literal", "inflection"):
+            raise ValueError("lexical_policy must be 'literal' or 'inflection'")
         if read_only:
             reinforce = False
             elaborate_links = False
@@ -486,6 +490,18 @@ class DualTrackStore:
             query_terms = expand_synonyms(query_terms)
         elif zh_synonyms:
             query_terms = _expand_en_synonyms(query_terms)
+        # Keep the original question/intent/vector intact. Only candidate
+        # discovery and lexical geometry see optional word-form families.
+        cue_groups = None
+        has_cjk = any("\u4e00" <= ch <= "\u9fff" for ch in query)
+        if lexical_policy == "inflection" and not has_cjk:
+            cue_groups = inflection_groups(query_terms)
+        retrieval_terms = (
+            set().union(*cue_groups) if cue_groups else query_terms
+        )
+        denominator_count = (
+            len(inflection_groups(base_terms)) if cue_groups else len(base_terms)
+        )
         # Temporal questions ("after X, what did Y do next?") cue the event
         # *sequence*, so episodic memories get a small preference; ordinary
         # event queries ("what did Y buy on date?") are left untouched so the
@@ -529,6 +545,7 @@ class DualTrackStore:
                 context,
                 frozenset(exclude_ids or ()),
                 embedder_key,
+                lexical_policy,
             )
             cached = self._fallback_cache_get(fallback_cache_key)
             if cached is not None:
@@ -552,14 +569,14 @@ class DualTrackStore:
                 self.invalidate_fallback_cache()
         if query_terms:
             total_active = self.backend.count(kind=kind)
-            term_df = self._cached_term_dfs(query_terms, kind)
+            term_df = self._cached_term_dfs(retrieval_terms, kind)
         else:
             total_active = 0
             term_df = {}
         if query_terms:
             hit_counts: dict[str, int] = {}
             term_ids: dict[str, set[str]] = {}
-            for term in query_terms:
+            for term in retrieval_terms:
                 df = term_df.get(term, 0)
                 if (
                     df > 0
@@ -602,12 +619,33 @@ class DualTrackStore:
                     4.0,
                 )
             idf_sum = sum(idf_weights.values())
+            grouped_ids: list[set[str]] = []
+            grouped_weights: list[float] = []
+            if cue_groups:
+                # Union postings before computing df: three forms of one cue
+                # are one relevance signal, not three independent supports.
+                for group in cue_groups:
+                    group_ids = set().union(*(term_ids.get(t, set()) for t in group))
+                    grouped_ids.append(group_ids)
+                    df = min(len(group_ids), total_active)
+                    weight = 0.0
+                    if df:
+                        weight = min(4.0, max(0.0, math.log(
+                            (total_active - df + 0.5) / (df + 0.5))))
+                    grouped_weights.append(weight)
+                idf_sum = sum(grouped_weights)
             ids = set(hit_counts) - set(exclude_ids or set())
             if ids:
                 if len(ids) > 100:
                     # Pre-rank by idf-weighted hits so a candidate matching
                     # one rare term is not cut in favor of generic hits.
                     def _pre_score(memory_id: str) -> float:
+                        if cue_groups:
+                            return sum(
+                                weight for group_ids, weight in
+                                zip(grouped_ids, grouped_weights)
+                                if memory_id in group_ids
+                            )
                         return sum(
                             idf_weights[term]
                             for term, ids_for_term in term_ids.items()
@@ -618,7 +656,8 @@ class DualTrackStore:
                         memory_id
                         for memory_id, _ in sorted(
                             ((memory_id, _pre_score(memory_id)) for memory_id in ids),
-                            key=lambda row: -row[1],
+                            key=(lambda row: (-row[1], row[0])) if cue_groups
+                            else (lambda row: -row[1]),
                         )[:100]
                     }
                 ids_list = sorted(ids)
@@ -657,7 +696,14 @@ class DualTrackStore:
         scored: list[tuple[float, float, MemoryItem, list[str], bool]] = []
         for item in candidates:
             item_terms = self._terms(item)
-            if any("\u4e00" <= ch <= "\u9fff" for ch in query):
+            if cue_groups:
+                hits = sum(bool(group & item_terms) for group in cue_groups)
+                # Repeated forms must not inflate numerator or length penalty.
+                item_length = len(item_terms) - sum(
+                    max(0, len(group & item_terms) - 1) for group in cue_groups
+                )
+                denominator_terms = base_terms
+            elif has_cjk:
                 # Chinese keeps the long-standing expanded denominator.
                 hits = len(query_terms & item_terms)
                 denominator_terms = query_terms
@@ -668,26 +714,32 @@ class DualTrackStore:
                 hits = len(query_terms & item_terms)
                 denominator_terms = base_terms
             if hits:
+                denominator = denominator_count if cue_groups else len(denominator_terms)
                 capped = min(
-                    len(item_terms), max(len(denominator_terms) * 2, 8)
+                    item_length if cue_groups else len(item_terms),
+                    max(denominator * 2, 8),
                 )
                 overlap = hits / max(
-                    1.0, math.sqrt(max(1, len(denominator_terms)) * capped)
+                    1.0, math.sqrt(max(1, denominator) * capped)
                 )
             else:
                 overlap = 0.0
             if idf_sum and query_terms:
-                idf_hits = sum(
-                    idf_weights[term]
-                    for term in query_terms
-                    if term in item_terms
-                )
+                if cue_groups:
+                    idf_hits = sum(
+                        weight for group, weight in zip(cue_groups, grouped_weights)
+                        if group & item_terms
+                    )
+                else:
+                    idf_hits = sum(idf_weights[term] for term in query_terms
+                                   if term in item_terms)
                 if idf_hits:
                     # Rare-term boost: keep the original overlap geometry and
                     # scale it up to 2x when the candidate matches terms that
                     # are rare across the store. Uniform idf -> scale 1.0,
                     # so common-topic queries behave exactly as before.
-                    idf_avg = max(idf_sum / len(query_terms), 1e-6)
+                    cue_count = len(cue_groups) if cue_groups else len(query_terms)
+                    idf_avg = max(idf_sum / cue_count, 1e-6)
                     scale = min(
                         1.0 + 0.5 * (idf_hits / idf_avg - 1.0),
                         2.0,
@@ -714,6 +766,11 @@ class DualTrackStore:
                     )
             context_match = context_overlap >= 1.0
             reasons: list[str] = []
+            if cue_groups and any(
+                group & item_terms and not group & item_terms & query_terms
+                for group in cue_groups
+            ):
+                reasons.append("English inflection cue (relevance only)")
             semantic = 0.0
             self_bonus = 0.0
             self_marked = (

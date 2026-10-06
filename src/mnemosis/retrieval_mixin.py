@@ -132,6 +132,7 @@ class RetrievalMixin:
         read_only: bool = False,
         learning_policy: str = "legacy",
         temporal_policy: str = "content",
+        lexical_policy: str = "literal",
         use_default_embedder: bool = True,
         context: str | None = None,
         context_boost: bool = True,
@@ -184,7 +185,14 @@ class RetrievalMixin:
         ``temporal_policy="source"`` opts into conservative event-time
         resolution (body dates + aware episodic sources) and shared chains;
         the default ``content`` preserves legacy time behavior.
+        ``lexical_policy="inflection"`` opts into bounded English word-form
+        cue groups. A group counts once; the original question still drives
+        embeddings and temporal intent. CJK queries keep legacy tokenization.
+        This changes relevance, never creates factual evidence. Default
+        ``literal`` keeps legacy results. See docs/inflection-cues.md.
         """
+        if lexical_policy not in ("literal", "inflection"):
+            raise ValueError("lexical_policy must be 'literal' or 'inflection'")
         if learning_policy not in ("legacy", "final"):
             raise ValueError("learning_policy must be 'legacy' or 'final'")
         if temporal_policy not in ("content", "source"):
@@ -241,6 +249,7 @@ class RetrievalMixin:
             temporal_reason=temporal_reason,
             reasoning_pack=reasoning_pack,
             zh_synonyms=zh_synonyms,
+            lexical_policy=lexical_policy,
             pattern_completion=pattern_completion,
             separation=separation,
             kind_preference=kind_preference,

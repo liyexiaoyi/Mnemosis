@@ -41,6 +41,7 @@
 | `src/mnemosis/recycle.py` | 主动遗忘、回收与恢复 | Python |
 | `src/mnemosis/render.py` | SVG 图形输出 | Python |
 | `src/mnemosis/retrieval_diagnostics_mixin.py` | 检索追踪、质量与模式诊断 | Python |
+| `src/mnemosis/lexical_cues.py` | 有界英文词形线索分组，不承担事实确认 | Python |
 | `src/mnemosis/retrieval_mixin.py` | 召回入口、实体/数值/来源时间约束 | Python |
 | `src/mnemosis/review_mixin.py` | 复习、预算、睡眠与预热编排 | Python |
 | `src/mnemosis/schema.py` | 来源事件链、分组与增量失效 | Python + SQLite SQL（涉及存储时） |
