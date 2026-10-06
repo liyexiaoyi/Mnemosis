@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python >=3.10与标准库；现有Dict/SQLite、pytest、可选Rust/NumPy仅用于既有验证环境，不新增依赖。
 
-**Spec:** [已确认的书面规格](E:/Mnemosis/repo/docs/superpowers/specs/2026-10-06-ranked-evidence-design.md)，设计提交5273a3962efc92cbd3e157bb0b8e69a0dcaf3859。用户于2026-10-06回复“ok”批准书面规格。用户于2026-10-06回复“实施”批准本计划。任务1/2及任务3用法、完整回归、作者自审已完成；E盘恢复包待核验，末两步骤保留未勾选。
+**Spec:** [已确认的书面规格](E:/Mnemosis/repo/docs/superpowers/specs/2026-10-06-ranked-evidence-design.md)，设计提交5273a3962efc92cbd3e157bb0b8e69a0dcaf3859。用户于2026-10-06回复“ok”批准书面规格。用户于2026-10-06回复“实施”批准本计划。三项任务已完成；948测试/374子场景、CI18/18通过，两个恢复ZIP核验通过，最终关闭记录见交付目录manifest。
 
 ## Global Constraints
 
@@ -160,12 +160,12 @@ complementary正文A“Mina visited Osaka.”、B“Osaka was the destination.�
 - [x] **Step 1: 写用法与限制。** 展示实际AC例子、通道贡献、固定分母、no-support显式lambda1、failed显式禁用、极小权重下溢、输入顺序平局、支持0/缺失区别。说明不是自动事实核验、没有接入recall及token预算，不把构造代理收益写成检索提升。
 - [x] **Step 2: 完整回归。** 上述Rust/NumPy环境执行 `C:/Python314/python.exe -m pytest -q -p no:cacheprovider` 和 `C:/Python314/python.exe benchmarks/ci_regression.py`。预期零失败/退出0与18/18门槛；保存实际测试/子场景数、耗时和原日志。只在新问题/新改动时重跑相关验证。
 - [x] **Step 3: 最终单人审查与提交。** diff --check；检查只新增独立接口，旧默认/存储无变化，数学界不等于任务成功；实际通过后更新完成复选框、规格状态和文档，本地提交。
-- [ ] **Step 4: 报告与恢复存档。** 报告实际源码、定向/完整测试、6轨迹/48重复配置、5可评价轨迹、收益与退步、纯函数耗时和限制。归档提交源码ZIP、冻结fixture、原始结果/日志/脚本、规格/计划、WORKLOG及恢复说明；静态copy_verified核验包，包外manifest保存实际完成情况。
-- [ ] **Step 5: 关闭交付。** 检查Git干净、产物与恢复说明可读，交付E盘链接；不宣称未来MemoryEngine自动融合已经完成，保留单人/无推送约束。
+- [x] **Step 4: 报告与恢复存档。** 报告实际源码、定向/完整测试、6轨迹/48重复配置、5可评价轨迹、收益与退步、纯函数耗时和限制。归档提交源码ZIP、冻结fixture、原始结果/日志/脚本、规格/计划、WORKLOG及恢复说明；静态copy_verified核验包，包外manifest保存实际完成情况。
+- [x] **Step 5: 关闭交付。** 检查Git干净、产物与恢复说明可读，交付E盘链接；不宣称未来MemoryEngine自动融合已经完成，保留单人/无推送约束。
 
 ## 计划自审与执行交接
 
 规格§1–2目标/范围对应全部任务；§3–6输入、数学、输出与数值契约对应Task1及Task2状态测试；§7精确例子对应Task1/Task2独立oracle；§8验收对应三项任务；§9负例和边界对应Task2/Task3；§10审查存档对应Task3。
 五项Review Focus均有明确测试；后续接口名与字段均在Task1定义，没有未定义的产品函数、默认切换或子智能体任务。计划只包含测试断言和必要实现决策，不预写产品函数体。
 
-执行方式已确定为主助手使用executing-plans单人完成。用户已批准实施；实施前恢复档与失败测试已实际执行。当前功能和回归已完成，交付包核验完成后才关闭末两步骤。
+执行方式已确定为主助手使用executing-plans单人完成。用户已批准实施；实施前恢复档与失败测试已实际执行。功能、回归、作者自审及恢复包核验已完成；源码检查点e791101a7b8d00925cf21be2c12409bc9eb2f1c5，后续仅本规格/计划状态关闭提交保存在包外manifest，产品树不变。
