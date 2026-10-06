@@ -28,6 +28,25 @@ from typing import Any
 _LOG = logging.getLogger(__name__)
 
 
+def _top_score_indices(np: Any, scores: Any, top_k: int) -> Any:
+    """Select a small unique Top-k without changing legacy argsort ties.
+
+    Partition is unstable. Keep the original full sort when chosen scores
+    tie, a cutoff tie could change membership, or values are non-finite.
+    """
+    n = len(scores)
+    if n >= 1024 and 0 < top_k <= n // 4 and np.isfinite(scores).all():
+        candidates = np.argpartition(-scores, top_k - 1)[:top_k]
+        order = candidates[np.argsort(-scores[candidates])]
+        selected = scores[order]
+        if (
+            not np.any(selected[:-1] == selected[1:])
+            and np.count_nonzero(scores == selected[-1]) == 1
+        ):
+            return order
+    return np.argsort(-scores)[:top_k]
+
+
 class VectorIndex:
     """Persistent LSH-bucket vector index backed by SQLite."""
 
@@ -496,7 +515,7 @@ class VectorIndex:
             if qnorm == 0.0:
                 return []
             scores: Any = matrix @ query / (norms * qnorm + 1e-9)
-            order: Any = np.argsort(-scores)[:top_k]
+            order: Any = _top_score_indices(np, scores, top_k)
             return [
                 (ids[int(index)], float(scores[int(index)]))
                 for index in order
@@ -574,7 +593,7 @@ class VectorIndex:
         if qnorm == 0.0:
             return []
         scores = matrix @ query / (norms * qnorm + 1e-9)
-        order = np.argsort(-scores)[:top_k]
+        order = _top_score_indices(np, scores, top_k)
         return [
             (ids[int(index)], float(scores[int(index)]))
             for index in order

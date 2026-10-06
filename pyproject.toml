@@ -23,6 +23,7 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
+vectors = ["numpy>=1.26"]
 dev = ["pytest>=8"]
 typecheck = ["mypy", "numpy"]
 
