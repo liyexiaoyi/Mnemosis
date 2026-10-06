@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python >=3.10，标准库dataclasses、numbers、collections.abc、math；现有Dict/SQLite后端仅用于只读集成验证。沿用已有Rust/NumPy可选测试环境，无新依赖。
 
-**Spec:** [已获用户确认的设计](E:/Mnemosis/repo/docs/superpowers/specs/2026-10-06-evidence-selection-design.md)。2026-10-06用户选择“认可设计，写实施计划”。2026-10-06用户已选择“确认计划，按此实施”；Task1、Task2与Task3文档步骤已完成，最终回归926/279及18/18门槛通过；恢复归档进行中。
+**Spec:** [已获用户确认的设计](E:/Mnemosis/repo/docs/superpowers/specs/2026-10-06-evidence-selection-design.md)。2026-10-06用户选择“认可设计，写实施计划”。2026-10-06用户已选择“确认计划，按此实施”；Task1、Task2与Task3文档步骤已完成，最终回归926/279及18/18门槛通过；恢复包已核验，全部任务完成。
 
 ## Global Constraints
 
@@ -137,9 +137,9 @@ assert abs(_score_subset([A, B], weights, [0], limit=5, relevance_weight=.5)[2]
 
 - [x] **Step 1: 文档展示实际示例与限制。** 用A/B/C实际API结果，区分归一化相关性、覆盖、代理目标和真实任务；说明缺失/部分支持、lambda1/空要点/零预算、固定K、正权重下溢、参数上限、纯条数、负例、没有接入recall。任何结果值取已核验输出，不提前写成功结论。
 - [x] **Step 2: 完整回归与门槛。** 在上述强制Rust/NumPy环境，先无过滤运行完整pytest，再运行benchmarks/ci_regression.py。期望全套零失败/退出0与18/18能力/生命周期；保存日志及实际测试数。已有906/190只是基线，报告不能复用为新验证。
-- [ ] **Step 3: 最终单人审查并提交。** diff --check；检查新模块职责、API兼容、所有数值/只读失败名、冻结协议与损失记录；只在真实通过后提交docs和计划步骤更新。产品范围仍是独立接口。
-- [ ] **Step 4: 保存实际报告与恢复包。** 报告源码/新增测试/完整测试/6构造轨迹与36重复配置/负例/耗时/无真实检索收益主张。打包提交源码ZIP、冻结fixture、原始结果/脚本/日志、设计/计划、WORKLOG和恢复说明至新的E盘目录；copy_verified一次源流/目标读取核验，包外清单记录实际结果。
-- [ ] **Step 5: 最终确认。** Git工作树干净；无推送/子智能体；报告和核验恢复档链接可用。未来接入召回、生成支持或默认切换不属于本次完成声明。
+- [x] **Step 3: 最终单人审查并提交。** diff --check；检查新模块职责、API兼容、所有数值/只读失败名、冻结协议与损失记录；只在真实通过后提交docs和计划步骤更新。产品范围仍是独立接口。
+- [x] **Step 4: 保存实际报告与恢复包。** 报告源码/新增测试/完整测试/6构造轨迹与36重复配置/负例/耗时/无真实检索收益主张。打包提交源码ZIP、冻结fixture、原始结果/脚本/日志、设计/计划、WORKLOG和恢复说明至新的E盘目录；copy_verified一次源流/目标读取核验，包外清单记录实际结果。
+- [x] **Step 5: 最终确认。** Git工作树干净；无推送/子智能体；报告和核验恢复档链接可用。未来接入召回、生成支持或默认切换不属于本次完成声明。
 
 ## 计划自审
 
@@ -147,4 +147,8 @@ assert abs(_score_subset([A, B], weights, [0], limit=5, relevance_weight=.5)[2]
 
 ## 执行交接
 
-用户已确认书面设计与本实施计划。主助手按executing-plans单人执行，Task1与Task2完成；Task3完整回归926/279与18/18门槛通过，继续恢复归档。执行证据保存在E:/Mnemosis/evaluation/evidence-selection/2026-10-06/implementation。
+用户已确认书面设计与本实施计划。主助手按executing-plans单人执行，Task1与Task2完成；Task3完整回归926/279与18/18门槛通过，源码/数据恢复包已核验，任务全部完成。执行证据保存在E:/Mnemosis/evaluation/evidence-selection/2026-10-06/implementation。
+
+## 最终交付关闭
+
+2026-10-06全部三项任务实际完成：926项/279子场景与18/18门槛通过，两后端只读、冻结构造对照及独立复核通过。E:/Mnemosis/backups/2026-10-06-twenty-first-batch/snapshot.zip已核验；包内源码检查点0ad98ee，后续本提交仅更新计划/设计完成状态，产品源码未改变。包外manifest.json与delivery-plan.md保存交付状态。
