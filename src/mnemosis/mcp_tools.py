@@ -15,7 +15,7 @@ EXPERIMENTAL_TOOLS = frozenset(
         "reconsolidation_plan", "consolidation_forecast",
         "forgetting_balance", "metacog_report", "sleep_inference",
         "schema_fit", "transfer_report", "bridge_suggestions",
-        "forgetting_export",
+        "forgetting_export", "recall_evidence",
     }
 )
 
@@ -30,6 +30,28 @@ CORE_TOOLS = frozenset(
 
 
 TOOL_DEFINITIONS: list[dict] = [
+            {
+                "name": "recall_evidence",
+                "description": "Experimental read-only recall with local evidence annotations and required-role selection. Feasible means constraints hold for model annotations, not verified truth.",
+                "inputSchema": {
+                    "type": "object", "additionalProperties": False, "required": ["query"],
+                    "properties": {
+                        "query": {"type": "string", "minLength": 1, "maxLength": 4096},
+                        "top_k": {"type": "integer", "minimum": 1, "maximum": 100, "default": 5},
+                        "candidate_limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 100},
+                        "relevance_weight": {"type": "number", "minimum": 0, "maximum": 1, "default": .5},
+                        "search_budget": {"type": "integer", "minimum": 0, "maximum": 100000, "default": 10000},
+                        "kind": {"type": "string", "enum": ["episodic", "semantic"]},
+                        "now": {"type": "string", "description": "Timezone-aware ISO query time"},
+                        "context": {"type": ["string", "null"]},
+                        "exclude_ids": {"type": "array", "uniqueItems": True, "items": {"type": "string", "minLength": 1}},
+                        "temporal_policy": {"type": "string", "enum": ["content", "source"], "default": "content"},
+                        "lexical_policy": {"type": "string", "enum": ["literal", "inflection"], "default": "literal"},
+                        "candidate_policy": {"type": "string", "enum": ["legacy", "quota"], "default": "legacy"},
+                        "rerank_policy": {"type": "string", "enum": ["legacy", "semantic_reserve"], "default": "legacy"},
+                    },
+                },
+            },
             {
                 "name": "remember",
                 "description": "Store a memory (episodic or semantic).",

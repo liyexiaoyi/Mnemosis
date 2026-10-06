@@ -37,8 +37,12 @@ class MCPServer(MCPHandlersMixin):
         self,
         engine: MemoryEngine | None = None,
         expose: str = "advanced",
+        *,
+        evidence_annotator=None,
     ) -> None:
         self.engine = engine or MemoryEngine()
+        self.evidence_annotator = evidence_annotator
+        self._evidence_experimental = expose == "experimental"
         self.engine.warmup()  # background page-cache warm for cold starts
         self._tool_handlers = {
             name: getattr(self, method_name)
@@ -232,12 +236,28 @@ def _build_engine(
     return engine
 
 
+def _build_evidence_annotator(kind: str, model: str | None, base_url: str | None):
+    if kind == "none":
+        if model is not None or base_url is not None:
+            raise ValueError("evidence model/URL require --evidence-annotator ollama")
+        return None
+    if kind != "ollama":
+        raise ValueError("evidence annotator must be none or ollama")
+    from .ollama_evidence import OllamaEvidenceAnnotator
+    return OllamaEvidenceAnnotator(model=model or "qwen2.5:3b",
+                                  base_url=base_url or "http://127.0.0.1:11434")
+
+
 def run_stdio(
     db_path: str | None = None,
     expose: str = "advanced",
     embedder: str = "none",
     embedding_model: str | None = None,
     embedding_base_url: str | None = None,
+    *,
+    evidence_annotator: str = "none",
+    evidence_model: str | None = None,
+    evidence_base_url: str | None = None,
 ) -> None:
     for stream in (sys.stdin, sys.stdout, sys.stderr):
         try:
@@ -249,7 +269,8 @@ def run_stdio(
     engine = _build_engine(
         db_path, embedder, embedding_model, embedding_base_url
     )
-    server = MCPServer(engine, expose=expose)
+    server = MCPServer(engine, expose=expose, evidence_annotator=_build_evidence_annotator(
+        evidence_annotator, evidence_model, evidence_base_url))
     try:
         while True:
             message, framed = _read_message()
@@ -267,9 +288,11 @@ def build_http_server(
     expose: str = "advanced",
     host: str = "127.0.0.1",
     port: int = 0,
+    *,
+    evidence_annotator=None,
 ) -> http.server.ThreadingHTTPServer:
     """Build an MCP Streamable-HTTP server (POST-only, stdlib)."""
-    mcp = MCPServer(engine or MemoryEngine(), expose=expose)
+    mcp = MCPServer(engine or MemoryEngine(), expose=expose, evidence_annotator=evidence_annotator)
     sessions: set[str] = set()
 
     class _Handler(http.server.BaseHTTPRequestHandler):
@@ -376,12 +399,17 @@ def run_http(
     embedding_base_url: str | None = None,
     host: str = "127.0.0.1",
     port: int = 8000,
+    *,
+    evidence_annotator: str = "none",
+    evidence_model: str | None = None,
+    evidence_base_url: str | None = None,
 ) -> None:
     """Run the MCP server over Streamable HTTP (POST-only)."""
     engine = _build_engine(
         db_path, embedder, embedding_model, embedding_base_url
     )
-    server = build_http_server(engine, expose=expose, host=host, port=port)
+    server = build_http_server(engine, expose=expose, host=host, port=port,
+        evidence_annotator=_build_evidence_annotator(evidence_annotator, evidence_model, evidence_base_url))
     print(
         f"mnemosis-mcp listening on http://{host}:{server.server_port} "
         f"(POST /, MCP Streamable HTTP)",
@@ -430,6 +458,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     )
     parser.add_argument("--embedding-model", default=None)
     parser.add_argument("--embedding-base-url", default=None)
+    parser.add_argument("--evidence-annotator", choices=("none", "ollama"), default="none")
+    parser.add_argument("--evidence-model", default=None)
+    parser.add_argument("--evidence-base-url", default=None)
     parser.add_argument(
         "--transport",
         choices=("stdio", "http"),
@@ -445,6 +476,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         "embedder": args.embedder,
         "embedding_model": args.embedding_model,
         "embedding_base_url": args.embedding_base_url,
+        "evidence_annotator": args.evidence_annotator,
+        "evidence_model": args.evidence_model,
+        "evidence_base_url": args.evidence_base_url,
     }
     if args.transport == "http":
         run_http(**common, host=args.host, port=args.port)

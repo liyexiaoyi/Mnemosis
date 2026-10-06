@@ -51,6 +51,33 @@ def _source_type(value: Any) -> SourceType:
 
 
 class MCPHandlersMixin:
+    @_tool("recall_evidence")
+    def _tool_recall_evidence(self, args: dict[str, Any]) -> Any:
+        if not self._evidence_experimental or self.evidence_annotator is None:
+            raise ValueError("recall_evidence requires experimental exposure and an explicit annotator")
+        allowed = {"query", "top_k", "candidate_limit", "relevance_weight", "search_budget", "kind",
+                   "now", "context", "exclude_ids", "temporal_policy", "lexical_policy",
+                   "candidate_policy", "rerank_policy"}
+        if not isinstance(args, dict) or set(args) - allowed:
+            raise ValueError("invalid recall_evidence arguments")
+        kwargs = {k: v for k, v in args.items() if k != "query"}
+        if "kind" in kwargs:
+            kwargs["kind"] = _kind(kwargs["kind"])
+        if "now" in kwargs:
+            if not isinstance(kwargs["now"], str):
+                raise ValueError("now must be an aware ISO datetime")
+            parsed = datetime.fromisoformat(kwargs["now"])
+            if parsed.tzinfo is None or parsed.utcoffset() is None:
+                raise ValueError("now must be an aware ISO datetime")
+            kwargs["now"] = parsed
+        if "exclude_ids" in kwargs:
+            ids = kwargs["exclude_ids"]
+            if (not isinstance(ids, list) or any(not isinstance(i, str) or not i or i != i.strip() for i in ids)
+                    or len(set(ids)) != len(ids)):
+                raise ValueError("exclude_ids must be unique nonempty IDs")
+            kwargs["exclude_ids"] = set(ids)
+        return self.engine.recall_evidence(args["query"], annotator=self.evidence_annotator, **kwargs).to_dict()
+
     @_tool("remember")
     def _tool_remember(self, args: dict[str, Any]) -> Any:
         item = self.engine.remember(
