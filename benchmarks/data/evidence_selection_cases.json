@@ -1,0 +1,370 @@
+{
+  "kind": "six hand-constructed explicit-input diagnostic trajectories; no public blind benchmark",
+  "cases": [
+    {
+      "name": "complementary",
+      "limit": 2,
+      "lambda_": 0.5,
+      "aspects": [
+        {
+          "id": "X",
+          "weight": 0.6
+        },
+        {
+          "id": "Y",
+          "weight": 0.4
+        }
+      ],
+      "required_ids": [
+        "A",
+        "C"
+      ],
+      "candidates": [
+        {
+          "id": "A",
+          "relevance": 1,
+          "support": {
+            "X": 1
+          },
+          "content": "Mina traveled to Osaka.",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "trip",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        },
+        {
+          "id": "B",
+          "relevance": 0.95,
+          "support": {
+            "X": 1
+          },
+          "content": "The trip destination was Osaka.",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "trip",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        },
+        {
+          "id": "C",
+          "relevance": 0.4,
+          "support": {
+            "Y": 1
+          },
+          "content": "Mina traveled in October.",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "trip",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        }
+      ]
+    },
+    {
+      "name": "exact_repeated_record",
+      "limit": 2,
+      "lambda_": 0.5,
+      "aspects": [
+        {
+          "id": "X",
+          "weight": 0.6
+        },
+        {
+          "id": "Y",
+          "weight": 0.4
+        }
+      ],
+      "required_ids": [
+        "A",
+        "C"
+      ],
+      "candidates": [
+        {
+          "id": "A",
+          "relevance": 1,
+          "support": {
+            "X": 1
+          },
+          "content": "Mina traveled to Osaka.",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "trip",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        },
+        {
+          "id": "B",
+          "relevance": 0.95,
+          "support": {
+            "X": 1
+          },
+          "content": "Mina traveled to Osaka.",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "trip",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        },
+        {
+          "id": "C",
+          "relevance": 0.4,
+          "support": {
+            "Y": 1
+          },
+          "content": "Mina traveled in October.",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "trip",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        }
+      ]
+    },
+    {
+      "name": "greedy_nonoptimal",
+      "limit": 2,
+      "lambda_": 0,
+      "aspects": [
+        {
+          "id": "1",
+          "weight": 1
+        },
+        {
+          "id": "2",
+          "weight": 1
+        },
+        {
+          "id": "3",
+          "weight": 1
+        },
+        {
+          "id": "4",
+          "weight": 1
+        },
+        {
+          "id": "5",
+          "weight": 1
+        },
+        {
+          "id": "6",
+          "weight": 1
+        }
+      ],
+      "required_ids": [
+        "B",
+        "C"
+      ],
+      "candidates": [
+        {
+          "id": "A",
+          "relevance": 0,
+          "support": {
+            "1": 1,
+            "2": 1,
+            "3": 1,
+            "4": 1
+          },
+          "content": "explicit evidence A",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "trip",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        },
+        {
+          "id": "B",
+          "relevance": 0,
+          "support": {
+            "1": 1,
+            "2": 1,
+            "5": 1
+          },
+          "content": "explicit evidence B",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "trip",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        },
+        {
+          "id": "C",
+          "relevance": 0,
+          "support": {
+            "3": 1,
+            "4": 1,
+            "6": 1
+          },
+          "content": "explicit evidence C",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "trip",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        }
+      ]
+    },
+    {
+      "name": "partial_support",
+      "limit": 2,
+      "lambda_": 0,
+      "aspects": [
+        {
+          "id": "X",
+          "weight": 1
+        },
+        {
+          "id": "Y",
+          "weight": 1
+        }
+      ],
+      "required_ids": [
+        "A",
+        "B"
+      ],
+      "candidates": [
+        {
+          "id": "A",
+          "relevance": 0,
+          "support": {
+            "X": 0.8,
+            "Y": 0.1
+          },
+          "content": "explicit evidence A",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "trip",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        },
+        {
+          "id": "B",
+          "relevance": 0,
+          "support": {
+            "X": 0.4,
+            "Y": 1
+          },
+          "content": "explicit evidence B",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "trip",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        }
+      ]
+    },
+    {
+      "name": "support_not_supplied",
+      "limit": 2,
+      "lambda_": 0.5,
+      "aspects": [
+        {
+          "id": "X",
+          "weight": 0.6
+        },
+        {
+          "id": "Y",
+          "weight": 0.4
+        }
+      ],
+      "required_ids": null,
+      "candidates": [
+        {
+          "id": "A",
+          "relevance": 0.8,
+          "support": {},
+          "content": "explicit evidence A",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "trip",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        },
+        {
+          "id": "B",
+          "relevance": 0.7,
+          "support": {},
+          "content": "explicit evidence B",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "trip",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        },
+        {
+          "id": "C",
+          "relevance": 0.1,
+          "support": {},
+          "content": "explicit evidence C",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "trip",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        }
+      ]
+    },
+    {
+      "name": "necessary_time_chain_negative",
+      "limit": 2,
+      "lambda_": 0.5,
+      "aspects": [
+        {
+          "id": "X",
+          "weight": 1
+        },
+        {
+          "id": "Y",
+          "weight": 1
+        }
+      ],
+      "required_ids": [
+        "B",
+        "C"
+      ],
+      "note": "A has over-broad supplied support; this does not establish a time-chain fact. Preserve expected evidence loss.",
+      "candidates": [
+        {
+          "id": "B",
+          "relevance": 1,
+          "support": {
+            "X": 1
+          },
+          "content": "Mina held pass v1 on October 1.",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "trip",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        },
+        {
+          "id": "C",
+          "relevance": 0.95,
+          "support": {
+            "Y": 1
+          },
+          "content": "Mina replaced pass v1 with v2 on October 2.",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "trip",
+          "occurred_at": "2026-10-02T12:00:00+00:00",
+          "kind": "episodic"
+        },
+        {
+          "id": "A",
+          "relevance": 0.4,
+          "support": {
+            "X": 1,
+            "Y": 1
+          },
+          "content": "A general summary mentions pass versions without proving their replacement.",
+          "source": "given-source",
+          "entity": "Mina",
+          "scope": "trip",
+          "occurred_at": "2026-10-01T12:00:00+00:00",
+          "kind": "episodic"
+        }
+      ]
+    }
+  ]
+}
