@@ -108,7 +108,13 @@ class Metacognition:
         items: list[MemoryItem],
         now: datetime | None = None,
     ) -> dict:
-        """Reliability table + expected calibration error (ECE)."""
+        """Beta-smoothed, memory-weighted legacy outcome discrepancy.
+
+        The ``ece`` key is retained for compatibility. This uses legacy
+        retrieval/review counts, not verified feedback or task-event ECE.
+        Buckets without trials are excluded; zero with no trials is a
+        sentinel, not evidence of perfect calibration.
+        """
         buckets: dict[int, dict] = {}
         for item in items:
             _, pred = self.confidence(item, now)
@@ -145,8 +151,8 @@ class Metacognition:
                 }
             )
             if empirical is not None:
-                ece_numerator += entry["n"] * abs(mean_pred - empirical)
-                total += entry["n"]
+                ece_numerator += bucket_entry["n"] * abs(mean_pred - empirical)
+                total += bucket_entry["n"]
         return {
             "buckets": rows,
             "ece": round(ece_numerator / total, 4) if total else 0.0,
