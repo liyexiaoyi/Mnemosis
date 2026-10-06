@@ -576,6 +576,7 @@ class DualTrackStore:
         if query_terms:
             hit_counts: dict[str, int] = {}
             term_ids: dict[str, set[str]] = {}
+            skipped_terms: set[str] = set()
             for term in retrieval_terms:
                 df = term_df.get(term, 0)
                 if (
@@ -587,6 +588,7 @@ class DualTrackStore:
                     # discriminative signal; skip materialising its ids so a
                     # generic word cannot balloon the candidate set.
                     term_ids[term] = set()
+                    skipped_terms.add(term)
                     continue
                 ids_for_term = (
                     set(self.backend.find_by_terms([term], kind))
@@ -627,7 +629,15 @@ class DualTrackStore:
                 for group in cue_groups:
                     group_ids = set().union(*(term_ids.get(t, set()) for t in group))
                     grouped_ids.append(group_ids)
-                    df = min(len(group_ids), total_active)
+                    if skipped_terms & group:
+                        # Missing postings are not absent memories. The sum
+                        # of per-form counts bounds the family union above,
+                        # so a common form cannot make a rare sibling appear
+                        # more specific. Counts may include recycled rows;
+                        # clamp as above. Keep the posting-load budget intact.
+                        df = min(total_active, sum(term_df.get(t, 0) for t in group))
+                    else:
+                        df = min(len(group_ids), total_active)
                     weight = 0.0
                     if df:
                         weight = min(4.0, max(0.0, math.log(
