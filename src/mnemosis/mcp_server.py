@@ -266,11 +266,11 @@ def run_stdio(
                 reconfigure(encoding="utf-8")
         except (AttributeError, ValueError):
             pass
+    provider = _build_evidence_annotator(evidence_annotator, evidence_model, evidence_base_url)
     engine = _build_engine(
         db_path, embedder, embedding_model, embedding_base_url
     )
-    server = MCPServer(engine, expose=expose, evidence_annotator=_build_evidence_annotator(
-        evidence_annotator, evidence_model, evidence_base_url))
+    server = MCPServer(engine, expose=expose, evidence_annotator=provider)
     try:
         while True:
             message, framed = _read_message()
@@ -405,11 +405,12 @@ def run_http(
     evidence_base_url: str | None = None,
 ) -> None:
     """Run the MCP server over Streamable HTTP (POST-only)."""
+    provider = _build_evidence_annotator(evidence_annotator, evidence_model, evidence_base_url)
     engine = _build_engine(
         db_path, embedder, embedding_model, embedding_base_url
     )
     server = build_http_server(engine, expose=expose, host=host, port=port,
-        evidence_annotator=_build_evidence_annotator(evidence_annotator, evidence_model, evidence_base_url))
+                              evidence_annotator=provider)
     print(
         f"mnemosis-mcp listening on http://{host}:{server.server_port} "
         f"(POST /, MCP Streamable HTTP)",

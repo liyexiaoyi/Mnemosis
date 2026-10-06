@@ -128,3 +128,12 @@ def test_cli_evidence_configuration_reaches_both_transports(monkeypatch, transpo
     assert mcp.main(["--transport", transport, "--expose", "experimental", "--evidence-annotator", "ollama",
                      "--evidence-model", "qwen2.5:3b", "--evidence-base-url", "http://127.0.0.1:11434"]) == 0
     assert received[0]["evidence_annotator"] == "ollama" and received[0]["evidence_model"] == "qwen2.5:3b"
+
+
+@pytest.mark.parametrize("transport", ["stdio", "http"])
+def test_invalid_provider_configuration_cannot_open_memory_database(monkeypatch, transport):
+    def unexpected_database_open(*args):
+        raise AssertionError("memory opened before invalid evidence configuration was rejected")
+    monkeypatch.setattr(mcp, "_build_engine", unexpected_database_open)
+    with pytest.raises(ValueError, match="evidence model/URL"):
+        getattr(mcp, "run_" + transport)(evidence_annotator="none", evidence_model="qwen2.5:3b")
