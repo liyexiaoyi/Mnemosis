@@ -240,4 +240,200 @@ def select_evidence(
     )
 
 
-__all__ = ["QueryAspect", "EvidenceCandidate", "SelectionStep", "EvidenceSelectionReport", "select_evidence"]
+@dataclass(frozen=True, slots=True)
+class RequiredEvidenceReport:
+    """Feasibility refers only to supplied support, never semantic truth.
+
+    Exact Fraction coverage avoids threshold rounding. An absent selection is
+    no feasible witness, not an incomplete selection labeled as sufficient.
+    """
+
+    baseline: EvidenceSelectionReport
+    selection: EvidenceSelectionReport | None
+    status: str
+    optimality: str
+    required_thresholds: dict[str, Fraction]
+    pool_coverage: dict[str, Fraction]
+    required_coverage: dict[str, Fraction] | None
+    completeness: Fraction | None
+    support_state: str
+    missing_support_pairs: tuple[tuple[str, str], ...]
+    visited_nodes: int
+    search_budget: int
+    search_complete: bool
+
+
+def _selection_for_subset(
+    candidates: Sequence[EvidenceCandidate],
+    aspects: Sequence[QueryAspect],
+    baseline: EvidenceSelectionReport,
+    indices: tuple[int, ...],
+    lam: float,
+) -> EvidenceSelectionReport:
+    """Replay marginal components in input order; these are not search steps."""
+    weights = baseline.normalized_aspect_weights
+    covered = dict.fromkeys(weights, 0.0)
+    steps = []
+    previous_relevance = previous_coverage = previous_objective = 0.0
+    for position, index in enumerate(indices):
+        relevance, coverage, objective = _score_subset(
+            candidates, weights, indices[:position + 1],
+            limit=baseline.requested_limit, relevance_weight=lam,
+        )
+        steps.append(SelectionStep(
+            candidates[index].memory_id,
+            lam * (relevance - previous_relevance),
+            (1 - lam) * (coverage - previous_coverage),
+            objective - previous_objective, _report_unit(objective),
+        ))
+        previous_relevance, previous_coverage, previous_objective = relevance, coverage, objective
+        for aspect in covered:
+            covered[aspect] = max(covered[aspect], candidates[index].support.get(aspect, 0.0))
+    positive = {a.aspect_id for a in aspects if a.weight > 0}
+    return EvidenceSelectionReport(
+        tuple(candidates[i].memory_id for i in indices), tuple(steps), covered,
+        dict(weights), tuple(a for a in covered if a in positive and covered[a] == 0),
+        tuple(a for a in covered if a in positive and 0 < covered[a] < 1),
+        _report_unit(previous_relevance), _report_unit(previous_coverage),
+        _report_unit(previous_objective), baseline.requested_limit, len(candidates),
+    )
+
+
+def select_required_evidence(
+    candidates: Sequence[EvidenceCandidate],
+    aspects: Sequence[QueryAspect],
+    *,
+    required_aspects: Mapping[str, Real] | Sequence[str],
+    limit: int = 5,
+    relevance_weight: float = .5,
+    search_budget: int = 10000,
+) -> RequiredEvidenceReport:
+    """Bounded subset search under explicit required-support thresholds.
+
+    Uses the existing U objective and capacity, with exact raw threshold
+    comparisons. A sequence of required IDs uses threshold 1; a mapping
+    provides per-role thresholds in (0,1]. Empty requirements delegate to
+    select_evidence. No recall, storage, inference or support generation.
+
+    Budget counts DFS nodes, including pruned nodes (0..100000), not seconds.
+    A feasible incumbent survives exhaustion; its optimality is not proven.
+    Infeasible means proved for the supplied inputs; undetermined means no
+    witness yet. Complete enumeration maximizes the existing float-computed
+    proxy utility, not an exact real-valued objective or factual correctness.
+    Inputs must not be modified concurrently during this call.
+    """
+    if isinstance(search_budget, bool) or not isinstance(search_budget, Integral):
+        raise TypeError("search_budget must be an integer, not bool")
+    if not 0 <= search_budget <= 100000:
+        raise ValueError("search_budget must be between 0 and 100000")
+    search_budget = int(search_budget)
+    if isinstance(required_aspects, Mapping):
+        if len(required_aspects) > 32:
+            raise ValueError("required_aspects exceeds 32")
+        required = dict(required_aspects)
+    else:
+        _sequence(required_aspects, "required_aspects", 32)
+        required = {}
+        for value in required_aspects:
+            key = _identifier(value, "required aspect_id")
+            if key in required:
+                raise ValueError("duplicate required aspect_id")
+            required[key] = 1
+    # All original validation runs even with zero capacity or empty roles.
+    baseline = select_evidence(candidates, aspects, limit=limit, relevance_weight=relevance_weight)
+    thresholds = {}
+    for aspect, value in required.items():
+        key = _identifier(aspect, "required aspect_id")
+        if key not in baseline.normalized_aspect_weights:
+            raise ValueError("unknown required aspect_id")
+        raw = _real(value, "required threshold", unit=True)
+        if raw == 0:
+            raise ValueError("required threshold must be strictly positive")
+        thresholds[key] = _exact_weight(raw)
+    if not thresholds:
+        return RequiredEvidenceReport(baseline, baseline, "not_applicable", "not_applicable",
+                                      {}, {}, None, None, "not_applicable", (), 0,
+                                      search_budget, True)
+
+    # Snapshot raw support before binary64 conversion. Max-threshold coverage
+    # is exactly a set-cover mask: a role needs at least one qualifying record.
+    raw_support = [{a: _exact_weight(c.support[a]) for a in thresholds if a in c.support}
+                   for c in candidates]
+    missing = tuple((c.memory_id, a) for c in candidates for a in thresholds if a not in c.support)
+    supplied = len(candidates) * len(thresholds) - len(missing)
+    support_state = "absent" if supplied == 0 else "partial" if missing else "complete"
+    pool = {a: max((s.get(a, Fraction(0)) for s in raw_support), default=Fraction(0))
+            for a in thresholds}
+    masks = [sum(1 << j for j, (a, tau) in enumerate(thresholds.items())
+                 if s.get(a, Fraction(0)) >= tau) for s in raw_support]
+    full = (1 << len(thresholds)) - 1
+    snapshot = [EvidenceCandidate(c.memory_id, float(c.relevance),
+                                 {a: float(s) for a, s in c.support.items()}) for c in candidates]
+    lam = float(relevance_weight)
+    capacity = baseline.requested_limit
+    best = None
+    best_objective = -1.0
+    baseline_indices = tuple(i for i, c in enumerate(snapshot) if c.memory_id in baseline.selected_ids)
+    baseline_mask = 0
+    for i in baseline_indices:
+        baseline_mask |= masks[i]
+    if baseline_mask == full:
+        best = baseline_indices
+        best_objective = _score_subset(snapshot, baseline.normalized_aspect_weights, best,
+                                       limit=capacity, relevance_weight=lam)[2]
+
+    visited = 0
+    complete = False
+    if capacity == 0 or any(pool[a] < tau for a, tau in thresholds.items()):
+        complete = True
+    else:
+        # Coverage-first order makes early witnesses more likely; tie decisions
+        # below use original input indices, independent of traversal order.
+        order = sorted(range(len(snapshot)), key=lambda i: (-masks[i].bit_count(),
+                                                           -snapshot[i].relevance, i))
+        suffix = [0] * (len(order) + 1)
+        for p in range(len(order) - 1, -1, -1):
+            suffix[p] = suffix[p + 1] | masks[order[p]]
+        stack = [(0, (), 0)]
+        while stack and visited < search_budget:
+            p, chosen, mask = stack.pop()
+            visited += 1
+            if mask == full:
+                canonical = tuple(sorted(chosen))
+                objective = _score_subset(snapshot, baseline.normalized_aspect_weights, canonical,
+                                          limit=capacity, relevance_weight=lam)[2]
+                if (objective > best_objective or
+                    (objective == best_objective and best is not None and
+                     (len(canonical), canonical) < (len(best), best))):
+                    best, best_objective = canonical, objective
+            slots = capacity - len(chosen)
+            if slots == 0 or p == len(order) or (mask | suffix[p]) != full:
+                continue
+            if mask != full:
+                uncovered = full ^ mask
+                maximum_gain = max((masks[i] & uncovered).bit_count() for i in order[p:])
+                # Safe lower bound on needed slots; overlap can only worsen it.
+                if maximum_gain == 0 or uncovered.bit_count() > slots * maximum_gain:
+                    continue
+            i = order[p]
+            stack.append((p + 1, chosen, mask))
+            stack.append((p + 1, chosen + (i,), mask | masks[i]))
+        complete = not stack
+
+    selection = None
+    coverage = None
+    completeness = None
+    if best is not None:
+        selection = _selection_for_subset(snapshot, aspects, baseline, best, lam)
+        coverage = {a: max((raw_support[i].get(a, Fraction(0)) for i in best), default=Fraction(0))
+                    for a in thresholds}
+        completeness = min(min(Fraction(1), coverage[a] / tau) for a, tau in thresholds.items())
+    status = "feasible" if best is not None else "infeasible" if complete else "undetermined"
+    optimality = "optimal" if best is not None and complete else "not_proven" if best is not None else "not_applicable"
+    return RequiredEvidenceReport(baseline, selection, status, optimality, thresholds, pool,
+                                  coverage, completeness, support_state, missing, visited,
+                                  search_budget, complete)
+
+
+__all__ = ["QueryAspect", "EvidenceCandidate", "SelectionStep", "EvidenceSelectionReport",
+           "select_evidence", "RequiredEvidenceReport", "select_required_evidence"]
