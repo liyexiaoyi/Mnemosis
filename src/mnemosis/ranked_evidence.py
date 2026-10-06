@@ -90,6 +90,12 @@ def _normalized(weights: Sequence[Real]) -> list[float]:
         raise ValueError("at least one channel weight must be positive")
     scaled = []
     for value in weights:
+        # Foreign scalars can divide in float16/32 before float conversion.
+        if any(type(operand) not in (int, float, Fraction)
+               and callable(getattr(operand, "as_integer_ratio", None))
+               for operand in (value, maximum)):
+            scaled.append(float(_exact(value) / _exact(maximum)))
+            continue
         try:
             scaled.append(float(value / maximum))
         except OverflowError:

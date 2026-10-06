@@ -84,6 +84,12 @@ def _exact_weight(value: Real) -> Fraction:
 
 
 def _scaled_weight(value: Real, maximum: Real) -> float:
+    # Foreign scalars can divide in float16/32 before float() is applied.
+    # Form their bounded ratio exactly to avoid irreversible rounding.
+    if any(type(operand) not in (int, float, Fraction)
+           and callable(getattr(operand, "as_integer_ratio", None))
+           for operand in (value, maximum)):
+        return float(_exact_weight(value) / _exact_weight(maximum))
     try:
         return float(value / maximum)
     except OverflowError:
