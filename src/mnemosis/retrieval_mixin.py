@@ -133,6 +133,7 @@ class RetrievalMixin:
         learning_policy: str = "legacy",
         temporal_policy: str = "content",
         lexical_policy: str = "literal",
+        association_policy: str = "legacy",
         use_default_embedder: bool = True,
         context: str | None = None,
         context_boost: bool = True,
@@ -190,9 +191,16 @@ class RetrievalMixin:
         embeddings and temporal intent. CJK queries keep legacy tokenization.
         This changes relevance, never creates factual evidence. Default
         ``literal`` keeps legacy results. See docs/inflection-cues.md.
+        ``association_policy="weighted"`` attenuates one-hop spreading
+        activation by finite edge strength clipped to [0, 1]. It preserves
+        traversal budgets and never adds evidence or verified usefulness.
+        The default ``legacy`` keeps old activation. Other recall mechanisms
+        and graph construction are unchanged. See docs/association-strength.md.
         """
         if lexical_policy not in ("literal", "inflection"):
             raise ValueError("lexical_policy must be 'literal' or 'inflection'")
+        if association_policy not in ("legacy", "weighted"):
+            raise ValueError("association_policy must be 'legacy' or 'weighted'")
         if learning_policy not in ("legacy", "final"):
             raise ValueError("learning_policy must be 'legacy' or 'final'")
         if temporal_policy not in ("content", "source"):
@@ -250,6 +258,7 @@ class RetrievalMixin:
             reasoning_pack=reasoning_pack,
             zh_synonyms=zh_synonyms,
             lexical_policy=lexical_policy,
+            association_policy=association_policy,
             pattern_completion=pattern_completion,
             separation=separation,
             kind_preference=kind_preference,

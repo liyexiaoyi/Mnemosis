@@ -454,6 +454,7 @@ class DualTrackStore:
         reasoning_pack: bool = True,
         zh_synonyms: bool = True,
         lexical_policy: str = "literal",
+        association_policy: str = "legacy",
         pattern_completion: bool = True,
         pc_min_overlap: float = 0.25,
         pc_max_overlap: float = 0.95,
@@ -473,6 +474,8 @@ class DualTrackStore:
     ) -> list[RecallResult]:
         if lexical_policy not in ("literal", "inflection"):
             raise ValueError("lexical_policy must be 'literal' or 'inflection'")
+        if association_policy not in ("legacy", "weighted"):
+            raise ValueError("association_policy must be 'legacy' or 'weighted'")
         if read_only:
             reinforce = False
             elaborate_links = False
@@ -546,6 +549,7 @@ class DualTrackStore:
                 frozenset(exclude_ids or ()),
                 embedder_key,
                 lexical_policy,
+                association_policy,
             )
             cached = self._fallback_cache_get(fallback_cache_key)
             if cached is not None:
@@ -1035,6 +1039,7 @@ class DualTrackStore:
             max_expansion_roots,
             max_expansion_neighbors,
             fallback_mode=fallback_mode,
+            association_policy=association_policy,
         )
         self._filter_expanded_candidates(scored, kind, exclude_ids)
         if event_chain is not None:
@@ -1830,12 +1835,16 @@ class DualTrackStore:
         max_roots: int,
         max_neighbors: int,
         fallback_mode: bool = False,
+        association_policy: str = "legacy",
     ) -> None:
         """Spreading activation over the association graph (HippoRAG-style).
 
         Memories linked to the strongest matches get a discounted score boost,
         so "what did Alice do after X?" can surface the chronologically next
-        event even when it shares no words with the query.
+        event even when it shares no words with the query. The optional
+        weighted policy attenuates activation by finite edge strength in
+        [0, 1], without changing root/neighbor selection or graph depth.
+        Association strength is relevance, never factual confirmation.
         """
         if fallback_mode:
             # Zero-hit queries have no lexical anchor: spreading activation
@@ -1857,12 +1866,23 @@ class DualTrackStore:
             )
             for rank, linked in enumerate(neighbors[:max_neighbors]):
                 boost = root_score * discount * (0.985**rank)
+                if association_policy == "weighted":
+                    weight = self.backend.link_weight(root.id, linked.id)
+                    if not math.isfinite(weight) or weight <= 0.0:
+                        continue
+                    # Familiarity can produce strengths above one. It must
+                    # not amplify a neighbor beyond the legacy activation.
+                    boost *= min(1.0, weight)
                 current = activated.get(linked.id)
                 if current is None or boost > current[0]:
                     activated[linked.id] = (boost, root)
         if not activated:
             return
 
+        reason_suffix = (
+            " (weighted association; relevance only)"
+            if association_policy == "weighted" else ""
+        )
         activated_ids = set(activated)
         existing_ids = {entry[2].id for entry in scored}
         for index, (score, overlap, item, reasons, matched) in enumerate(scored):
@@ -1870,7 +1890,7 @@ class DualTrackStore:
                 continue
             boost, root = activated[item.id]
             if boost > score:
-                reason = f"linked to '{root.content[:40]}'"
+                reason = f"linked to '{root.content[:40]}'" + reason_suffix
                 scored[index] = (boost, overlap, item, reasons + [reason], matched)
         for linked_id, (boost, root) in activated.items():
             if linked_id in existing_ids:
@@ -1884,7 +1904,7 @@ class DualTrackStore:
                     boost,
                     0.0,
                     linked_item,
-                    [f"linked to '{root.content[:40]}'"],
+                    [f"linked to '{root.content[:40]}'" + reason_suffix],
                     False,
                 )
             )
