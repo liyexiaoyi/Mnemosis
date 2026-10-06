@@ -101,3 +101,68 @@ failed 必须为空；权重 0 的通道仍完整校验。禁用改变了配置�
 该接口不提供自动支持标注、事实冲突处理、时间版本裁决、必须共同出现的证据约束、token 预算或真实问答充分性判断。构造代理收益不能视为真实检索提升或同类项目领先。实际接入前仍需独立支持质量评价和新的真实任务留出测试。
 
 验证入口：tests/test_ranked_evidence.py、tests/test_ranked_evidence_integration.py；固定构造评测 benchmarks/ranked_evidence_eval.py（--out 必须为新目录）。原始日志、精确审计和交付报告位于 E:/Mnemosis/evaluation/math-integration/2026-10-06/implementation-01 及 E:/Mnemosis/ranked-evidence-report-2026-10-06.md。
+## 可选串联接口：排名融合后进行一次最佳替换
+
+`mnemosis.ranked_evidence_refinement.refine_ranked_evidence` 是新增独立纯函数。
+它复用原排名融合和一次最佳替换；原 `select_ranked_evidence` 接口、报告结构、
+仿生评分与补全、默认 recall/CLI/MCP 均不改变。需要明确调用这个新入口。
+
+```python
+from mnemosis.evidence_selection import QueryAspect
+from mnemosis.ranked_evidence import RankedChannel
+from mnemosis.ranked_evidence_refinement import refine_ranked_evidence
+
+report = refine_ranked_evidence(
+    [RankedChannel("L", ["A", "B", "C"]),
+     RankedChannel("D", ["A", "C", "B"])],
+    [QueryAspect(str(i)) for i in range(1, 7)],
+    support={
+        "A": {str(i): 1 for i in (1, 2, 3, 4)},
+        "B": {str(i): 1 for i in (1, 2, 5)},
+        "C": {str(i): 1 for i in (3, 4, 6)},
+    },
+    limit=2, relevance_weight=0,
+)
+assert report.ranked_report.selection.selected_ids == ("A", "B")
+assert report.refinement.selected_ids == ("C", "B")
+assert report.refinement.coverage_component == 1
+```
+
+此例特意用纯覆盖权重展示贪心反例；排名相关性仍在报告中保留，但不参与该例
+目标。通常由调用方明确选择相关性权重，默认仍是 .5；新入口没有新增或调整权重。
+
+返回 `RankedEvidenceRefinementReport`：`ranked_report` 保留通道状态、融合排名与
+原贪心报告；`refinement` 给出最终 ID、覆盖、缺口、替换记录及检查数量。
+最终组合应读取 `report.refinement.selected_ids`。`ranked_report.selection.steps`
+只描述原组合，不能视为最终选择步骤。两份原选择报告数值一致，容器独立。
+
+候选顺序完全来自原融合排名，不改融合常数、通道/要点归一化、K、lambda 或支持。
+以原始要点权重重新调用已有选择器，避免对已归一化权重二次舍入。调用前快照
+要点和支持映射；通道由原接口复制。报告字典可修改，不是并发输入修改的沙箱。
+复制支持前拒绝超过100候选/单候选32要点的映射；合法输入本就受这些边界限制。
+失败、禁用、正常空通道、下溢正权重候选、明确0支持和未提供支持沿用原规则。
+没有支持时仍必须显式指定 relevance_weight=1，包括容量0。
+
+一次替换的候选配对上限2500，容量5最多475；所有替换从原组合出发。
+只接受严格提高计算目标值的最佳替换，同分保留既有候选顺序。
+为保持原两个公共模型不变，串联接口会再执行一次贪心基线，增加计算代价。
+这不代表再次检索或进行第二轮替换；也不保证最终局部/全局最优。
+
+### 串联验证（2026-10-07）
+
+新增49项永久配置，含150组独立Fraction排名/替换邻域核算、数值精度、预算、
+资料缺失/失败/禁用通道、输入隔离与两后端只读检查。先确认RED49失败；定向
+GREEN172项/180子场景，完整1174项/374子场景、CI18/18通过。
+49个原有产品源文件逐字不变；新增一个产品模块，没有依赖或数据库迁移。
+
+额外固定300组数学输入：18组代理目标严格提高、0组退步，全部匹配原集合的一次
+最佳邻域。旧六条构造轨迹中5条可评价，必要证据找齐3/5->5/5；另一个明确标为
+假设的粗支持/摘要高排名变体仍失败。两后端14组完整记忆、链接、日志和SQLite
+逻辑状态均不变。必要ID只在选择返回后用于评价，未传入算法。
+这些是已使用构造轨迹及数学检查，不是实际QA准确率、新盲测或同类项目领先。
+
+同一机器七次、8通道/100候选/32要点/K5的纯接口耗时中位：原融合贪心 7.17ms，串联一次替换 22.01ms。不含模型推理、实际检索、DB与序列化，不宣称端到端提速。
+
+粗支持资料可给泛泛摘要满覆盖分，仍遗漏实际必要事件；优化目标不能替代资料质量。
+新接口没有自动支持标注、事实核验、时间版本裁决或必须共同出现的证据约束。
+验证日志、固定输入与恢复证明：`E:/Mnemosis/evaluation/ranked-evidence-refinement/2026-10-07/implementation-01/`。
