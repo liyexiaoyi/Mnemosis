@@ -20,7 +20,7 @@ from .backend import Backend
 from .embedding import Embedder
 from .forgetting import ForgettingCurve
 from .importance import ImportanceScorer
-from .lexical_cues import inflection_groups
+from .lexical_cues import _mean_idf_scale, inflection_groups
 from .reasoning import apply_premise_pack
 from .schema import EventChainIndex
 from .temporal_reason import apply_time_cell_reasoning
@@ -738,22 +738,22 @@ class DualTrackStore:
                 )
             else:
                 overlap = 0.0
-            if idf_sum and query_terms:
-                if cue_groups:
-                    idf_hits = sum(
-                        weight for group, weight in zip(cue_groups, grouped_weights)
-                        if group & item_terms
-                    )
-                else:
-                    idf_hits = sum(idf_weights[term] for term in query_terms
-                                   if term in item_terms)
+            if idf_sum and cue_groups:
+                idf_hits = sum(
+                    weight for group, weight in zip(cue_groups, grouped_weights)
+                    if group & item_terms
+                )
+                # Coverage is already in overlap. Specificity compares means,
+                # so uniform positive weights stay neutral for any hit count.
+                weighted_overlap = overlap * _mean_idf_scale(
+                    idf_hits, idf_sum, len(cue_groups), hits
+                )
+            elif idf_sum and query_terms:
+                # Preserve literal/CJK weighting, including its legacy floor.
+                idf_hits = sum(idf_weights[term] for term in query_terms
+                               if term in item_terms)
                 if idf_hits:
-                    # Rare-term boost: keep the original overlap geometry and
-                    # scale it up to 2x when the candidate matches terms that
-                    # are rare across the store. Uniform idf -> scale 1.0,
-                    # so common-topic queries behave exactly as before.
-                    cue_count = len(cue_groups) if cue_groups else len(query_terms)
-                    idf_avg = max(idf_sum / cue_count, 1e-6)
+                    idf_avg = max(idf_sum / len(query_terms), 1e-6)
                     scale = min(
                         1.0 + 0.5 * (idf_hits / idf_avg - 1.0),
                         2.0,

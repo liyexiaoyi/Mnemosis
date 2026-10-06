@@ -71,3 +71,16 @@ def inflection_groups(terms: set[str]) -> tuple[frozenset[str], ...]:
         for form in forms:
             owners[form] = index
     return tuple(frozenset(group) for group in groups if group)
+
+
+def _mean_idf_scale(hit_weight: float, total_weight: float,
+                    group_count: int, matched_count: int) -> float:
+    """Bound mean specificity for nonnegative cue weights; coverage is separate.
+
+    Divide the sums first, avoiding an arbitrary floor on a tiny query mean.
+    No hits or no positive query weight leaves the overlap neutral.
+    """
+    if total_weight <= 0.0 or matched_count <= 0:
+        return 1.0
+    relative_mean = (hit_weight / total_weight) * (group_count / matched_count)
+    return min(2.0, 0.5 + 0.5 * relative_mean)
