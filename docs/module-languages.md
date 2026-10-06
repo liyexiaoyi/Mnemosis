@@ -61,7 +61,7 @@
 
 ## 下一轮候选与触发条件
 
-1. `embedding.NGramEmbedder.features/embed` 与 `vector_index._signature`：先在真实向量导入中分离特征、投影、SQLite 和外部模型时间。如果 Python 数值循环主导，再对比批量 NumPy 与 Rust，验证特征哈希、浮点边界、桶签名与持久格式。
+1. 第十三批已在真实向量导入中剖析 `NGramEmbedder` 并实现 Python 批次内有界哈希复用，保持向量逐项相同，见 [批量嵌入说明](embedding-batch.md)。`features` 的重复 n-gram 构建与 `vector_index._signature` 仍需根据剩余瓶颈评估；如尝试 NumPy/Rust，必须验证 Unicode、浮点边界、桶签名与持久格式。
 2. `association` 扩散激活及 `consolidation` 冲突候选：先量候选数、SQL 读取及策略开销；可将纯候选计算抽出，不能把证据合并/强化规则一并迁移。
 3. 外部嵌入：先测网络等待、批量命中和缓存；只有本地模型运行时支持并且实测有益才考虑 GPU/新进程。换包装语言没有已知收益。
 4. 实体/事实版本：这是原优化方案仍待处理的质量问题，先补独立质量任务与保守语义，继续 Python；性能提升不表示回答更正确。

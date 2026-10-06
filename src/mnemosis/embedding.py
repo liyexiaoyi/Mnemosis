@@ -24,6 +24,10 @@ from collections import Counter
 from collections.abc import Callable
 
 
+_NGRAM_BATCH_CACHE_LIMIT = 8192
+_NGRAM_BATCH_MAX_FEATURE_CHARS = 256
+
+
 class EmbeddingAPIError(RuntimeError):
     """External embedding API call failed (auth, quota, network, ...)."""
 
@@ -106,10 +110,52 @@ class NGramEmbedder(Embedder):
             return vector
         return [v / norm for v in vector]
 
+    def embed_many(self, texts: list[str]) -> list[list[float]]:
+        # Preserve custom embed hooks and the existing iterable/single path.
+        if (
+            not isinstance(texts, list)
+            or len(texts) < 2
+            or getattr(self.embed, "__func__", None) is not _NGRAM_SCALAR_EMBED
+        ):
+            return super().embed_many(texts)
+        # Batch-local only: never retain private lexical features on the
+        # embedder or across calls. Store raw hashes so dimension is not cached.
+        cache: dict[str, tuple[int, float]] = {}
+        return [self._embed_cached(text, cache) for text in texts]
+
+    def _embed_cached(
+        self, text: str, cache: dict[str, tuple[int, float]]
+    ) -> list[float]:
+        # Keep scalar embed's hot loop unchanged; this batch loop is checked
+        # against a frozen oracle for exact accumulation/normalization parity.
+        vector = [0.0] * self.dimension
+        for feature, count in Counter(self.features(text)).items():
+            cached = cache.get(feature)
+            if cached is None:
+                digest = hashlib.blake2b(feature.encode("utf-8"), digest_size=8).digest()
+                raw_index = int.from_bytes(digest[:4], "little")
+                sign = 1.0 if digest[4] % 2 == 0 else -1.0
+                if (
+                    len(cache) < _NGRAM_BATCH_CACHE_LIMIT
+                    and len(feature) <= _NGRAM_BATCH_MAX_FEATURE_CHARS
+                ):
+                    cache[feature] = (raw_index, sign)
+            else:
+                raw_index, sign = cached
+            vector[raw_index % self.dimension] += sign * (1.0 + math.log(count))
+        norm = math.sqrt(sum(v * v for v in vector))
+        if norm == 0.0:
+            return vector
+        return [v / norm for v in vector]
+
     @staticmethod
     def cosine(a: list[float], b: list[float]) -> float:
         """Fast path: both vectors are unit-normalized, so cosine == dot."""
         return sum(map(operator.mul, a, b))
+
+
+# Freeze the default hook so later class-level replacements still dispatch.
+_NGRAM_SCALAR_EMBED = NGramEmbedder.embed
 
 
 class CallableEmbedder(Embedder):
