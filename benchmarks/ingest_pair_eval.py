@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from unittest.mock import patch
 import uuid
 import zipfile
+from verification_utils import TableVerifier, ReadOnlyGuard
 import mnemosis.association as assoc
 import mnemosis.backend as backend
 from mnemosis import MemoryEngine, MemoryKind, SourceRecord, SourceType
@@ -62,6 +63,7 @@ def main():
     p.add_argument('--rounds',type=int,default=7)
     p.add_argument('--mode',choices=['batch','chunked','repeated'],default='chunked')
     p.add_argument('--workload',choices=['linked','sparse'],default='linked')
+    p.add_argument('--verification',choices=['boundary','full'],default='boundary')
     a=p.parse_args()
     if a.count<=0 or a.rounds<=0: p.error('count and rounds must be positive')
     a.out.mkdir(parents=True,exist_ok=True)
@@ -77,9 +79,12 @@ def main():
         python=platform.python_version(),platform=platform.platform(),
         scope='same current engine, frozen old vs new graph/link methods; no vectors; unique episodic inputs, group size 64; timing includes one staged-row count inspection per bulk import; OS/background load uncontrolled',
         baseline_archive_sha256=hashlib.sha256(a.baseline_archive.read_bytes()).hexdigest(),
-        optimized_source_sha256={filename:hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest() for module,_,filename,_ in METHODS},
+        optimized_source_sha256={filename:hashlib.sha256(Path(module.__file__).read_bytes()).hexdigest() for filename,module in {filename:module for module,_,filename,_ in METHODS}.items()},
         samples=[],complete=False)
-    expected=None
+    result['verification_mode']=a.verification
+    result['verification_limits']='Middle rounds in boundary mode compare exact counts, schema and fixed key samples; unsampled changes may be missed. Readonly guard is a diagnostic, not an exhaustive write audit.'
+    checks=TableVerifier(dict(memories=('id',),cues=('cue','memory_id'),terms=('term','memory_id'),links=('src','dst')),a.rounds,mode=a.verification)
+    expected=None;expected_ids=None
     for round_index in range(a.rounds):
         for version in (('before','after') if round_index%2==0 else ('after','before')):
             funcs=old if version=='before' else new
@@ -107,13 +112,15 @@ def main():
                 assert len(items)==a.count and e.backend.count()==a.count
                 assert not e.associations._batch_pool and not e.backend._bulk_terms_index_deferred
                 assert e.backend._conn.execute('PRAGMA synchronous').fetchone()[0]==1
-                signature=digest_tables(e.backend._conn)
-                recall=[(r.item.id,r.score,r.reasons,r.confident) for r in e.recall_bm25(f'needle{a.count-1:06d}',top_k=5)]
-                assert signature==digest_tables(e.backend._conn),'read-only recall modified rows'
-                signature['returned_order_sha256']=hashlib.sha256(json.dumps([i.id for i in items]).encode()).hexdigest()
+                signature=checks.check(e.backend._conn,round_index,digest_tables)
+                with ReadOnlyGuard(e.backend._conn):
+                    recall=[(r.item.id,r.score,r.reasons,r.confident) for r in e.recall_bm25(f'needle{a.count-1:06d}',top_k=5)]
+                ids=[i.id for i in items]
+                if expected_ids is None: expected_ids=ids
+                if expected is None: expected=recall
+                assert ids==expected_ids and recall==expected,'returned order/recall differs from baseline'
+                signature['returned_order_parity']=True
                 signature['recall']=recall
-                if expected is None: expected=signature
-                assert signature==expected,'memory/cue/term/graph/order/recall differs from baseline'
                 sample=dict(round=round_index,version=version,wall_seconds=wall,cpu_seconds=cpu,staged_link_rows=sum(staged),end_bulk_seconds=sum(finish),signature=signature)
                 result['samples'].append(sample)
                 print(json.dumps({k:v for k,v in sample.items() if k!='signature'}),flush=True)
@@ -130,7 +137,8 @@ def main():
             out.write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     before=statistics.median(s['wall_seconds'] for s in result['samples'] if s['version']=='before')
     after=statistics.median(s['wall_seconds'] for s in result['samples'] if s['version']=='after')
-    result.update(complete=True,exact_database_graph_order_recall=True,median_seconds=dict(before=before,after=after),speedup=before/after)
+    modes=[s['signature']['mode'] for s in result['samples']]
+    result.update(complete=True,verification=dict(full_runs=modes.count('full'),sample_runs=modes.count('sample'),all_runs_exhaustive=all(m=='full' for m in modes),boundary_full_parity=True,sampled_middle_parity=True,result_order_parity=True),median_seconds=dict(before=before,after=after),speedup=before/after)
     out.write_text(json.dumps(result,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
     print(json.dumps({k:result[k] for k in ('count','rounds','mode','workload','median_seconds','speedup','complete')}),flush=True)
 
