@@ -1966,14 +1966,12 @@ class SQLiteBackend(Backend):
         limit: int = 50,
     ) -> list[MemoryItem]:
         """Most important active memories (importance, then recency)."""
-        sql = (
-            "SELECT * FROM memories WHERE status = ? "
-            "ORDER BY importance DESC"
-        )
+        sql = "SELECT * FROM memories WHERE status = ?"
         params: list = [status.value]
         if kind is not None:
             sql += " AND kind = ?"
             params.append(kind.value)
+        sql += " ORDER BY importance DESC"
         if limit is not None:
             sql += " LIMIT ?"
             params.append(limit)

@@ -134,6 +134,7 @@ class RetrievalMixin:
         temporal_policy: str = "content",
         lexical_policy: str = "literal",
         association_policy: str = "legacy",
+        candidate_policy: str = "legacy",
         use_default_embedder: bool = True,
         context: str | None = None,
         context_boost: bool = True,
@@ -191,12 +192,18 @@ class RetrievalMixin:
         embeddings and temporal intent. CJK queries keep legacy tokenization.
         This changes relevance, never creates factual evidence. Default
         ``literal`` keeps legacy results. See docs/inflection-cues.md.
+        ``candidate_policy="quota"`` protects lexical64 and indexed semantic36
+        within 100 initial candidates, then refills overlaps from lexical ranks.
+        It requires the same embedder instance used for the supplied index.
+        Scoring and completion remain unchanged; legacy is the default.
         ``association_policy="weighted"`` attenuates one-hop spreading
         activation by finite edge strength clipped to [0, 1]. It preserves
         traversal budgets and never adds evidence or verified usefulness.
         The default ``legacy`` keeps old activation. Other recall mechanisms
         and graph construction are unchanged. See docs/association-strength.md.
         """
+        if candidate_policy not in ("legacy", "quota"):
+            raise ValueError("candidate_policy must be legacy or quota")
         if lexical_policy not in ("literal", "inflection"):
             raise ValueError("lexical_policy must be 'literal' or 'inflection'")
         if association_policy not in ("legacy", "weighted"):
@@ -211,6 +218,13 @@ class RetrievalMixin:
                 raise ValueError("source temporal policy requires an aware query clock")
         if use_default_embedder:
             embedder = embedder or self.embedder
+        admission_kwargs = {}
+        if candidate_policy == "quota":
+            if (embedder is None or self.vector_index is None
+                    or embedder is not self.index_embedder):
+                raise ValueError("quota admission requires a matching index and index_embedder")
+            admission_kwargs = {"candidate_policy": "quota",
+                                "candidate_index": self.vector_index}
         with self._lock:
             chain = self.event_chain
             if temporal_policy == "source":
@@ -263,6 +277,7 @@ class RetrievalMixin:
             separation=separation,
             kind_preference=kind_preference,
             exclude_ids=exclude_ids,
+            **admission_kwargs,
         )
         if concept_coverage:
             results = self._apply_concept_coverage(

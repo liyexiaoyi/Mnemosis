@@ -454,6 +454,8 @@ class DualTrackStore:
         reasoning_pack: bool = True,
         zh_synonyms: bool = True,
         lexical_policy: str = "literal",
+        candidate_policy: str = "legacy",
+        candidate_index=None,
         association_policy: str = "legacy",
         pattern_completion: bool = True,
         pc_min_overlap: float = 0.25,
@@ -472,6 +474,11 @@ class DualTrackStore:
         kind_pref: float = 0.03,
         exclude_ids: set[str] | None = None,
     ) -> list[RecallResult]:
+        if candidate_policy not in ("legacy", "quota"):
+            raise ValueError("candidate_policy must be legacy or quota")
+        if candidate_policy == "quota" and (embedder is None
+                or not callable(getattr(candidate_index, "search", None))):
+            raise ValueError("quota admission requires an embedder and candidate index")
         if lexical_policy not in ("literal", "inflection"):
             raise ValueError("lexical_policy must be 'literal' or 'inflection'")
         if association_policy not in ("legacy", "weighted"):
@@ -483,6 +490,7 @@ class DualTrackStore:
         explicit_clock = now is not None
         now = now or utcnow()
         candidates: list[MemoryItem] = []
+        lexical_admission_order: list[str] | None = None
         fallback_mode = False
         query_terms = set(tokenize(query))
         base_terms = set(query_terms)
@@ -529,7 +537,8 @@ class DualTrackStore:
         idf_weights: dict[str, float] = {}
         idf_sum = 0.0
         fallback_cache_key: tuple | None = None
-        if self.fallback_cache_ttl > 0 and not read_only and not explicit_clock:
+        if (candidate_policy == "legacy" and self.fallback_cache_ttl > 0
+                and not read_only and not explicit_clock):
             embedder_key = (
                 "none"
                 if embedder is None
@@ -650,7 +659,7 @@ class DualTrackStore:
                 idf_sum = sum(grouped_weights)
             ids = set(hit_counts) - set(exclude_ids or set())
             if ids:
-                if len(ids) > 100:
+                if len(ids) > 100 or candidate_policy == "quota":
                     # Pre-rank by idf-weighted hits so a candidate matching
                     # one rare term is not cut in favor of generic hits.
                     def _pre_score(memory_id: str) -> float:
@@ -666,14 +675,18 @@ class DualTrackStore:
                             if memory_id in ids_for_term
                         )
 
-                    ids = {
+                    ranked_ids = [
                         memory_id
                         for memory_id, _ in sorted(
                             ((memory_id, _pre_score(memory_id)) for memory_id in ids),
-                            key=(lambda row: (-row[1], row[0])) if cue_groups
+                            key=(lambda row: (-row[1], row[0]))
+                            if cue_groups or candidate_policy == "quota"
                             else (lambda row: -row[1]),
                         )[:100]
-                    }
+                    ]
+                    if candidate_policy == "quota":
+                        lexical_admission_order = ranked_ids
+                    ids = set(ranked_ids)
                 ids_list = sorted(ids)
                 candidates = self.backend.get_many(ids_list)
         if not candidates:
@@ -696,6 +709,26 @@ class DualTrackStore:
                     item for item in candidates if item.id not in exclude_ids
                 ]
         query_vector = embedder.embed(query) if embedder is not None else None
+        if candidate_policy == "quota":
+            from .candidate_admission import (
+                ADMISSION_LIMIT, INDEX_LOOKUP_LIMIT, _index_candidates, quota_admission,
+            )
+            hits = candidate_index.search(query_vector, top_k=INDEX_LOOKUP_LIMIT)
+            dense_items = _index_candidates(self.backend, hits, kind, set(exclude_ids or ()))
+            lexical_items = {item.id: item for item in candidates
+                             if item.status is MemoryStatus.ACTIVE
+                             and (kind is None or item.kind is kind)
+                             and item.id not in (exclude_ids or ())}
+            lexical_ids = lexical_admission_order
+            if lexical_ids is None:
+                # Keep existing recent/strong fallback sources; only the
+                # opt-in path caps their admission to the same 100 slots.
+                lexical_ids = [item.id for item in candidates]
+            lexical_ids = [ident for ident in lexical_ids if ident in lexical_items][:ADMISSION_LIMIT]
+            admitted = quota_admission(lexical_ids, [item.id for item in dense_items])
+            by_id = dict(lexical_items)
+            by_id.update((item.id, item) for item in dense_items)
+            candidates = [by_id[ident] for ident in sorted(admitted)]
         query_mood = _query_mood(query) if mood_congruent_boost else None
         lowered_query = query.lower()
         summary_cued = (
@@ -934,11 +967,15 @@ class DualTrackStore:
             # their lexical-only score (matched=False is accepted as the
             # documented trade-off for bounded queries).
             scored.sort(key=lambda entry: entry[0], reverse=True)
+            rerank_limit = (min(self.dense_rerank_candidates, _DENSE_RERANK_CANDIDATES)
+                            if candidate_policy == "quota" else self.dense_rerank_candidates)
             lexical_hits = [entry for entry in scored if entry[1] > 0.0]
             if lexical_hits:
                 zero_budget = min(
                     16, len(scored) - len(lexical_hits)
                 )
+                if candidate_policy == "quota":
+                    zero_budget = min(zero_budget, rerank_limit)
                 # Early termination: stop embedding once the lexical score
                 # shows a real cliff (adjacent gap above _RERANK_SCORE_GAP).
                 # A flat/slowly-decaying distribution is left intact so a
@@ -958,7 +995,7 @@ class DualTrackStore:
                 pool = lexical_hits[
                     : min(
                         max(_RERANK_MIN_POOL, cutoff),
-                        self.dense_rerank_candidates - zero_budget,
+                        rerank_limit - zero_budget,
                     )
                 ]
                 if zero_budget > 0:
@@ -973,9 +1010,11 @@ class DualTrackStore:
                 # score ranked it beyond the first 64.
                 pool = scored[
                     : (
-                        self.zero_hit_rerank_pool
-                        if not getattr(embedder, "remote", False)
-                        else self.dense_rerank_candidates
+                        min(self.zero_hit_rerank_pool, rerank_limit)
+                        if candidate_policy == "quota"
+                        else (self.zero_hit_rerank_pool
+                              if not getattr(embedder, "remote", False)
+                              else self.dense_rerank_candidates)
                     )
                 ]
             rerank_ids = {entry[2].id for entry in pool}
