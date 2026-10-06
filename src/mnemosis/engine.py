@@ -276,7 +276,9 @@ class MemoryEngine(
         kind/source/cues/importance/confidence/strength/created_at/context/
         affect/evidence_count/storage_strength optional). Storage and term
         indexing are committed in bulk, so large imports are several times
-        faster than calling ``remember`` in a loop.
+        faster than calling ``remember`` in a loop. Embedding cardinality is
+        checked before storage, but later storage/index failures may leave
+        bounded writes committed: the entire call is not globally atomic.
         """
         with self._lock:
             records: list[dict] = []
@@ -312,12 +314,12 @@ class MemoryEngine(
                 vectors = self.index_embedder.embed_many(
                     [record["content"] for record in records]
                 )
-            stored = self.store.remember_many(records)
-            if vectors is not None and len(vectors) != len(stored):
+            if vectors is not None and len(vectors) != len(records):
                 raise RuntimeError(
                     "embedder returned "
-                    f"{len(vectors)} vectors for {len(stored)} memories"
+                    f"{len(vectors)} vectors for {len(records)} memories"
                 )
+            stored = self.store.remember_many(records)
             # Cues were already persisted in bulk by store.remember_many, so
             # the per-item associations.index loop is not needed here. The
             # link budget shrinks for very large batches: 32 links/item is
@@ -364,10 +366,12 @@ class MemoryEngine(
         times faster than calling ``remember_many`` repeatedly.
 
         .. warning::
-           Unlike ``remember_many``, this method is NOT atomic. It commits
-           chunk by chunk; if a later chunk fails, earlier chunks are already
-           persisted. Use it for bulk imports where a partial import can be
-           retried or cleaned up.
+           This method is NOT atomic. The backend commits bounded writes;
+           if a later chunk fails, earlier writes are already persisted.
+           Embedding errors or a wrong vector count leave the current chunk
+           unwritten, but later storage/index failures can partially commit
+           it. Retrying the entire episodic input creates new memories;
+           resume a verified unwritten suffix or reconcile persisted data.
         """
         chunk_size = max(1, int(chunk_size))
         with self._lock:
@@ -417,13 +421,13 @@ class MemoryEngine(
                                 for record in chunk_records
                             ]
                         )
-                    stored = self.store.remember_many(chunk_records)
-                    if vectors is not None and len(vectors) != len(stored):
+                    if vectors is not None and len(vectors) != len(chunk_records):
                         raise RuntimeError(
                             "embedder returned "
                             f"{len(vectors)} vectors for "
-                            f"{len(stored)} memories"
+                            f"{len(chunk_records)} memories"
                         )
+                    stored = self.store.remember_many(chunk_records)
                     pairs = (
                         self.associations
                         .link_related_batch_incremental(
@@ -441,9 +445,11 @@ class MemoryEngine(
                         )
                     stored_all.extend(stored)
             finally:
-                if memories:
-                    self.backend.end_bulk_mode()
-                self.associations.reset_batch()
+                try:
+                    if memories:
+                        self.backend.end_bulk_mode()
+                finally:
+                    self.associations.reset_batch()
             if any(
                 item.kind is MemoryKind.EPISODIC
                 for item in stored_all

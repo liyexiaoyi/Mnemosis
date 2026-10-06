@@ -131,9 +131,17 @@ class AssociationIndex:
                 reverse=True,
             )
             for other in related[:max_links]:
-                edge_set.add((item.id, other.id, weight))
-                edge_set.add((other.id, item.id, weight))
-        return list(edge_set)
+                src, dst = item.id, other.id
+                if src > dst:
+                    src, dst = dst, src
+                edge_set.add((src, dst, weight))
+        # Preserve the directed-pair API, with reciprocal rows adjacent so
+        # canonical backends can avoid writing the same bulk edge twice.
+        pairs = []
+        for src, dst, edge_weight in edge_set:
+            pairs.append((src, dst, edge_weight))
+            pairs.append((dst, src, edge_weight))
+        return pairs
 
     def reset_batch(self) -> None:
         """Drop the incremental pool (call before/after a chunked run)."""
@@ -258,9 +266,17 @@ class AssociationIndex:
                 else:
                     related = list(candidates.values())
                 for other in related:
-                    edge_set.add((item.id, other.id, weight))
-                    edge_set.add((other.id, item.id, weight))
-        return list(edge_set)
+                    src, dst = item.id, other.id
+                    if src > dst:
+                        src, dst = dst, src
+                    edge_set.add((src, dst, weight))
+        # Preserve the directed-pair API, with reciprocal rows adjacent so
+        # canonical backends can avoid writing the same bulk edge twice.
+        pairs = []
+        for src, dst, edge_weight in edge_set:
+            pairs.append((src, dst, edge_weight))
+            pairs.append((dst, src, edge_weight))
+        return pairs
 
     def related(
         self, memory_id: str, depth: int = 1, max_nodes: int = 20

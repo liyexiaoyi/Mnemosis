@@ -1454,8 +1454,8 @@ class SQLiteBackend(Backend):
         checkpoint the WAL back into the main database file."""
         try:
             with self._conn:
-                # No GROUP BY: add_links_many already deduplicates pairs
-                # within each batch (_canonical_rows), and ON CONFLICT takes
+                # No GROUP BY: add_links_many skips identical adjacent
+                # canonical pairs, and ON CONFLICT takes
                 # the max weight for any cross-batch duplicate. Dropping the
                 # GROUP BY sort pass measured ~10% faster on a 50k build
                 # with identical link rows (932403 canonical edges). ORDER BY
@@ -2078,12 +2078,20 @@ class SQLiteBackend(Backend):
     ) -> None:
         """Insert many directed links in chunked transactions."""
         def _canonical_rows():
+            previous = None
             for src, dst, weight in pairs:
                 if src == dst:
                     continue
                 if src > dst:
                     src, dst = dst, src
-                yield src, dst, weight
+                row = (src, dst, weight)
+                # Association batches group reciprocal directions. Skip
+                # identical adjacent canonical rows only in bulk mode:
+                # normal-mode transaction chunk boundaries stay unchanged.
+                if self._bulk_terms_index_deferred and row == previous:
+                    continue
+                previous = row
+                yield row
 
         rows = _canonical_rows()
         # Bulk mode (deferred term index, big page cache, synchronous=OFF)

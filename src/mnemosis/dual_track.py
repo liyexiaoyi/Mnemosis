@@ -326,9 +326,11 @@ class DualTrackStore:
     def remember_many(self, records: list[dict]) -> list[MemoryItem]:
         """Bulk remember with the same per-item semantics as ``remember``.
 
-        Episodic inserts share one atomic transaction and all term rows are
-        rebuilt in one bulk statement, so ingesting 10k memories takes
-        seconds instead of a minute. Each record mirrors ``remember``'s
+        Episodic inserts and term rows use bounded backend transactions;
+        the whole call is not globally atomic. A later storage/index error
+        can leave earlier writes committed. Bulk operations avoid the
+        transaction overhead of single-item ingestion. Each record mirrors
+        ``remember``'s
         arguments: content/kind/source required; cues/importance/confidence/
         strength/created_at/context/affect/evidence_count/storage_strength
         optional.
