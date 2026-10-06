@@ -456,6 +456,7 @@ class DualTrackStore:
         lexical_policy: str = "literal",
         candidate_policy: str = "legacy",
         candidate_index=None,
+        rerank_policy: str = "legacy",
         association_policy: str = "legacy",
         pattern_completion: bool = True,
         pc_min_overlap: float = 0.25,
@@ -474,6 +475,10 @@ class DualTrackStore:
         kind_pref: float = 0.03,
         exclude_ids: set[str] | None = None,
     ) -> list[RecallResult]:
+        if rerank_policy not in ("legacy", "semantic_reserve"):
+            raise ValueError("rerank_policy must be legacy or semantic_reserve")
+        if rerank_policy == "semantic_reserve" and candidate_policy != "quota":
+            raise ValueError("semantic_reserve rerank_policy requires quota admission")
         if candidate_policy not in ("legacy", "quota"):
             raise ValueError("candidate_policy must be legacy or quota")
         if candidate_policy == "quota" and (embedder is None
@@ -1017,6 +1022,16 @@ class DualTrackStore:
                               else self.dense_rerank_candidates)
                     )
                 ]
+            if rerank_policy == "semantic_reserve":
+                from .rerank_budget import reserve_semantic
+
+                scorable = {entry[2].id: entry for entry in scored}
+                selected = reserve_semantic(
+                    [entry[2].id for entry in pool],
+                    [item.id for item in dense_items if item.id in scorable],
+                    limit=rerank_limit,
+                )
+                pool = [scorable[ident] for ident in selected]
             rerank_ids = {entry[2].id for entry in pool}
             rerank_items = [
                 entry[2] for entry in scored if entry[2].id in rerank_ids

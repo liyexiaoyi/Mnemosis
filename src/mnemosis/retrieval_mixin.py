@@ -135,6 +135,7 @@ class RetrievalMixin:
         lexical_policy: str = "literal",
         association_policy: str = "legacy",
         candidate_policy: str = "legacy",
+        rerank_policy: str = "legacy",
         use_default_embedder: bool = True,
         context: str | None = None,
         context_boost: bool = True,
@@ -196,12 +197,20 @@ class RetrievalMixin:
         within 100 initial candidates, then refills overlaps from lexical ranks.
         It requires the same embedder instance used for the supplied index.
         Scoring and completion remain unchanged; legacy is the default.
+        With quota admission, optional rerank_policy="semantic_reserve" gives
+        its indexed semantic prefix scoring opportunities within the same
+        64-slot budget, retaining as much of the previous pool as possible.
+        Score formulas and completion remain unchanged; no default changes.
         ``association_policy="weighted"`` attenuates one-hop spreading
         activation by finite edge strength clipped to [0, 1]. It preserves
         traversal budgets and never adds evidence or verified usefulness.
         The default ``legacy`` keeps old activation. Other recall mechanisms
         and graph construction are unchanged. See docs/association-strength.md.
         """
+        if rerank_policy not in ("legacy", "semantic_reserve"):
+            raise ValueError("rerank_policy must be legacy or semantic_reserve")
+        if rerank_policy == "semantic_reserve" and candidate_policy != "quota":
+            raise ValueError("semantic_reserve rerank_policy requires quota admission")
         if candidate_policy not in ("legacy", "quota"):
             raise ValueError("candidate_policy must be legacy or quota")
         if lexical_policy not in ("literal", "inflection"):
@@ -225,6 +234,8 @@ class RetrievalMixin:
                 raise ValueError("quota admission requires a matching index and index_embedder")
             admission_kwargs = {"candidate_policy": "quota",
                                 "candidate_index": self.vector_index}
+        if rerank_policy == "semantic_reserve":
+            admission_kwargs["rerank_policy"] = rerank_policy
         with self._lock:
             chain = self.event_chain
             if temporal_policy == "source":
