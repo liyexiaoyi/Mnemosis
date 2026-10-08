@@ -190,10 +190,22 @@ def select_from_snapshot(query: str, candidates: Sequence[RecallResult], *, anno
         [EvidenceCandidate(i, relevance[i], support.get(i, {})) for i in ids],
         [QueryAspect(a.aspect_id) for a in aspects], required_aspects=[a.aspect_id for a in aspects],
         limit=top_k, relevance_weight=relevance_weight, search_budget=search_budget)
+    status, reason = selector.status, None
+    if status == "infeasible" and selector.missing_support_pairs:
+        # Known 1/0 have intervals [1,1]/[0,0]; missing has [0,1].
+        # The nested selector proves impossibility for the lower bounds only.
+        # An absent role even in the upper pool certifies impossibility; full
+        # upper coverage is necessary, not sufficient under the K constraint.
+        # Conservatively abstain otherwise, without another search or calls.
+        upper_pool_covers_roles = all(
+            any(support.get(i, {}).get(a.aspect_id, 1) == 1 for i in ids)
+            for a in aspects)
+        if upper_pool_covers_roles:
+            status, reason = "undetermined", "incomplete_support"
     timings["math"] = time.monotonic() - phase
     by_id = {r.item.id: r for r in snapshot}
     selected = tuple(by_id[i] for i in selector.selection.selected_ids) if selector.selection else ()
-    return finish(selector.status, selected=selected, annotation=annotation, selector=selector)
+    return finish(status, reason, selected=selected, annotation=annotation, selector=selector)
 
 
 def recall_evidence(engine: MemoryEngine, query: str, *, annotator: EvidenceAnnotator,

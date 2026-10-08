@@ -50,6 +50,12 @@ def test_actual_recall_is_readonly_releases_lock_and_returns_detached_items(back
             report.results[0].item.content = "caller modified result"
             assert engine.recall_evidence("Mina trip?", now=now,
                 annotator=FixedAnnotator(batch_error="timeout")).status == "annotation_failed"
+            destination_id = next(i.id for i in engine.backend.list_items() if "Osaka" in i.content)
+            partial = engine.recall_evidence("Mina trip destination and date?", now=now,
+                annotator=FixedAnnotator(rows=[dict(memory_id=destination_id, aspect_id="a0",
+                                                   verdict="supported", quote="Osaka")]), top_k=2)
+            assert partial.status == "undetermined" and partial.reason == "incomplete_support"
+            assert partial.results == () and partial.annotation_status == "partial"
         assert snapshot() == before
     finally:
         engine.close()

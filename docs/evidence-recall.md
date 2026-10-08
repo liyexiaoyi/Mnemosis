@@ -28,12 +28,16 @@ The selector keeps the existing fixed-capacity objective and uses single-channel
 | Status | Meaning / returned results |
 | --- | --- |
 | feasible | Selected evidence satisfies the supplied annotations; partial annotation remains separately visible. |
-| infeasible | No selected results; impossibility proved for the given candidate/support inputs. Missing annotations are not factual absence. |
-| undetermined | No selected results; budget ended without a feasible witness. |
+| infeasible | No selected results; complete supplied annotations prove infeasibility, or even optimistic pool coverage lacks a required role. Conclusions remain conditional on annotation correctness. |
+| undetermined | No selected results; budget ended without a feasible witness, or unknown annotations prevent an impossibility claim (`reason="incomplete_support"`). |
 | annotation_failed | No selected results; invalid plan or no valid positive/negative decisions. |
 | not_applicable | Baseline results; empty pool, empty roles, open enumeration or unsupported query. |
 
 `baseline` always refers to the expanded candidate query's first K, which may differ from a separate original `recall(top_k=K)`. With a feasible witness but exhausted search, `selector.optimality` is `not_proven`. `selector.completeness` is an exact `Fraction`; JSON reports serialize fractions as `numerator/denominator`. It is not a probability or answer-accuracy score.
+
+The integration interprets binary support as intervals: supplied 1 is [1,1], supplied 0 is [0,0], and unknown/missing/skipped pairs are [0,1]. The existing selector uses lower bounds to find a verified-by-annotation witness. If that run proves infeasible with missing pairs, an O(candidates × roles) upper-pool check asks whether every required role could still have support. A role with upper coverage 0 certifies impossibility under the supplied negatives. Otherwise the outer report is conservatively `undetermined`; optimistic coverage alone cannot prove a feasible combination within K. No extra model request or search nodes are used, and no optimistic support enters returned evidence or utility. All-unknown annotations still yield `annotation_failed`.
+
+`selector` remains the unmodified lower-bound run, so its `status` can be `infeasible` while the outer `status` is `undetermined` with `reason="incomplete_support"`. Consumers should use the outer status for the integration's conclusion. This cheap bound can abstain even when a more expensive upper-bound subset search could prove a capacity failure. It does not correct wrong roles, false positive semantic annotations, or plan timeouts.
 
 The new path never reinforces or writes memory, links, feedback, recall logs or working memory. Results use detached snapshots and provider I/O runs outside the engine lock. Exclusions, context, kind and the existing temporal/lexical/candidate/rerank policies are supported. Query clocks must have a timezone. Quota admission needs the same existing index embedder as original recall.
 
