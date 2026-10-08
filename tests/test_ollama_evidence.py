@@ -111,6 +111,18 @@ def test_batch_size_shrinks_without_truncating_text_or_reordering(monkeypatch):
     assert emitted == list(texts) and out.skipped == ()
 
 
+def test_original_long_record_pair_still_fits_one_support_request(monkeypatch):
+    # A longer support prompt previously doubled the requests for this input.
+    a, sent, _ = fake_http(monkeypatch)
+    texts = {"m0": "汉" * 1858, "m1": "汉" * 1858}
+    out = a.OllamaEvidenceAnnotator().support(
+        "place?", (EvidenceAspect("a0", "place"),), texts, deadline=160,
+    )
+    assert len(sent) == 1 and out.skipped == ()
+    assert len(out.batches) == 1 and out.batches[0].memory_ids == ("m0", "m1")
+    assert json.loads(sent[0][0]["messages"][1]["content"])["memories"] == texts
+
+
 def test_oversized_text_and_thirteen_requests_leave_unknown(monkeypatch):
     a, sent, _ = fake_http(monkeypatch)
     texts = {"long": "x" * 2049, **{f"m{i}": "汉" * 1800 for i in range(99)}}
