@@ -70,6 +70,34 @@ def test_full_support_text_is_data_not_an_instruction(monkeypatch):
     assert result.batches[0].memory_ids == ("m0",) and result.skipped == ()
 
 
+@pytest.mark.parametrize("memory_id", ["m1", "6f04e824bb314dda88ed00d1cb032ea3"])
+@pytest.mark.parametrize("second_verdict", ["supported", "unknown"])
+def test_duplicate_pair_invalidates_batch_and_keeps_raw_response(
+    monkeypatch, memory_id, second_verdict,
+):
+    # Single-record duplicates were observed in live grammar diagnostics.
+    # Identical and conflicting repeats must both fail; ID shape cannot relax validation.
+    text = "韩青是林奕采访的作家。"
+    first = {"memory_id": memory_id, "aspect_id": "a0", "verdict": "supported", "quote": text}
+    second = {**first, "verdict": second_verdict,
+              "quote": text if second_verdict == "supported" else None}
+    content = json.dumps({"decisions": [first, second]}, ensure_ascii=False)
+    raw_response = envelope(content)
+    a, sent, _ = fake_http(monkeypatch, json.dumps(raw_response).encode())
+    result = a.OllamaEvidenceAnnotator().support(
+        "林奕采访了谁？", (EvidenceAspect("a0", "被林奕采访的人"),),
+        {memory_id: text}, deadline=160,
+    )
+    assert len(sent) == 1 and result.skipped == ()
+    assert len(result.batches) == 1
+    batch = result.batches[0]
+    assert batch.memory_ids == (memory_id,)
+    assert batch.reply.error == "duplicate support decision"
+    assert batch.reply.payload is None
+    assert batch.reply.response == raw_response
+    assert batch.reply.request == sent[0][0]
+
+
 def test_batch_size_shrinks_without_truncating_text_or_reordering(monkeypatch):
     a, sent, _ = fake_http(monkeypatch)
     texts = {f"m{i}": "汉" * 1800 for i in range(9)}
