@@ -1,34 +1,45 @@
 # Mnemosis
 
-> 像人脑一样记事的 AI 记忆层：会记住、会遗忘、会整理、会自我怀疑。
+> 仿生设计的 AI Agent 长期记忆层：记住、检索、强化、遗忘、整合，并保留不确定性。
 
-Mnemosis 是一个为 AI 助手设计的**长期记忆组件**。它不是简单地“存下所有内容再搜索”，
-而是把记忆当成一个完整的生命周期来管理：写入、加固、整合、遗忘、更新，每一步都有
-对应的机制，让 AI 在需要时想得起、说得准，没把握时敢说“不知道”。
+Mnemosis 将记忆作为一个完整生命周期管理：用情景记忆保存经历，用语义记忆保存
+可复用的事实，通过线索联想、访问强化、遗忘曲线、间隔复习和睡眠整合组织长期记忆。
+Agent 决定存什么、问什么，以及如何使用返回的证据。
 
-> 🍼 完全没接触过？先看 [**奶龙级入门教程——基本功能介绍版**](奶龙级入门教程——基本功能介绍版.md)，
-> 像老师给零基础学生讲课一样，把每个功能都讲明白。
+核心使用 **Python 3.10+ 和 SQLite，零第三方运行时依赖**，可以本地运行。
+语义向量模型、NumPy 加速、Rust BM25 内核与本机模型证据标注均按需启用。
 
-> 🗄️ 想看存储层怎么设计？[**存储功能介绍（技术人员版）**](存储功能介绍（技术人员版）.md)。
+**[English](README.md)** · [零基础教程](奶龙级入门教程——基本功能介绍版.md) · [存储设计](存储功能介绍（技术人员版）.md)
 
-> 🗺️ 1.0 收敛计划与核心承诺：[docs/roadmap.md](docs/roadmap.md)
+## 仿生设计体现在哪里？
+
+| 机制 | 对应能力 | 使用边界 |
+| --- | --- | --- |
+| 情景／语义双轨 | 分别管理具体经历与可复用事实。 | 记录内容的可靠性仍取决于来源。 |
+| 联想与强化 | 利用线索和关联唤起记忆，调整可访问性。 | 熟悉度不等于事实正确。 |
+| 遗忘与间隔复习 | 描述记忆随时间的可检索强度，安排复习。 | 遗忘曲线不决定事实有效期。 |
+| 睡眠整合 | 回放、去重、建联、整合，记录来源贡献。 | 不同来源记录不一定独立或已核实。 |
+| 显式反馈与元认知 | 接收调用方有用／无用判断，提示缺口、不确定性和冲突。 | 置信值不保证最终回答正确。 |
+
+这是受记忆机制启发的工程设计，并不等于生物大脑仿真。
+只读检索与诊断允许检查记忆而不强化它，详见[反馈与证据边界](docs/biomimetic-feedback.md)。
 
 ## 安装
 
+从 GitHub 默认分支安装：
+
 ```bash
-pip install git+https://github.com/liyexiaoyi/Mnemosis.git
+python -m pip install git+https://github.com/liyexiaoyi/Mnemosis.git
 ```
 
-零运行时第三方依赖（纯 Python 标准库 + SQLite），不需要服务器、不需要云向量服务
-（向量接口是可选的）。
+运行示例或参与开发：
 
-安装后有两个命令：
-
-- `mnemosis` —— 命令行工具
-- `mnemosis-mcp` —— MCP 服务器（给 AI 客户端接入用）
-
-> SQLite 存储适合单进程/低并发场景；多个 Agent 并发写入时建议串行访问或
-> 接入外部数据库适配层。
+```bash
+git clone https://github.com/liyexiaoyi/Mnemosis.git
+cd Mnemosis
+python -m pip install -e .
+python examples/demo.py
+```
 
 ## 快速开始
 
@@ -36,212 +47,127 @@ pip install git+https://github.com/liyexiaoyi/Mnemosis.git
 from mnemosis import MemoryEngine
 from mnemosis.types import MemoryKind, SourceRecord, SourceType
 
-engine = MemoryEngine("memory.db")  # 传一个路径即可持久化
-user = SourceRecord(origin=SourceType.USER)
+engine = MemoryEngine("memory.db", auto_warmup=False)
+try:
+    engine.remember(
+        "用户喜欢用中文讨论技术问题。",
+        kind=MemoryKind.SEMANTIC,
+        source=SourceRecord(origin=SourceType.USER),
+        cues=["用户", "中文", "技术"],
+        importance=0.9,
+    )
 
-# 记住
-engine.remember(
-    "用户喜欢用中文讨论技术问题。",
-    kind=MemoryKind.SEMANTIC,
-    source=user,
-    cues=["语言", "偏好"],
-    importance=0.9,
-)
-engine.remember(
-    "昨天一起修了 SQLite 锁死的问题。",
-    kind=MemoryKind.EPISODIC,
-    source=user,
-    cues=["SQLite", "锁死"],
-)
+    # 只读探针不改变持久化学习状态。
+    for result in engine.recall("用户 中文 技术", top_k=3, read_only=True):
+        print(result.item.content, result.score)
 
-# 检索（换个说法也能找到）
-for r in engine.recall("用户用什么语言聊天？", top_k=3):
-    print(f"[{r.item.kind.value}] 相关度 {r.score:.2f}  {r.item.content}")
-
-# 元认知：没把握就直说
-check = engine.check("用户最喜欢的电影是什么？")
-print("知识缺口:", check.gaps or "无")
-
-# 睡眠整合：离线去重、提炼、查矛盾
-print(engine.sleep().summary())
+    print("知识缺口：", engine.check("用户最喜欢的电影").gaps)
+    engine.sleep()  # 离线整合
+finally:
+    engine.close()
 ```
 
-不想写代码？先跑一分钟演示：
-
-```bash
-pip install git+https://github.com/liyexiaoyi/Mnemosis.git
-python examples/demo.py
-```
-
-或在 [Google Colab](https://colab.research.google.com/github/liyexiaoyi/Mnemosis/blob/main/examples/Mnemosis_demo.ipynb) 在线体验。
-
-> 注意：国内网络通常无法访问 Google Colab。替代方式：
->
-> - [GitHub Codespaces 一键打开](https://codespaces.new/liyexiaoyi/Mnemosis)：
->   云端环境，打开终端执行 `python examples/demo.py`
-> - 下载 `examples/Mnemosis_demo.ipynb`，用本地 Jupyter 或百度 AI Studio 打开
-> - 最稳的方式：本地 `pip install` 后直接跑 `python examples/demo.py`
-
-## 命令行
-
-```bash
-# 记住一条事实
-mnemosis --db memory.db remember "用户喜欢用中文讨论技术问题。" --kind semantic
-
-# 检索
-mnemosis --db memory.db recall "用户喜欢什么语言？"
-
-# 睡眠整合
-mnemosis --db memory.db sleep
-
-# 元认知检查
-mnemosis --db memory.db check "用户最喜欢的电影是什么？"
-
-# 生成记忆地图 SVG
-mnemosis --db memory.db memory-map --out memory_map.svg
-
-# 启动 MCP 服务器
-mnemosis mcp --db memory.db
-```
+`remember_turn` 按句拆分并保存一轮对话；`remember_many` 批量导入记录。
+普通检索可能强化记忆，评测、诊断或候选探索应传 `read_only=True`。
+检索分数用于排序，不是事实正确概率。没有检查出缺口，也不保证问题已被完整回答。
 
 ## 接入 AI 客户端（MCP）
 
-Claude Desktop、Cursor、Codex 等支持 MCP 的客户端，加一行配置即可：
+安装后，在支持 MCP 的客户端加入配置：
 
 ```json
 {
   "mcpServers": {
     "mnemosis": {
       "command": "mnemosis-mcp",
-      "args": ["--db", "/path/to/memory.db"]
+      "args": ["--db", "/absolute/path/to/memory.db"]
     }
   }
 }
 ```
 
-工具按三档分级暴露：
+Windows 用户需要把 Python 的 `Scripts` 目录加入 `PATH`，或使用
+`mnemosis-mcp.exe` 的绝对路径。`--expose core` 暴露日常工具，默认 `advanced`
+扩展常规工具，`--expose experimental` 才包含实验工具。
+详见 [MCP 配置指南](docs/mcp-quickstart.md)。
 
 ```bash
-mnemosis-mcp --db memory.db                 # 默认 advanced：98 个（不含实验工具）
-mnemosis-mcp --db memory.db --expose core   # 只留 16 个日常工具
-mnemosis-mcp --db memory.db --expose experimental  # 全部 130 个
+mnemosis --db memory.db remember "用户喜欢喝绿茶。" --kind semantic
+mnemosis --db memory.db recall "用户 绿茶"
+mnemosis --db memory.db check "用户最喜欢的电影"
+mnemosis --db memory.db sleep
+mnemosis-mcp --db memory.db --expose core
 ```
 
-**Windows 用户**：如果客户端提示找不到 `mnemosis-mcp`，把 Python 的
-`Scripts` 目录加入 `PATH`，或改用绝对路径，例如
-`"command": "C:\\Users\\you\\AppData\\Local\\Programs\\Python\\Python312\\Scripts\\mnemosis-mcp.exe"`。
+服务也支持 Streamable HTTP，可添加 `--transport http --host 127.0.0.1 --port 8000`。
+跨设备部署时配置鉴权和 TLS。SQLite 适合本地、单进程场景；多个 Agent 并发共享
+同一引擎时，应串行执行高层调用。
 
-详细配置（含 Cursor、Codex 写法）见 [`docs/mcp-quickstart.md`](docs/mcp-quickstart.md)。
+## 不同数学模型负责不同能力
 
-## 远程部署（VPS / NAS）
+原仿生检索仍是默认路径。新增策略均可选，按职责分工：
 
-MCP 服务器支持 Streamable HTTP，可以跑在 VPS / NAS 上供其他设备调用：
+| 部分 | 模型／机制 | 说明 |
+| --- | --- | --- |
+| 词法检索 | BM25 词频、稀有度和长度归一化；可选受限 RRF 融合。 | [BM25 线索](docs/bm25-cues.md) |
+| 英文词形 | 按原查询词分组扩展，限制重叠分，以平均稀有度校正。 | [词形策略](docs/inflection-cues.md) |
+| 候选准入 | 保护 64 个词法候选与最多 36 个合格向量候选，重叠名额按词法补足至 100。 | [固定配额](docs/candidate-admission.md) |
+| 语义重排 | 在原重排预算内保护语义候选机会，尽可能保留原候选。 | [数学职责](docs/mathematical-models.md) |
+| 证据组合 | 相关性与加权要点覆盖分别计分，同一要点的重复支持不重复累加；可选补全约束和精修。 | [证据选择](docs/evidence-selection.md)、[排名证据](docs/ranked-evidence.md) |
+| 反馈校准 | 平滑有用性估计、按记忆数量加权的校准统计。 | [校准统计](docs/calibration-statistics.md) |
 
-```bash
-mnemosis-mcp --transport http --host 0.0.0.0 --port 8000 --db /data/memory.db
-```
+候选覆盖、排名分数、证据效用和反馈估计是不同指标，某一项改善不能直接证明最终回答更准。
+配额准入需要匹配的向量索引与嵌入器；证据选择仍依赖调用方提供的要点与支持标注。
 
-客户端指向 `http://your-server:8000/` 即可（Claude Desktop、Cursor、Cherry Studio
-都支持远程 MCP URL）。暴露到公网前建议用 Caddy/nginx 反代并加 TLS 和鉴权。
-
-或用 Docker：
-
-```bash
-docker build -t mnemosis .
-docker run -d -p 8000:8000 -v mnemosis-data:/data mnemosis
-```
-
-记忆就是一个 SQLite 单文件，备份 = 拷贝一个文件。
-
-## 语义嵌入（可选）
-
-默认检索是纯关键词 + n-gram，零依赖；接入向量模型后可获得语义召回：
+可选接入本地 Ollama 嵌入服务：
 
 ```bash
-# 本地 Ollama
 mnemosis-mcp --db memory.db --embedder ollama
-
-# 任意 OpenAI 兼容接口（DashScope、OpenAI 等）
-export MNEMOSIS_EMBEDDING_API_KEY=sk-...
-mnemosis-mcp --db memory.db --embedder openai --embedding-model text-embedding-v3
 ```
 
-向量会持久缓存在主库旁边（`memory.db.cache` / `memory.db.vec`，可重建），
-默认内存缓存上限约 512MB，超出时自动淘汰（`embed_cache_memory_limit_mb` 可调）。
+缓存和向量索引存放在记忆库旁边，可重建。Python 负责记忆生命周期，SQL 负责存储，
+NumPy 可加速向量计算，Rust 可加速 BM25 评分；无需将整个项目改写为 Rust。
+详见[语言分工](docs/module-languages.md)、[Rust 内核](docs/rust-bm25.md)、[向量加速](docs/vector-acceleration.md)。
 
-## 自动记忆保存（agent 推荐用法）
+## 实验功能：有原文绑定的证据检索
 
-Mnemosis 不偷听对话——由 Agent 决定存什么。最简单的自动模式是每轮对话调用一次
-`remember_turn`：它会自动按句切分、提取线索并存储，不需要手写 `remember`。
+`MemoryEngine.recall_evidence` 将只读检索、问题职责标注、唯一原文引用和受预算约束的
+数学证据选择连接起来。需要显式配置标注模型；通过 MCP 使用时还需启用实验工具。
+
+结果区分可行、不可行、未确定、标注失败和不适用，缺失支持保留为未知。
+**引用确实出现在原文，不等于原文证明了问题角色，也不等于事实真实。**
+角色方向弄反、限定词遗漏、引用不充分与超时仍是已知短板，该功能没有切换为默认检索。
+接口、预算和状态语义见[实验说明](docs/evidence-recall.md)。
+
+## 测试与效果边界
+
+2026-10-11 本地检查点在已配置 NumPy／Rust 后端的环境中通过 **1399 项测试、374 项子测试**，
+以及 18 项能力检查。此前在 20 种配置下实际重放 704 次旧召回，排名与存储状态保持一致。
+这些结果证明回归边界，不是同类项目实力排名。
+
+已有公开数据检索子集与作者构造数学案例评测。候选准入覆盖有改善，但未证明最终 Top-k
+准确率提高；近期支持提示实验出现退步，已撤回。详见[验证记录与限制](docs/evaluation-status.md)。
 
 ```bash
-mnemosis-mcp --db memory.db
+python -m pip install -e ".[dev]"
+python -m pytest -q
+python benchmarks/ci_regression.py
 ```
 
-然后在系统提示词里告诉 Agent：
+可选原生测试需安装并启用对应后端，参见 [Rust 测试说明](docs/rust-bm25.md)。
+延迟受硬件、数据、模型与缓存状态影响，不提供任意场景的固定速度承诺。
 
-> 每轮用户/助手对话结束后调用 `remember_turn` 存入原文；当用户提到之前的话题时，
-> 先调用 `recall`（或 `check`）再回答。
-
-长对话用按句切分存储（`remember_turn`）后，检索与端到端准确率都明显更好（见下方独立基准）。
-
-## 批量导入
-
-```python
-engine.remember_many([
-    {"content": "用户喜欢喝咖啡。", "kind": MemoryKind.SEMANTIC, "cues": ["用户"]},
-    {"content": "上周修了空调。", "kind": MemoryKind.EPISODIC},
-])
-```
-
-小规模用 `remember_many` 即可；10 万条以上的超大导入请用分块优化的
-`remember_many_chunked`（约 25~27 秒），单条循环会慢一个数量级。
-
-## 启动预热
-
-MCP 服务器启动后会自动在后台扫描主表/索引页（`engine.warmup()`），大幅减少
-实际冷启动（容器重启 / VPS 冷启）后第一次查询的磁盘页加载等待。
-
-## 原理
-
-Mnemosis 模拟人脑记忆机制做长期记忆：`remember` 写入、`recall` 联想检索、
-遗忘曲线自动衰减、`sleep` 睡眠式整理（去重/建联/消矛盾）、`check` 知道自己不知道
-（不会乱编答案）。它不是录音机，谁调用、存什么由你和 agent 决定。
-
-## 测试
+仓库保留 LongMemEval 对比脚本：
 
 ```bash
-python -m unittest discover -s tests -q   # 500 项单元测试
-python benchmarks/locomo_bench.py --mode keyword   # LoCoMo 式长对话评测
+python benchmarks/fetch_longmemeval.py
+python benchmarks/longmemeval_bench.py --data work/longmemeval_s_cleaned.json --questions 20
 ```
 
-质量门禁：ruff 全过、mypy 严格模式 0 错误、CI 回归测试 18/18、性能门禁、
-并发与睡眠冒烟测试。
+对比项目依赖与模型服务需单独配置；历史抽样结果不能推导本项目普遍优于其他记忆项目。
 
-## 性能（本机实测）
+## 文档与参与
 
-| 规模 | 构建 | 库大小 | 峰值内存 | 热查询 p99 |
-|---|---|---|---|---|
-| 10 万 | ~27s | ~543MB | ~620MB | ~1.8ms |
-| 100 万 | ~367s | ~5.1GB | ~2GB | ~1.7ms |
+[路线图](docs/roadmap.md) · [贡献指南](CONTRIBUTING.md) · [MIT 许可证](LICENSE)
 
-更多细节见 [docs/scalability.md](docs/scalability.md)。
-
-## 独立基准（LongMemEval）
-
-基于 LongMemEval-S 数据集（采样 20 个测试问题），与官方 `mem0` 包对比：
-
-| 系统 | 检索 @1/@5/@10 | 端到端答案准确率 |
-|---|---|---|
-| Mnemosis（`remember_turn` 切句） | 0.60 / 0.85 / 0.90 | 0.65 |
-| mem0 | 0.50 / 0.80 / 0.80 | 0.45 |
-| Mnemosis（dense 模式） | 0.50 / 0.80 / 0.80 | 与 mem0 持平，导入快约 5.8 倍 |
-
-## 许可
-
-MIT，见 [LICENSE](LICENSE)。
-
-## 参与贡献
-
-欢迎提 Issue、提交 PR。每项改动请附带测试或实测结果，详见
-[CONTRIBUTING.md](CONTRIBUTING.md)。
+欢迎提交可复现的失败案例、检索评测和改进建议。
