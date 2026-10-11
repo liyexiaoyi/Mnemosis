@@ -50,12 +50,12 @@ def resolve_event_time(item: MemoryItem, *, zone: tzinfo = timezone.utc) -> Even
         for match in _MD.finditer(text):
             if any(start.start() <= match.start() < start.end() for start in matches):
                 continue
-            md = (int(match.group(1)), int(match.group(2)))
+            matched_md = (int(match.group(1)), int(match.group(2)))
             try:
-                date(2000, *md)
+                date(2000, *matched_md)
             except ValueError:
                 return EventTime(None, issue="正文月日无效")
-            partial.add(md)
+            partial.add(matched_md)
     if len(full) > 1 or len(partial) > 1:
         return EventTime(None, issue="多日期无法归属单一事件")
     instant = None

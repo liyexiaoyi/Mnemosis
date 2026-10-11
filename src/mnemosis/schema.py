@@ -13,7 +13,7 @@ from __future__ import annotations
 import itertools
 import re
 import threading
-from datetime import date, timezone, tzinfo
+from datetime import date, datetime, timezone, tzinfo
 
 from .backend import Backend
 from .event_time import resolve_event_time
@@ -21,6 +21,10 @@ from .types import MemoryItem, MemoryKind, MemoryStatus
 
 _DATE_RE = re.compile(r"(\d{4}-\d{2}-\d{2})")
 _SESSION_RE = re.compile(r"session(\d+)")
+
+_SourceGroup = tuple[str, int | None]
+_SourceOrder = tuple[datetime, int]
+_SourceFingerprint = tuple[tuple[str, str, tuple[str, ...], MemoryKind, MemoryStatus, int, str | None], ...]
 
 
 def _date_of(item: MemoryItem, *, date_policy: str = "content",
@@ -73,11 +77,11 @@ class EventChainIndex:
             raise ValueError("date_policy must be content or source")
         self.date_policy = date_policy
         self.event_timezone = event_timezone
-        self._source_fingerprint = None
-        self._source_token = None
-        self._source_zone = None
-        self._source_groups = {}
-        self._source_membership = {}
+        self._source_fingerprint: _SourceFingerprint | None = None
+        self._source_token: object | None = None
+        self._source_zone: tzinfo | None = None
+        self._source_groups: dict[_SourceGroup, dict[str, _SourceOrder]] = {}
+        self._source_membership: dict[str, _SourceGroup] = {}
         self._lock = threading.RLock()
         self.backend = backend
         self._cache: dict[str, str | None] | None = None
@@ -110,7 +114,7 @@ class EventChainIndex:
         self._built_version = self._version
         return chain
 
-    def _source_entry(self, item):
+    def _source_entry(self, item: MemoryItem) -> tuple[_SourceGroup, _SourceOrder] | None:
         if item.status is not MemoryStatus.ACTIVE or item.kind is not MemoryKind.EPISODIC:
             return None
         person, session = _person_and_session(item)
@@ -143,6 +147,7 @@ class EventChainIndex:
         for events in groups.values():
             edges.update(self._group_edges(events))
         cache = self._cache
+        assert cache is not None  # updates are only used for a reusable cache
         # In the unlikely event publication raises, the next query rebuilds
         # rather than reading a partial index under the previous token.
         self._cache = None
@@ -166,6 +171,7 @@ class EventChainIndex:
         reusable = (self._cache is not None and self._version == self._built_version
                     and self._source_zone == self.event_timezone)
         if reusable and token is not None and self._source_token == token:
+            assert self._cache is not None
             return self._cache
         if reusable and token is not None and self._source_token is not None:
             changed = self.backend.event_changes_since(self._source_token)
@@ -179,6 +185,7 @@ class EventChainIndex:
                     self._source_token = None
                     return self._build_source()
                 self._source_token = token
+                assert self._cache is not None
                 return self._cache
         rows = self.backend.list_items(kind=MemoryKind.EPISODIC)
         fingerprint = None
@@ -190,8 +197,10 @@ class EventChainIndex:
                                  i.seq, stamp.isoformat() if (stamp := i.source.occurred_at) is not None else None)
                                 for i in rows)
             if reusable and fingerprint == self._source_fingerprint:
+                assert self._cache is not None
                 return self._cache
-        groups, membership = {}, {}
+        groups: dict[_SourceGroup, dict[str, _SourceOrder]] = {}
+        membership: dict[str, _SourceGroup] = {}
         for item in rows:
             entry = self._source_entry(item)
             if entry is not None:

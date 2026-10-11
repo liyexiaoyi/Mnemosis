@@ -9,9 +9,10 @@ from dataclasses import dataclass
 from fractions import Fraction
 import math
 from numbers import Real
+from typing import cast
 
 from .evidence_selection import (
-    EvidenceCandidate, EvidenceSelectionReport, QueryAspect, select_evidence,
+    EvidenceCandidate, EvidenceSelectionReport, QueryAspect, _RealValue, select_evidence,
 )
 
 
@@ -19,7 +20,7 @@ from .evidence_selection import (
 class RankedChannel:
     channel_id: str
     memory_ids: Sequence[str]
-    weight: Real = 1.0
+    weight: _RealValue = 1.0
     status: str = "ok"
 
 
@@ -66,9 +67,10 @@ def _sequence(value: Sequence, name: str, maximum: int) -> None:
         raise ValueError(f"{name} exceeds {maximum}")
 
 
-def _real(value: Real, name: str, *, unit: bool = False) -> Real:
+def _real(value: _RealValue, name: str, *, unit: bool = False) -> _RealValue:
     if isinstance(value, bool) or not isinstance(value, Real):
         raise TypeError(f"{name} must be a real number, not bool")
+    value = cast(_RealValue, value)
     if value != value or value == math.inf or value == -math.inf:
         raise ValueError(f"{name} must be finite")
     if value < 0 or (unit and value > 1):
@@ -76,12 +78,12 @@ def _real(value: Real, name: str, *, unit: bool = False) -> Real:
     return value
 
 
-def _exact(value: Real) -> Fraction:
+def _exact(value: _RealValue) -> Fraction:
     ratio = getattr(value, "as_integer_ratio", None)
-    return Fraction(*ratio()) if ratio is not None else Fraction(value)
+    return Fraction(*ratio()) if ratio is not None else Fraction(cast("int | float | Fraction", value))
 
 
-def _normalized(weights: Sequence[Real]) -> list[float]:
+def _normalized(weights: Sequence[_RealValue]) -> list[float]:
     try:
         maximum = max(weights)
     except OverflowError:
@@ -114,9 +116,9 @@ def select_ranked_evidence(
     channels: Sequence[RankedChannel],
     aspects: Sequence[QueryAspect],
     *,
-    support: Mapping[str, Mapping[str, Real]] | None = None,
+    support: Mapping[str, Mapping[str, _RealValue]] | None = None,
     limit: int = 5,
-    relevance_weight: Real = .5,
+    relevance_weight: _RealValue = .5,
 ) -> RankedEvidenceReport:
     """Fuse ranked IDs with fixed channel weights, then select supplied support.
 
@@ -202,11 +204,11 @@ def select_ranked_evidence(
             if not isinstance(values, Mapping):
                 raise TypeError("candidate support must be a mapping")
             copied = {}
-            for aspect, value in values.items():
-                aspect = _identifier(aspect, "support aspect_id")
-                if aspect not in aspect_ids:
+            for aspect_id, value in values.items():
+                aspect_id = _identifier(aspect_id, "support aspect_id")
+                if aspect_id not in aspect_ids:
                     raise ValueError("unknown support aspect_id")
-                copied[aspect] = float(_real(value, "support", unit=True))
+                copied[aspect_id] = float(_real(value, "support", unit=True))
             support_snapshot[ident] = copied
     pairs = tuple((i, a.aspect_id) for i in ordered for a in aspect_snapshot
                   if a.aspect_id in support_snapshot.get(i, {}))

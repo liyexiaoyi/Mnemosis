@@ -23,9 +23,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+      - name: Install test dependencies
+        run: python -m pip install -e ".[dev,vectors]"
       - name: Unit tests
         run: |
-          python -m unittest discover -s tests -q
+          python -m pytest -q
         env:
           PYTHONPATH: src
       - name: Capability regression gate
@@ -194,7 +196,7 @@ jobs:
       - name: Install typecheck dependencies
         run: python -m pip install -e ".[dev,typecheck]"
       - name: Type check
-        run: python -m mypy src/mnemosis
+        run: python -m mypy src/mnemosis tests/typing/numeric_api.py
 
   package:
     runs-on: ubuntu-latest

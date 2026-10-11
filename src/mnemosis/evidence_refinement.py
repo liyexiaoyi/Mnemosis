@@ -11,7 +11,7 @@ from dataclasses import dataclass
 
 from .evidence_selection import (
     EvidenceCandidate, EvidenceSelectionReport, QueryAspect,
-    _report_unit, _score_subset, _sequence, select_evidence,
+    _RealValue, _report_unit, _score_subset, select_evidence, _sequence,
 )
 
 
@@ -43,7 +43,7 @@ def refine_evidence(
     aspects: Sequence[QueryAspect],
     *,
     limit: int = 5,
-    relevance_weight: float = .5,
+    relevance_weight: _RealValue = .5,
 ) -> EvidenceRefinementReport:
     """Original greedy selection plus one best strictly improving swap.
 

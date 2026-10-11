@@ -192,7 +192,9 @@ class OllamaEvidenceAnnotator:
                 source_texts: Mapping[str, str], *, deadline: float) -> SupportReplies:
         roles = [{"aspect_id": a.aspect_id, "description": a.description} for a in aspects]
         texts = dict(source_texts)
-        batches, skipped, pending = [], [], []
+        batches: list[SupportBatchReply] = []
+        skipped: list[SkippedEvidence] = []
+        pending: list[str] = []
         for key, text in texts.items():
             if len(text) > 2048:
                 skipped.append(SkippedEvidence(key, "text_too_long"))

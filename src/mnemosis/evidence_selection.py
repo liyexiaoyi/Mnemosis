@@ -10,12 +10,27 @@ from dataclasses import dataclass
 from fractions import Fraction
 import math
 from numbers import Integral, Real
+from typing import Any, Protocol, cast
+
+
+class _RealValue(Protocol):
+    """Static operations for real scalars; runtime acceptance still uses Real.
+
+    numbers.Real does not model the static numeric tower. Keep the original
+    scalar during validation and exact ratio scaling, without float coercion.
+    """
+    def __float__(self) -> float: ...
+    def __lt__(self, other: Any, /) -> bool: ...
+    def __le__(self, other: Any, /) -> bool: ...
+    def __gt__(self, other: Any, /) -> bool: ...
+    def __ge__(self, other: Any, /) -> bool: ...
+    def __truediv__(self, other: Any, /) -> _RealValue: ...
 
 
 @dataclass(frozen=True, slots=True)
 class QueryAspect:
     aspect_id: str
-    weight: float = 1.0
+    weight: _RealValue = 1.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,9 +72,10 @@ def _identifier(value: str, name: str) -> str:
     return value
 
 
-def _real(value: Real, name: str, *, unit: bool = False) -> Real:
+def _real(value: _RealValue, name: str, *, unit: bool = False) -> _RealValue:
     if isinstance(value, bool) or not isinstance(value, Real):
         raise TypeError(f"{name} must be a real number, not bool")
+    value = cast(_RealValue, value)
     # Compare before float conversion: finite integer weights can exceed
     # binary64 while their ratios are representable after max scaling.
     if value != value or value == math.inf or value == -math.inf:
@@ -76,14 +92,15 @@ def _sequence(value: Sequence, name: str, maximum: int) -> None:
         raise ValueError(f"{name} exceeds {maximum}")
 
 
-def _exact_weight(value: Real) -> Fraction:
+def _exact_weight(value: _RealValue) -> Fraction:
     # as_integer_ratio also supports NumPy float scalars on Python 3.10,
     # where Fraction does not yet accept arbitrary ratio-bearing objects.
     ratio = getattr(value, "as_integer_ratio", None)
-    return Fraction(*ratio()) if ratio is not None else Fraction(value)
+    # Preserve Fraction's runtime validation for Rational values on 3.10.
+    return Fraction(*ratio()) if ratio is not None else Fraction(cast("int | float | Fraction", value))
 
 
-def _scaled_weight(value: Real, maximum: Real) -> float:
+def _scaled_weight(value: _RealValue, maximum: _RealValue) -> float:
     # Foreign scalars can divide in float16/32 before float() is applied.
     # Form their bounded ratio exactly to avoid irreversible rounding.
     if any(type(operand) not in (int, float, Fraction)
@@ -132,7 +149,7 @@ def select_evidence(
     aspects: Sequence[QueryAspect],
     *,
     limit: int = 5,
-    relevance_weight: float = .5,
+    relevance_weight: _RealValue = .5,
 ) -> EvidenceSelectionReport:
     """Greedy marginal relevance/K plus saturated supplied-aspect coverage.
 
@@ -151,7 +168,7 @@ def select_evidence(
     _sequence(candidates, "candidates", 100)
     _sequence(aspects, "aspects", 32)
 
-    raw_weights: dict[str, Real] = {}
+    raw_weights: dict[str, _RealValue] = {}
     for aspect in aspects:
         if not isinstance(aspect, QueryAspect):
             raise TypeError("aspects must contain QueryAspect values")
@@ -303,9 +320,9 @@ def select_required_evidence(
     candidates: Sequence[EvidenceCandidate],
     aspects: Sequence[QueryAspect],
     *,
-    required_aspects: Mapping[str, Real] | Sequence[str],
+    required_aspects: Mapping[str, _RealValue] | Sequence[str],
     limit: int = 5,
-    relevance_weight: float = .5,
+    relevance_weight: _RealValue = .5,
     search_budget: int = 10000,
 ) -> RequiredEvidenceReport:
     """Bounded subset search under explicit required-support thresholds.

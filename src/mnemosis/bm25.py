@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import heapq
 import math
+from importlib import import_module
 from collections import Counter, defaultdict
 
 from .types import MemoryStatus, RecallResult, tokenize
@@ -75,7 +76,7 @@ class RustBM25Index:
 
     def __init__(self, items, k1=1.5, b=0.75):
         try:
-            import _mnemosis_rust as native
+            native = import_module("_mnemosis_rust")
         except ImportError as exc:
             raise ImportError("Rust BM25 extension unavailable; install mnemosis-bm25-native "
                               "or set bm25_backend='python'") from exc

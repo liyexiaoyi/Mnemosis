@@ -7,9 +7,10 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from numbers import Integral, Real
+from numbers import Integral
+from typing import cast
 
-from .evidence_selection import EvidenceCandidate, QueryAspect
+from .evidence_selection import EvidenceCandidate, QueryAspect, _RealValue
 from .evidence_refinement import EvidenceRefinementReport, refine_evidence
 from .ranked_evidence import (
     RankedChannel, RankedEvidenceReport, _identifier, _real, _sequence, select_ranked_evidence,
@@ -27,7 +28,7 @@ class SupportSpan:
 def _validate_grounding(
     channels: Sequence[RankedChannel],
     aspects: Sequence[QueryAspect],
-    support: Mapping[str, Mapping[str, Real]] | None,
+    support: Mapping[str, Mapping[str, _RealValue]] | None,
     source_texts: Mapping[str, str],
     support_spans: Mapping[str, Mapping[str, SupportSpan]],
 ) -> tuple[RankedChannel, ...]:
@@ -38,7 +39,7 @@ def _validate_grounding(
     """
     _sequence(channels, "channels", 8)
     snapshot = []
-    eligible = set()
+    eligible: set[str] = set()
     for channel in channels:
         if not isinstance(channel, RankedChannel):
             raise TypeError("channels must contain RankedChannel values")
@@ -69,11 +70,11 @@ def _validate_grounding(
                 raise ValueError("unknown support memory_id")
             if not isinstance(values, Mapping):
                 raise TypeError("candidate support must be a mapping")
-            for aspect, value in values.items():
-                aspect = _identifier(aspect, "support aspect_id")
-                if aspect not in aspect_ids:
+            for aspect_id, value in values.items():
+                aspect_id = _identifier(aspect_id, "support aspect_id")
+                if aspect_id not in aspect_ids:
                     raise ValueError("unknown support aspect_id")
-                supplied[key, aspect] = _real(value, "support", unit=True)
+                supplied[key, aspect_id] = _real(value, "support", unit=True)
 
     if not isinstance(source_texts, Mapping):
         raise TypeError("source_texts must be a mapping")
@@ -99,18 +100,18 @@ def _validate_grounding(
     if len(support_spans) > 100:
         raise ValueError("support_spans exceeds 100")
     witnessed = set()
-    for memory_id, values in support_spans.items():
+    for memory_id, spans in support_spans.items():
         key = _identifier(memory_id, "support_spans memory_id")
         if key not in eligible:
             raise ValueError("unknown support_spans memory_id")
-        if not isinstance(values, Mapping):
+        if not isinstance(spans, Mapping):
             raise TypeError("candidate support_spans must be a mapping")
-        if len(values) > 32:
+        if len(spans) > 32:
             raise ValueError("candidate support_spans exceeds 32")
-        for aspect, span in values.items():
-            aspect = _identifier(aspect, "support_spans aspect_id")
-            label = f"{key}/{aspect}"
-            if (key, aspect) not in supplied:
+        for aspect_id, span in spans.items():
+            aspect_id = _identifier(aspect_id, "support_spans aspect_id")
+            label = f"{key}/{aspect_id}"
+            if (key, aspect_id) not in supplied:
                 raise ValueError(f"{label}: span has no supplied support pair")
             if not isinstance(span, SupportSpan):
                 raise TypeError(f"{label}: span must be a SupportSpan")
@@ -128,7 +129,7 @@ def _validate_grounding(
                 raise ValueError(f"{label}: span outside source text")
             if texts[key][start:end] != span.quote:
                 raise ValueError(f"{label}: quote does not match source text")
-            witnessed.add((key, aspect))
+            witnessed.add((key, aspect_id))
     for pair, value in supplied.items():
         # Check original Real positivity before any binary64 underflow.
         if value > 0 and pair not in witnessed:
@@ -146,9 +147,9 @@ def refine_ranked_evidence(
     channels: Sequence[RankedChannel],
     aspects: Sequence[QueryAspect],
     *,
-    support: Mapping[str, Mapping[str, Real]] | None = None,
+    support: Mapping[str, Mapping[str, _RealValue]] | None = None,
     limit: int = 5,
-    relevance_weight: Real = .5,
+    relevance_weight: _RealValue = .5,
     source_texts: Mapping[str, str] | None = None,
     support_spans: Mapping[str, Mapping[str, SupportSpan]] | None = None,
 ) -> RankedEvidenceRefinementReport:
@@ -197,6 +198,7 @@ def refine_ranked_evidence(
     if (source_texts is None) != (support_spans is None):
         raise ValueError("source_texts and support_spans must be supplied together")
     if source_texts is not None:
+        assert support_spans is not None  # paired-input validation above
         channels = _validate_grounding(channels, aspect_snapshot, support_snapshot,
                                        source_texts, support_spans)
     ranked = select_ranked_evidence(
@@ -205,7 +207,11 @@ def refine_ranked_evidence(
     )
     candidates = [
         EvidenceCandidate(memory_id, ranked.relevance_by_id[memory_id],
-                          support_snapshot.get(memory_id, {}) if support_snapshot is not None else {})
+                          # Ranked validation has checked these real scalars.
+                          # Keep the originals for refinement's own validator;
+                          # do not round raw support here.
+                          cast(Mapping[str, float], support_snapshot.get(memory_id, {}))
+                          if support_snapshot is not None else {})
         for memory_id in ranked.candidate_ids
     ]
     refinement = refine_evidence(

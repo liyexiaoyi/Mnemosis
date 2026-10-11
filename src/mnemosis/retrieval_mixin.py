@@ -5,6 +5,10 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING, cast
+
+if TYPE_CHECKING:
+    from .engine import MemoryEngine
 
 from .embedding import Embedder
 from .event_time import resolve_event_time
@@ -116,6 +120,8 @@ _STORAGE_WORD_RE = re.compile(r"存放|放入|存了|装了|收纳|放进|搁置
 
 
 class RetrievalMixin:
+    _source_event_chain: EventChainIndex | None
+
     def recall_evidence(
         self, query: str, *, annotator, top_k: int = 5, candidate_limit: int = 100,
         relevance_weight: float = .5, search_budget: int = 10000,
@@ -126,7 +132,8 @@ class RetrievalMixin:
     ):
         """Experimental read-only evidence combination; original recall is unchanged."""
         from .evidence_recall import recall_evidence
-        return recall_evidence(self, query, annotator=annotator, top_k=top_k,
+        # The facade owns the store, lock and indexed retrieval state.
+        return recall_evidence(cast("MemoryEngine", self), query, annotator=annotator, top_k=top_k,
             candidate_limit=candidate_limit, relevance_weight=relevance_weight,
             search_budget=search_budget, kind=kind, now=now, context=context,
             exclude_ids=exclude_ids, temporal_policy=temporal_policy,
@@ -256,6 +263,7 @@ class RetrievalMixin:
         with self._lock:
             chain = self.event_chain
             if temporal_policy == "source":
+                assert now is not None and now.tzinfo is not None
                 chain = self._source_event_chain
                 if chain is None or chain.event_timezone != now.tzinfo:
                     # One cached timezone bounds memory; a query keeps its
@@ -380,6 +388,7 @@ class RetrievalMixin:
                 exclude_ids=exclude_ids,
             )
         if temporal_anchor and temporal_policy == "source":
+            assert now is not None
             results = self._apply_source_temporal_anchor(
                 query, results, top_k=top_k, kind=kind,
                 exclude_ids=exclude_ids, now=now,
@@ -985,6 +994,7 @@ class RetrievalMixin:
         if not (past or future or exact or iso):
             return results
         zone = now.tzinfo
+        assert zone is not None  # validated by recall's source-policy guard
         now_utc = now.astimezone(timezone.utc)
         terms = self._concept_terms(query)
         if not terms:
@@ -1015,7 +1025,7 @@ class RetrievalMixin:
             target_year, month, day = map(int, iso.groups())
             target_md = (month, day)
         elif exact:
-            target_md = tuple(map(int, exact.groups()))
+            target_md = (int(exact.group(1)), int(exact.group(2)))
             year = self._TEMPORAL_YEAR_RE.search(query)
             target_year = int(year.group(1)) if year else None
         candidates = []
@@ -1066,10 +1076,15 @@ class RetrievalMixin:
         candidates.sort(key=lambda value: (value[0], value[1].seq),
                         reverse=target_md is None and want_past and not earliest)
         _, winner, event = candidates[0]
+        assert event.day is not None  # unknown dates never enter candidates
         if not want_past and target_md is None:
-            annotated = [r for r in annotated if resolved[r.item.id].day is None
-                         or (resolved[r.item.id].order_key(zone) > now_utc if resolved[r.item.id].instant
-                             else resolved[r.item.id].day > now.date())]
+            future_rows = []
+            for row in annotated:
+                row_event = resolved[row.item.id]
+                if row_event.day is None or (row_event.order_key(zone) > now_utc
+                        if row_event.instant else row_event.day > now.date()):
+                    future_rows.append(row)
+            annotated = future_rows
         reason = (f"时间锚点(日期:{target_md[0]}月{target_md[1]}日)" if target_md else
                   "时间锚点(最早)" if earliest else "时间锚点(上次)" if want_past else "时间锚点(下次)")
         # Include an explanation even when the winner came from outside the
